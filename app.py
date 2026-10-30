@@ -1737,13 +1737,13 @@ elif st.session_state.page == "Portfolio":
     tx_df = pd.read_sql_query("SELECT timestamp, ticker, action, shares, price, total FROM transactions WHERE username = ? ORDER BY id DESC", conn, params=(st.session_state.username,))
     st.dataframe(tx_df, use_container_width=True, hide_index=True)
     if not tx_df.empty:
-    csv_tx = tx_df.to_csv(index=False).encode("utf-8")
-    st.download_button(
-    label="📥 Export Order Book to Excel (CSV)",
-    data=csv_tx,
-    file_name="portfolio_order_book.csv",
-    mime="text/csv"
-)
+        csv_tx = tx_df.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            label="📥 Export Order Book to Excel (CSV)",
+            data=csv_tx,
+            file_name="portfolio_order_book.csv",
+            mime="text/csv"
+        )
 
 # ==========================================================
 # 13. PAGE: DEPOSIT / ADD MONEY
