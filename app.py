@@ -19,10 +19,10 @@ from groq import Groq
 GROQ_API_KEY = "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"
 
 # ==========================================================
-# 1. PAGE CONFIG & TRADINGVIEW DYNAMIC CSS ENGINE
+# 1. PAGE CONFIG & ZERODHA + TRADINGVIEW DYNAMIC CSS
 # ==========================================================
 st.set_page_config(
-    page_title="TradingView × StreakPulse AI | Smart Terminal",
+    page_title="Zerodha × StreakPulse AI | Complete Trading Ecosystem",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -112,7 +112,7 @@ st.markdown("""
     .kpi-white {
         background: linear-gradient(135deg, #ffffff 0%, #f1f5f9 100%);
         color: #0f172a !important;
-        border-left: 5px solid #2563eb;
+        border-left: 5px solid #387ed1;
     }
     .kpi-title {
         font-size: 0.8rem;
@@ -142,12 +142,12 @@ st.markdown("""
         padding: 18px;
         transition: all 0.25s ease;
         box-shadow: 0 8px 24px rgba(0,0,0,0.35);
-        margin-bottom: 10px;
+        margin-bottom: 12px;
     }
     .stock-card:hover {
-        border-color: #06b6d4;
+        border-color: #387ed1;
         transform: translateY(-3px);
-        box-shadow: 0 12px 28px rgba(6, 182, 212, 0.2);
+        box-shadow: 0 12px 28px rgba(56, 126, 209, 0.22);
     }
     .company-header {
         display: flex;
@@ -200,6 +200,45 @@ st.markdown("""
         font-weight: 800;
         border: 1px solid rgba(244, 63, 94, 0.35);
     }
+
+    /* Zerodha Clone Specific Sections */
+    .z-section-card {
+        background: linear-gradient(145deg, #0d1322, #070b14);
+        border: 1px solid #1e293b;
+        border-radius: 20px;
+        padding: 28px 32px;
+        margin: 22px 0;
+        box-shadow: 0 12px 32px rgba(0,0,0,0.4);
+    }
+    .z-support-hero {
+        background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 55%, #0f172a 100%);
+        border: 1px solid #60a5fa;
+        border-radius: 20px;
+        padding: 32px 36px;
+        color: #ffffff;
+        margin-bottom: 24px;
+    }
+    .z-universe-card {
+        background: #0b1120;
+        border: 1px solid #1e293b;
+        border-radius: 16px;
+        padding: 22px;
+        text-align: center;
+        height: 100%;
+        transition: all 0.25s ease;
+    }
+    .z-universe-card:hover {
+        border-color: #38bdf8;
+        transform: translateY(-4px);
+    }
+    .z-footer {
+        background: #060911;
+        border-top: 1px solid #1e293b;
+        padding: 36px 28px 20px 28px;
+        margin-top: 42px;
+        border-radius: 18px;
+        color: #94a3b8;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -236,7 +275,6 @@ STOCK_CATALOG = {
     "META": {"name": "Meta Platforms Inc.", "sector": "Social & AI", "domain": "meta.com", "exchange": "NASDAQ", "currency": "$"}
 }
 
-# Maps any company name typed by the user in chat to its exact Yahoo Finance symbol
 CHAT_STOCK_ALIASES = {
     "apple": "AAPL", "aapl": "AAPL", "iphone": "AAPL",
     "nvidia": "NVDA", "nvda": "NVDA",
@@ -258,11 +296,8 @@ CHAT_STOCK_ALIASES = {
 }
 
 def detect_stock_from_text(user_text, default_ticker):
-    """Detects if the user mentioned a specific stock name (like 'apple' or 'tesla') in their question."""
     cleaned = user_text.lower().strip()
-    # Sort longer phrases first so 'tata motors' matches before 'tata'
     for keyword in sorted(CHAT_STOCK_ALIASES.keys(), key=len, reverse=True):
-        # Match whole word or exact input
         if cleaned == keyword or f" {keyword} " in f" {cleaned} " or f" {keyword}?" in f" {cleaned}" or f" {keyword}." in f" {cleaned}":
             return CHAT_STOCK_ALIASES[keyword], True
     return default_ticker, False
@@ -322,16 +357,15 @@ def fetch_market_snapshots(tickers_list):
 def ask_built_in_ai_advisor(ticker, company_name, currency, price, pct_change, rsi, sma20, ema50, high52, low52, user_question):
     q_clean = user_question.strip().lower()
 
-    # STEP A: Handle Greetings ("hello", "hi", "hey", "who are you") Naturally!
     greetings_exact = {"hi", "hello", "hey", "hii", "hola", "namaste", "good morning", "good evening", "good afternoon", "help", "who are you", "what can you do"}
     if q_clean in greetings_exact or q_clean.startswith(("hello ", "hi ", "hey ")):
         greeting_reply = f"""
-### 👋 Hello! I am StreakPulse AI — Your Live Financial & Stock Analyst
+### 👋 Hello! I am StreakPulse AI — Your Zerodha × TradingView Financial Analyst
 
-I can analyze **any Indian (NSE) or US (NASDAQ) stock** in real time, explain trading concepts, or build custom trade setups for you.
+I can analyze **any Indian (NSE) or US (NASDAQ) stock** in real time, explain brokerage & trading rules, or build custom trade setups.
 
 * **🏢 Ask About Any Company Simply by Typing Its Name:**
-  * Try typing **`Apple`**, **`NVIDIA`**, **`Tesla`**, **`Microsoft`**, **`TCS`**, **`HDFC Bank`**, **`SBI`**, **`Infosys`**, or **`ITC`** — I will automatically switch to that company's live chart and price!
+  * Type **`Apple`**, **`NVIDIA`**, **`Tesla`**, **`Microsoft`**, **`TCS`**, **`HDFC Bank`**, **`SBI`**, **`Infosys`**, or **`ITC`** — I will automatically switch to that company's live chart and price!
 * **📈 Ask Specific Trading Questions:**
   * *"Give me an intraday setup for Apple"*
   * *"Is NVIDIA good for a 5-year investment?"*
@@ -342,7 +376,6 @@ I can analyze **any Indian (NSE) or US (NASDAQ) stock** in real time, explain tr
 """
         return greeting_reply, "🟢 Conversational AI Assistant Active"
 
-    # STEP B: Prepare Live Quantitative Context (RAG) for the Target Stock
     df_live = fetch_stock_history(ticker, "1y")
     volatility_pct = float(df_live["Close"].pct_change().std() * 100) if df_live is not None else 1.8
     atr_val = float((df_live["High"] - df_live["Low"]).tail(14).mean()) if df_live is not None else (price * 0.02)
@@ -359,7 +392,7 @@ I can analyze **any Indian (NSE) or US (NASDAQ) stock** in real time, explain tr
     ml_move_pct = ((ml_pred_5d - price) / price) * 100
 
     system_prompt = (
-        "You are StreakPulse AI, an intelligent conversational stock market advisor (like ChatGPT for Finance). "
+        "You are StreakPulse AI, an intelligent conversational stock market advisor integrated into a Zerodha Kite & TradingView platform. "
         "CRITICAL RULES:\n"
         "1. Always answer the user's exact question naturally and directly in sentence 1.\n"
         "2. If they ask a general finance question (like 'what is RSI' or 'how to trade'), explain that concept clearly.\n"
@@ -378,7 +411,6 @@ I can analyze **any Indian (NSE) or US (NASDAQ) stock** in real time, explain tr
     User Message: "{user_question}"
     """
 
-    # LAYER 1: Try Groq LLaMA 3.3 SDK
     clean_key = GROQ_API_KEY.strip()
     if clean_key.startswith("gsk_"):
         for model_name in ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]:
@@ -397,7 +429,6 @@ I can analyze **any Indian (NSE) or US (NASDAQ) stock** in real time, explain tr
             except Exception:
                 continue
 
-    # LAYER 2: Keyless Free Live AI LLM API (Works 24/7 Even If Groq Key Is Blocked/Revoked!)
     try:
         payload = json.dumps({
             "model": "openai",
@@ -420,14 +451,6 @@ I can analyze **any Indian (NSE) or US (NASDAQ) stock** in real time, explain tr
     except Exception:
         pass
 
-    # LAYER 3: Offline Concept & Stock-Specific Engine
-    if any(w in q_clean for w in ["what is rsi", "what is sma", "what is ema", "what is macd", "explain", "meaning of"]):
-        return f"""
-### 📚 Financial Concept Breakdown: *"{user_question}"*
-* **14-Day RSI (Relative Strength Index):** Measures momentum on a 0–100 scale. Below **30** means a stock is *Oversold* (potential bounce upward), while above **70** means *Overbought* (due for a cooldown). Right now, **{company_name} (`{ticker}`)** has an RSI of **`{rsi:.1f}`**.
-* **20-Day SMA & 50-Day EMA (Moving Averages):** Track the average closing price over the last 20 and 50 sessions to filter out daily noise. When live price (`{currency}{price:,.2f}`) stays above the 20-SMA (`{currency}{sma20:,.2f}`), the short-term trend is bullish.
-""", "⚡ Powered by StreakPulse Financial Knowledge Engine"
-
     trend_up = price >= sma20
     verdict = "BULLISH ACCUMULATION 🟢 ▲" if (trend_up and rsi < 68) else ("OVERBOUGHT / BOOK PROFITS 🟡" if rsi >= 68 else "BEARISH / WAIT FOR SUPPORT 🔴 ▼")
     return f"""
@@ -443,7 +466,7 @@ I can analyze **any Indian (NSE) or US (NASDAQ) stock** in real time, explain tr
 """, f"⚡ Powered by StreakPulse Live Quant Engine ({ticker})"
 
 # ==========================================================
-# 4. SQLITE MULTI-PAGE DATABASE (USERS, WALLET, BANKING)
+# 4. SQLITE DATABASE (USERS, HOLDINGS, POSITIONS, ORDERS, TICKETS)
 # ==========================================================
 def init_db():
     conn = sqlite3.connect("streakpulse_pro.db", check_same_thread=False)
@@ -461,6 +484,14 @@ def init_db():
                     shares INTEGER,
                     avg_price REAL,
                     PRIMARY KEY (username, ticker)
+                )""")
+    c.execute("""CREATE TABLE IF NOT EXISTS positions (
+                    username TEXT,
+                    ticker TEXT,
+                    product_type TEXT,
+                    shares INTEGER,
+                    avg_price REAL,
+                    PRIMARY KEY (username, ticker, product_type)
                 )""")
     c.execute("""CREATE TABLE IF NOT EXISTS transactions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -480,6 +511,15 @@ def init_db():
                     method TEXT,
                     reference TEXT,
                     amount REAL,
+                    status TEXT
+                )""")
+    c.execute("""CREATE TABLE IF NOT EXISTS support_tickets (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ticket_id TEXT,
+                    timestamp TEXT,
+                    category TEXT,
+                    subject TEXT,
+                    email TEXT,
                     status TEXT
                 )""")
     
@@ -515,48 +555,83 @@ def update_funds(username, amount, tx_type, method, reference):
     conn.commit()
     return True, f"✅ ₹{amount:,.2f} {'deposited to' if tx_type == 'DEPOSIT' else 'withdrawn from'} your trading wallet!"
 
-def execute_trade(username, ticker, action, shares, current_price):
+def execute_trade(username, ticker, action, shares, current_price, product_type="CNC (Delivery)"):
     c = conn.cursor()
     balance = get_user_balance(username)
-    total_cost = shares * current_price
+    # MIS Intraday gives 5x leverage (20% margin required), CNC requires 100%
+    is_mis = "MIS" in product_type
+    total_value = shares * current_price
+    required_margin = total_value * 0.20 if is_mis else total_value
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     if action == "BUY":
-        if total_cost > balance:
-            return False, "❌ Insufficient funds! Click 'Deposit' in the top bar to add margin."
-        new_balance = balance - total_cost
+        if required_margin > balance:
+            return False, f"❌ Insufficient margin! Required: ₹{required_margin:,.2f}. Click 'Funds' to deposit cash."
+        new_balance = balance - required_margin
         c.execute("UPDATE users SET balance = ? WHERE username = ?", (new_balance, username))
-        c.execute("SELECT shares, avg_price FROM portfolio WHERE username = ? AND ticker = ?", (username, ticker))
-        row = c.fetchone()
-        if row:
-            old_shares, old_avg = row
-            new_shares = old_shares + shares
-            new_avg = ((old_shares * old_avg) + total_cost) / new_shares
-            c.execute("UPDATE portfolio SET shares = ?, avg_price = ? WHERE username = ? AND ticker = ?",
-                      (new_shares, new_avg, username, ticker))
+        
+        if not is_mis:
+            c.execute("SELECT shares, avg_price FROM portfolio WHERE username = ? AND ticker = ?", (username, ticker))
+            row = c.fetchone()
+            if row:
+                old_shares, old_avg = row
+                new_shares = old_shares + shares
+                new_avg = ((old_shares * old_avg) + total_value) / new_shares
+                c.execute("UPDATE portfolio SET shares = ?, avg_price = ? WHERE username = ? AND ticker = ?",
+                          (new_shares, new_avg, username, ticker))
+            else:
+                c.execute("INSERT INTO portfolio VALUES (?, ?, ?, ?)", (username, ticker, shares, current_price))
+        
+        # Also log in active positions (Kite Positions tab)
+        p_tag = "MIS" if is_mis else "CNC"
+        c.execute("SELECT shares, avg_price FROM positions WHERE username = ? AND ticker = ? AND product_type = ?", (username, ticker, p_tag))
+        prow = c.fetchone()
+        if prow:
+            ns = prow[0] + shares
+            na = ((prow[0] * prow[1]) + total_value) / ns
+            c.execute("UPDATE positions SET shares = ?, avg_price = ? WHERE username = ? AND ticker = ? AND product_type = ?",
+                      (ns, na, username, ticker, p_tag))
         else:
-            c.execute("INSERT INTO portfolio VALUES (?, ?, ?, ?)", (username, ticker, shares, current_price))
+            c.execute("INSERT INTO positions VALUES (?, ?, ?, ?, ?)", (username, ticker, p_tag, shares, current_price))
+
         c.execute("""INSERT INTO transactions (username, timestamp, ticker, action, shares, price, total)
-                     VALUES (?, ?, ?, 'BUY', ?, ?, ?)""", (username, now, ticker, shares, current_price, total_cost))
+                     VALUES (?, ?, ?, ?, ?, ?, ?)""", (username, now, ticker, f"BUY ({p_tag})", shares, current_price, total_value))
         conn.commit()
-        return True, f"✅ Executed BUY: {shares} qty of {ticker} @ ₹{current_price:,.2f}"
+        return True, f"✅ Executed BUY ({p_tag}): {shares} qty of {ticker} @ ₹{current_price:,.2f}"
 
     elif action == "SELL":
-        c.execute("SELECT shares FROM portfolio WHERE username = ? AND ticker = ?", (username, ticker))
-        row = c.fetchone()
-        if not row or row[0] < shares:
-            return False, "❌ You do not hold enough shares in your portfolio to sell!"
-        new_shares = row[0] - shares
-        new_balance = balance + total_cost
-        c.execute("UPDATE users SET balance = ? WHERE username = ?", (new_balance, username))
-        if new_shares == 0:
-            c.execute("DELETE FROM portfolio WHERE username = ? AND ticker = ?", (username, ticker))
+        p_tag = "MIS" if is_mis else "CNC"
+        if is_mis:
+            c.execute("SELECT shares, avg_price FROM positions WHERE username = ? AND ticker = ? AND product_type = 'MIS'", (username, ticker))
+            row = c.fetchone()
+            if not row or row[0] < shares:
+                return False, "❌ You do not have enough open MIS Intraday positions to sell!"
+            new_shares = row[0] - shares
+            pnl = (current_price - row[1]) * shares
+            margin_released = (shares * row[1]) * 0.20
+            c.execute("UPDATE users SET balance = ? WHERE username = ?", (balance + margin_released + pnl, username))
+            if new_shares == 0:
+                c.execute("DELETE FROM positions WHERE username = ? AND ticker = ? AND product_type = 'MIS'", (username, ticker))
+            else:
+                c.execute("UPDATE positions SET shares = ? WHERE username = ? AND ticker = ? AND product_type = 'MIS'", (new_shares, username, ticker))
         else:
-            c.execute("UPDATE portfolio SET shares = ? WHERE username = ? AND ticker = ?", (new_shares, username, ticker))
+            c.execute("SELECT shares FROM portfolio WHERE username = ? AND ticker = ?", (username, ticker))
+            row = c.fetchone()
+            if not row or row[0] < shares:
+                return False, "❌ You do not hold enough CNC shares in your Holdings to sell!"
+            new_shares = row[0] - shares
+            c.execute("UPDATE users SET balance = ? WHERE username = ?", (balance + total_value, username))
+            if new_shares == 0:
+                c.execute("DELETE FROM portfolio WHERE username = ? AND ticker = ?", (username, ticker))
+                c.execute("DELETE FROM positions WHERE username = ? AND ticker = ? AND product_type = 'CNC'", (username, ticker))
+            else:
+                c.execute("UPDATE portfolio SET shares = ? WHERE username = ? AND ticker = ?", (new_shares, username, ticker))
+                c.execute("UPDATE positions SET shares = ? WHERE username = ? AND ticker = ? AND product_type = 'CNC'", (new_shares, username, ticker))
+
         c.execute("""INSERT INTO transactions (username, timestamp, ticker, action, shares, price, total)
-                     VALUES (?, ?, ?, 'SELL', ?, ?, ?)""", (username, now, ticker, shares, current_price, total_cost))
+                     VALUES (?, ?, ?, ?, ?, ?, ?)""", (username, now, ticker, f"SELL ({p_tag})", shares, current_price, total_value))
         conn.commit()
-        return True, f"✅ Executed SELL: {shares} qty of {ticker} @ ₹{current_price:,.2f}"
+        return True, f"✅ Executed SELL ({p_tag}): {shares} qty of {ticker} @ ₹{current_price:,.2f}"
 
 # ==========================================================
 # 5. SESSION STATE ROUTING INITIALIZATION
@@ -568,13 +643,13 @@ if "username" not in st.session_state:
 if "full_name" not in st.session_state:
     st.session_state.full_name = ""
 if "page" not in st.session_state:
-    st.session_state.page = "Home"
+    st.session_state.page = "Dashboard"
 if "selected_ticker" not in st.session_state:
     st.session_state.selected_ticker = "RELIANCE.NS"
 if "ai_chat_history" not in st.session_state:
     st.session_state.ai_chat_history = []
-if "landing_nav" not in st.session_state:
-    st.session_state.landing_nav = "Overview"
+if "public_page" not in st.session_state:
+    st.session_state.public_page = "Home"
 
 def navigate_to(page_name, ticker=None):
     st.session_state.page = page_name
@@ -582,24 +657,91 @@ def navigate_to(page_name, ticker=None):
         st.session_state.selected_ticker = ticker
 
 # ==========================================================
-# 6. PAGE 1: DYNAMIC TRADINGVIEW LANDING & LOGIN PORTAL
+# 6. REUSABLE ZERODHA CLONE PUBLIC COMPONENTS (OPEN ACCOUNT & FOOTER)
+# ==========================================================
+def render_zerodha_open_account(key_suffix="main"):
+    """Reusable OpenAccount.js component from the Zerodha Clone playlist."""
+    st.markdown("""
+    <div class="z-section-card" style="text-align:center; background: radial-gradient(circle at center, #111c35 0%, #070b14 100%);">
+        <h2 style="color:#ffffff; font-weight:800; font-size:1.95rem; margin-bottom:10px;">Open a Zerodha × StreakPulse Account</h2>
+        <p style="color:#94a3b8; font-size:1.02rem; margin-bottom:20px;">
+            Modern platforms and apps, ₹0 equity delivery investments, flat ₹20 intraday and F&O trades, plus ₹1,00,000 instant virtual margin.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+    c1, c2, c3 = st.columns([1.6, 1.2, 1.6])
+    with c2:
+        if st.button("🚀 Sign up Now (Claim ₹1,00,000 Free)", key=f"open_acc_btn_{key_suffix}", type="primary", use_container_width=True):
+            st.session_state.public_page = "Signup"
+            st.rerun()
+
+def render_zerodha_footer():
+    """Reusable 4-Column Footer.js component with SEBI/NSE/BSE disclaimers from the Zerodha Clone playlist."""
+    st.markdown("""
+    <div class="z-footer">
+        <div style="display:grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; gap:28px; padding-bottom:28px; border-bottom:1px solid #1e293b;">
+            <div>
+                <div style="font-weight:800; font-size:1.35rem; color:#ffffff; margin-bottom:10px;">
+                    ⚡ <span style="color:#387ed1;">ZERODHA</span> × StreakPulse
+                </div>
+                <p style="font-size:0.82rem; color:#94a3b8; line-height:1.6;">
+                    © 2010 - 2026, Zerodha × StreakPulse Broking Ltd.<br>
+                    All rights reserved.<br>
+                    B.Tech Final Year Major Project • AI & FinTech Terminal
+                </p>
+                <div style="margin-top:12px; font-size:0.85rem; color:#38bdf8;">
+                    🌐 Twitter • 💼 LinkedIn • 📸 Instagram • ▶️ YouTube • 💬 Telegram
+                </div>
+            </div>
+            <div>
+                <div style="color:#ffffff; font-weight:700; font-size:0.95rem; margin-bottom:12px;">Company</div>
+                <div style="font-size:0.84rem; line-height:2.0; color:#94a3b8;">
+                    About<br>Products<br>Pricing<br>Referral programme<br>Careers<br>Zerodha.tech<br>Press & media<br>Zerodha Cares (CSR)
+                </div>
+            </div>
+            <div>
+                <div style="color:#ffffff; font-weight:700; font-size:0.95rem; margin-bottom:12px;">Support</div>
+                <div style="font-size:0.84rem; line-height:2.0; color:#94a3b8;">
+                    Contact us<br>Support portal<br>Z-Connect blog<br>List of charges<br>Downloads & resources<br>Videos<br>Market overview<br>How to file a complaint?
+                </div>
+            </div>
+            <div>
+                <div style="color:#ffffff; font-weight:700; font-size:0.95rem; margin-bottom:12px;">Account</div>
+                <div style="font-size:0.84rem; line-height:2.0; color:#94a3b8;">
+                    Open an account<br>Fund transfer<br>60 day challenge<br>Margin calculator<br>Streak AI Algo Lab
+                </div>
+            </div>
+        </div>
+        <div style="margin-top:22px; font-size:0.75rem; color:#64748b; line-height:1.7;">
+            <p>Zerodha × StreakPulse Broking Ltd.: Member of NSE, BSE & MCX – SEBI Registration no.: INZ000031633. CDSL/NSDL: Depository services through Zerodha Broking Ltd. – SEBI Registration no.: IN-DP-431-2019.</p>
+            <p style="margin-top:8px;">Investments in securities market are subject to market risks; read all the related documents carefully before investing. Prevent Unauthorized Transactions in your account — update your mobile numbers/email IDs with your stock brokers. Receive information of your transactions directly from Exchange on your mobile/email at the end of the day.</p>
+            <div style="margin-top:14px; text-align:center; font-weight:600; color:#94a3b8;">
+                NSE &nbsp;•&nbsp; BSE &nbsp;•&nbsp; MCX &nbsp;•&nbsp; Terms & conditions &nbsp;•&nbsp; Policies & procedures &nbsp;•&nbsp; Privacy policy &nbsp;•&nbsp; Disclosure &nbsp;•&nbsp; For investor's attention &nbsp;•&nbsp; Investor charter
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+# ==========================================================
+# 7. PART 1: PUBLIC ZERODHA CLONE PORTAL (HOME, SIGNUP, ABOUT, PRODUCTS, PRICING, SUPPORT)
 # ==========================================================
 if not st.session_state.logged_in:
-    top_c1, top_c2, top_c3, top_c4, top_c5, top_c6, top_c7, top_c8 = st.columns([1.3, 2.2, 0.9, 1.0, 0.9, 0.9, 0.9, 1.2])
+    # ZERODHA CLONE PERSISTENT TOP NAVBAR (Navbar.js)
+    nav_c1, nav_c2, nav_c3, nav_c4, nav_c5, nav_c6, nav_c7, nav_c8 = st.columns([1.6, 1.8, 0.85, 0.85, 0.85, 0.9, 0.85, 1.2])
     
-    with top_c1:
+    with nav_c1:
         st.markdown("""
-        <div style="font-weight:800; font-size:1.35rem; color:#ffffff; padding-top:6px; letter-spacing:-0.03em;">
-            17 <span style="color:#38bdf8;">Streak</span>View
+        <div style="font-weight:800; font-size:1.35rem; color:#ffffff; padding-top:6px; letter-spacing:-0.02em;">
+            ⚡ <span style="color:#387ed1;">ZERODHA</span> <span style="font-size:0.85rem; color:#38bdf8;">× StreakAI</span>
         </div>
         """, unsafe_allow_html=True)
 
-    with top_c2:
-        search_options = ["🔍 Search markets, tickers, algos (Ctrl+K)..."] + [
+    with nav_c2:
+        search_options = ["🔍 Search stocks (Ctrl+K)..."] + [
             f"{sym} — {meta['name']} ({meta['exchange']})" for sym, meta in STOCK_CATALOG.items()
         ]
         picked_search = st.selectbox("Search", search_options, label_visibility="collapsed")
-        if picked_search != "🔍 Search markets, tickers, algos (Ctrl+K)...":
+        if picked_search != "🔍 Search stocks (Ctrl+K)...":
             sym_jump = picked_search.split(" — ")[0]
             st.session_state.logged_in = True
             st.session_state.username = "trader_pro"
@@ -608,553 +750,657 @@ if not st.session_state.logged_in:
             st.session_state.page = "Terminal"
             st.rerun()
 
-    if top_c3.button("Products", use_container_width=True, type="primary" if st.session_state.landing_nav == "Products" else "secondary"):
-        st.session_state.landing_nav = "Products"
-    if top_c4.button("Community", use_container_width=True, type="primary" if st.session_state.landing_nav == "Community" else "secondary"):
-        st.session_state.landing_nav = "Community"
-    if top_c5.button("Markets", use_container_width=True, type="primary" if st.session_state.landing_nav == "Markets" else "secondary"):
-        st.session_state.landing_nav = "Markets"
-    if top_c6.button("Brokers", use_container_width=True, type="primary" if st.session_state.landing_nav == "Brokers" else "secondary"):
-        st.session_state.landing_nav = "Brokers"
-    if top_c7.button("AI Lab", use_container_width=True, type="primary" if st.session_state.landing_nav == "AI Lab" else "secondary"):
-        st.session_state.landing_nav = "AI Lab"
-    if top_c8.button("🚀 Get started", use_container_width=True, type="primary"):
-        st.session_state.logged_in = True
-        st.session_state.username = "trader_pro"
-        st.session_state.full_name = "Final Year Demo Trader"
-        st.session_state.page = "Home"
+    pub_pages = [
+        ("🏠 Home", "Home", nav_c3),
+        ("🔐 Signup", "Signup", nav_c4),
+        ("🏛️ About", "About", nav_c5),
+        ("🚀 Products", "Products", nav_c6),
+        ("🏷️ Pricing", "Pricing", nav_c7)
+    ]
+    for label, p_name, col_obj in pub_pages:
+        if col_obj.button(label, use_container_width=True, type="primary" if st.session_state.public_page == p_name else "secondary"):
+            st.session_state.public_page = p_name
+            st.rerun()
+
+    if nav_c8.button("🎧 Support", use_container_width=True, type="primary" if st.session_state.public_page == "Support" else "secondary"):
+        st.session_state.public_page = "Support"
         st.rerun()
 
-    if st.session_state.landing_nav != "Overview":
-        nav_info = {
-            "Products": ("⚡ StreakView Pro Suite", "Includes TradingView Multi-Timeframe SuperCharts, Streak No-Code Algo Backtester, Volume Profile POC/VAH/VAL, and Paper Trading Engine.", "Terminal"),
-            "Community": ("🌐 Global Quant & Trader Community", "Live trade setups shared by 50,000+ algorithmic traders across NSE NIFTY 50 and NASDAQ tech giants.", "Home"),
-            "Markets": ("📈 Live Multi-Exchange Market Pulse", "Real-time coverage of NSE India (Reliance, TCS, HDFC Bank, Infosys, SBI) & US NASDAQ (NVIDIA, Apple, Tesla, Microsoft).", "Streak"),
-            "Brokers": ("🏦 Instant Zero-Fee Paper & UPI Gateway", "Pre-loaded with ₹1,00,000 virtual margin, instant UPI/NetBanking deposit simulator, and IMPS bank withdrawal ledger.", "Deposit"),
-            "AI Lab": ("🧠 Conversational AI + Multi-Stock Detector Lab", "Type any stock name like 'Apple', 'NVIDIA', or 'TCS' or say 'Hello' — the AI switches stocks automatically!", "Advisor")
-        }
-        title_txt, desc_txt, target_p = nav_info[st.session_state.landing_nav]
-        d_col1, d_col2, d_col3 = st.columns([4.2, 1.3, 0.8])
-        with d_col1:
-            st.info(f"**{title_txt}:** {desc_txt}")
-        with d_col2:
-            if st.button(f"🚀 Open {st.session_state.landing_nav} Live", use_container_width=True, type="primary"):
-                st.session_state.logged_in = True
-                st.session_state.username = "trader_pro"
-                st.session_state.full_name = "Final Year Demo Trader"
-                st.session_state.page = target_p
-                st.rerun()
-        with d_col3:
-            if st.button("✖ Close", use_container_width=True):
-                st.session_state.landing_nav = "Overview"
-                st.rerun()
+    st.markdown("<hr style='border:0; border-top:1px solid #1e293b; margin:6px 0 18px 0;'>", unsafe_allow_html=True)
 
-    hero_left, hero_right = st.columns([1.62, 1.0], gap="large")
+    # ----------------------------------------------------------
+    # PUBLIC PAGE A: HOME PAGE (Hero + Awards + Stats + Pricing + Education + OpenAccount)
+    # ----------------------------------------------------------
+    if st.session_state.public_page == "Home":
+        hero_left, hero_right = st.columns([1.62, 1.0], gap="large")
 
-    with hero_left:
-        live_hero_html = """
-        <!DOCTYPE html>
-        <html>
-        <head>
-        <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=JetBrains+Mono:wght@500;600;700;800&display=swap" rel="stylesheet">
-        <style>
-            * { box-sizing: border-box; margin: 0; padding: 0; }
-            body {
-                background: transparent;
-                font-family: 'Plus Jakarta Sans', sans-serif;
-                color: #f8fafc;
-                overflow: hidden;
-            }
-            .hero-card {
-                background: radial-gradient(circle at 85% 35%, rgba(6, 182, 212, 0.28), rgba(37, 99, 235, 0.16) 45%, #070b14 85%);
-                border: 1px solid #1e293b;
-                border-radius: 22px;
-                padding: 22px 24px;
-                box-shadow: 0 20px 50px rgba(0,0,0,0.65);
-            }
-            .top-bar {
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                padding-bottom: 12px;
-                margin-bottom: 16px;
-                border-bottom: 1px solid #1e293b;
-            }
-            .live-dot {
-                height: 10px; width: 10px;
-                background: #10b981;
-                border-radius: 50%;
-                display: inline-block;
-                box-shadow: 0 0 10px #10b981;
-                animation: blink 1.2s infinite;
-            }
-            @keyframes blink { 50% { opacity: 0.35; } }
-            .grid-box {
-                display: grid;
-                grid-template-columns: 1.45fr 1.15fr;
-                gap: 14px;
-            }
-            .panel {
-                background: #090d16;
-                border: 1px solid #1e293b;
-                border-radius: 16px;
-                padding: 16px;
-            }
-            .logo-sm {
-                width: 24px; height: 24px;
-                border-radius: 6px;
-                background: #ffffff;
-                padding: 2px;
-                object-fit: contain;
-                vertical-align: middle;
-            }
-            .bar-row {
-                display: flex;
-                align-items: center;
-                gap: 10px;
-                margin: 10px 0;
-            }
-            .bar-track {
-                flex: 1;
-                background: #111827;
-                height: 11px;
-                border-radius: 6px;
-                overflow: hidden;
-            }
-            .bar-fill {
-                height: 100%;
-                border-radius: 6px;
-                transition: width 0.6s ease;
-            }
-            .watch-row {
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                padding: 7px 8px;
-                border-radius: 8px;
-                margin-bottom: 5px;
-                transition: background 0.35s ease;
-                font-family: 'JetBrains Mono', monospace;
-                font-size: 0.8rem;
-            }
-            .watch-left {
-                display: flex;
-                align-items: center;
-                gap: 8px;
-                font-family: 'Plus Jakarta Sans', sans-serif;
-                font-weight: 700;
-                font-size: 0.82rem;
-            }
-            .up-text { color: #34d399; font-weight: 700; }
-            .down-text { color: #fb7185; font-weight: 700; }
-            .flash-up { background: rgba(16, 185, 129, 0.22) !important; }
-            .flash-down { background: rgba(244, 63, 94, 0.22) !important; }
-            .explore-btn {
-                margin-top: 16px;
-                background: rgba(15, 23, 42, 0.9);
-                border: 1px solid rgba(56, 189, 248, 0.4);
-                border-radius: 999px;
-                padding: 10px 24px;
-                display: inline-flex;
-                align-items: center;
-                gap: 12px;
-                color: #f8fafc;
-                cursor: pointer;
-                transition: all 0.2s ease;
-            }
-            .explore-btn:hover {
-                border-color: #38bdf8;
-                transform: scale(1.03);
-                box-shadow: 0 0 20px rgba(56, 189, 248, 0.3);
-            }
-        </style>
-        </head>
-        <body>
-        <div class="hero-card">
-            <div class="top-bar">
-                <div style="display:flex; align-items:center; gap:10px;">
-                    <span class="live-dot"></span>
-                    <img src="https://www.google.com/s2/favicons?domain=ril.com&sz=128" class="logo-sm">
-                    <span style="font-family:'JetBrains Mono',monospace; font-size:0.8rem; color:#cbd5e1;">
-                        RELIANCE • NSE • 1D • SUPERCHART + VOLUME PROFILE
-                    </span>
-                </div>
-                <span id="live-clock" style="background:rgba(6,182,212,0.18); color:#22d3ee; padding:4px 10px; border-radius:6px; font-family:'JetBrains Mono',monospace; font-size:0.75rem; font-weight:700;">
-                    ⚡ LIVE STREAMING
-                </span>
-            </div>
-
-            <div class="grid-box">
-                <div class="panel">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-                        <div style="display:flex; align-items:center; gap:8px;">
-                            <img src="https://www.google.com/s2/favicons?domain=apple.com&sz=128" class="logo-sm">
-                            <img src="https://www.google.com/s2/favicons?domain=nvidia.com&sz=128" class="logo-sm">
-                            <span style="font-weight:800; font-size:0.88rem;">Apple / NVIDIA Multi-Grid</span>
-                        </div>
-                        <span id="grid-Hero-Pct" class="up-text" style="font-family:'JetBrains Mono',monospace; font-size:0.85rem;">
-                            ▲ +2.84%
+        with hero_left:
+            live_hero_html = """
+            <!DOCTYPE html>
+            <html>
+            <head>
+            <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=JetBrains+Mono:wght@500;600;700;800&display=swap" rel="stylesheet">
+            <style>
+                * { box-sizing: border-box; margin: 0; padding: 0; }
+                body { background: transparent; font-family: 'Plus Jakarta Sans', sans-serif; color: #f8fafc; overflow: hidden; }
+                .hero-card {
+                    background: radial-gradient(circle at 85% 35%, rgba(56, 126, 209, 0.30), rgba(6, 182, 212, 0.16) 45%, #070b14 85%);
+                    border: 1px solid #1e293b;
+                    border-radius: 22px;
+                    padding: 22px 24px;
+                    box-shadow: 0 20px 50px rgba(0,0,0,0.65);
+                }
+                .top-bar { display: flex; justify-content: space-between; align-items: center; padding-bottom: 12px; margin-bottom: 16px; border-bottom: 1px solid #1e293b; }
+                .live-dot { height: 10px; width: 10px; background: #10b981; border-radius: 50%; display: inline-block; box-shadow: 0 0 10px #10b981; animation: blink 1.2s infinite; }
+                @keyframes blink { 50% { opacity: 0.35; } }
+                .grid-box { display: grid; grid-template-columns: 1.45fr 1.15fr; gap: 14px; }
+                .panel { background: #090d16; border: 1px solid #1e293b; border-radius: 16px; padding: 16px; }
+                .logo-sm { width: 24px; height: 24px; border-radius: 6px; background: #ffffff; padding: 2px; object-fit: contain; vertical-align: middle; }
+                .bar-row { display: flex; align-items: center; gap: 10px; margin: 10px 0; }
+                .bar-track { flex: 1; background: #111827; height: 11px; border-radius: 6px; overflow: hidden; }
+                .bar-fill { height: 100%; border-radius: 6px; transition: width 0.6s ease; }
+                .watch-row { display: flex; justify-content: space-between; align-items: center; padding: 7px 8px; border-radius: 8px; margin-bottom: 5px; transition: background 0.35s ease; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; }
+                .watch-left { display: flex; align-items: center; gap: 8px; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 700; font-size: 0.82rem; }
+                .up-text { color: #34d399; font-weight: 700; }
+                .down-text { color: #fb7185; font-weight: 700; }
+                .flash-up { background: rgba(16, 185, 129, 0.22) !important; }
+                .flash-down { background: rgba(244, 63, 94, 0.22) !important; }
+                .explore-btn { margin-top: 16px; background: rgba(15, 23, 42, 0.9); border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 999px; padding: 10px 24px; display: inline-flex; align-items: center; gap: 12px; color: #f8fafc; cursor: pointer; transition: all 0.2s ease; }
+            </style>
+            </head>
+            <body>
+            <div class="hero-card">
+                <div class="top-bar">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <span class="live-dot"></span>
+                        <img src="https://www.google.com/s2/favicons?domain=ril.com&sz=128" class="logo-sm">
+                        <span style="font-family:'JetBrains Mono',monospace; font-size:0.8rem; color:#cbd5e1;">
+                            ZERODHA KITE • LIVE MARKETWATCH & SUPERCHART
                         </span>
                     </div>
+                    <span style="background:rgba(56,126,209,0.22); color:#60a5fa; padding:4px 10px; border-radius:6px; font-family:'JetBrains Mono',monospace; font-size:0.75rem; font-weight:700;">
+                        ⚡ INVEST IN EVERYTHING
+                    </span>
+                </div>
 
-                    <div class="bar-row">
-                        <div class="bar-track"><div id="bar1" class="bar-fill" style="width:68%; background:linear-gradient(90deg, #eab308 60%, #3b82f6 40%);"></div></div>
-                        <span id="poc-val" style="font-family:'JetBrains Mono',monospace; font-size:0.74rem; color:#cbd5e1; width:85px;">POC 271.59</span>
-                    </div>
-                    <div class="bar-row">
-                        <div class="bar-track"><div id="bar2" class="bar-fill" style="width:86%; background:linear-gradient(90deg, #eab308 55%, #06b6d4 45%);"></div></div>
-                        <span id="vah-val" style="font-family:'JetBrains Mono',monospace; font-size:0.74rem; color:#38bdf8; width:85px;">VAH 274.10</span>
-                    </div>
-                    <div class="bar-row">
-                        <div class="bar-track"><div id="bar3" class="bar-fill" style="width:48%; background:linear-gradient(90deg, #ef4444 50%, #3b82f6 50%);"></div></div>
-                        <span id="val-val" style="font-family:'JetBrains Mono',monospace; font-size:0.74rem; color:#fb7185; width:85px;">VAL 266.20</span>
-                    </div>
-                    <div class="bar-row">
-                        <div class="bar-track"><div id="bar4" class="bar-fill" style="width:76%; background:linear-gradient(90deg, #10b981 65%, #3b82f6 35%);"></div></div>
-                        <span style="font-family:'JetBrains Mono',monospace; font-size:0.74rem; color:#34d399; width:85px;">▲ AI TARGET</span>
+                <div class="grid-box">
+                    <div class="panel">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <img src="https://www.google.com/s2/favicons?domain=apple.com&sz=128" class="logo-sm">
+                                <img src="https://www.google.com/s2/favicons?domain=nvidia.com&sz=128" class="logo-sm">
+                                <span style="font-weight:800; font-size:0.88rem;">Kite Orderflow & Depth</span>
+                            </div>
+                            <span class="up-text" style="font-family:'JetBrains Mono',monospace; font-size:0.85rem;">▲ +2.84%</span>
+                        </div>
+
+                        <div class="bar-row">
+                            <div class="bar-track"><div id="bar1" class="bar-fill" style="width:68%; background:linear-gradient(90deg, #eab308 60%, #3b82f6 40%);"></div></div>
+                            <span id="poc-val" style="font-family:'JetBrains Mono',monospace; font-size:0.74rem; color:#cbd5e1; width:85px;">POC 271.59</span>
+                        </div>
+                        <div class="bar-row">
+                            <div class="bar-track"><div id="bar2" class="bar-fill" style="width:86%; background:linear-gradient(90deg, #eab308 55%, #06b6d4 45%);"></div></div>
+                            <span style="font-family:'JetBrains Mono',monospace; font-size:0.74rem; color:#38bdf8; width:85px;">VAH 274.10</span>
+                        </div>
+                        <div class="bar-row">
+                            <div class="bar-track"><div id="bar3" class="bar-fill" style="width:48%; background:linear-gradient(90deg, #ef4444 50%, #3b82f6 50%);"></div></div>
+                            <span style="font-family:'JetBrains Mono',monospace; font-size:0.74rem; color:#fb7185; width:85px;">VAL 266.20</span>
+                        </div>
+                        <div class="bar-row">
+                            <div class="bar-track"><div id="bar4" class="bar-fill" style="width:76%; background:linear-gradient(90deg, #10b981 65%, #3b82f6 35%);"></div></div>
+                            <span style="font-family:'JetBrains Mono',monospace; font-size:0.74rem; color:#34d399; width:85px;">▲ AI TARGET</span>
+                        </div>
+
+                        <div style="margin-top:16px; padding-top:12px; border-top:1px solid #1e293b; display:flex; justify-content:space-between; font-family:'JetBrains Mono',monospace; font-size:0.76rem;">
+                            <span>BTC/USD: <b id="btc-price" class="up-text">▲ $89,420.50</b></span>
+                            <span>NIFTY 50: <b style="color:#38bdf8;">▲ 24,852.40</b></span>
+                        </div>
                     </div>
 
-                    <div style="margin-top:16px; padding-top:12px; border-top:1px solid #1e293b; display:flex; justify-content:space-between; font-family:'JetBrains Mono',monospace; font-size:0.76rem;">
-                        <span>BTC/USD: <b id="btc-price" class="up-text">▲ $89,420.50 (+3.12%)</b></span>
-                        <span>NIFTY 50: <b id="nifty-mini" style="color:#38bdf8;">▲ 24,852.40</b></span>
+                    <div class="panel">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; padding-bottom:6px; border-bottom:1px solid #1e293b;">
+                            <span style="font-size:0.76rem; font-weight:800; color:#94a3b8;">📋 KITE MARKETWATCH</span>
+                            <span style="font-size:0.7rem; color:#38bdf8; font-family:'JetBrains Mono',monospace;">LIVE TICKS</span>
+                        </div>
+
+                        <div id="row-nvda" class="watch-row">
+                            <div class="watch-left"><img src="https://www.google.com/s2/favicons?domain=nvidia.com&sz=128" class="logo-sm"><span>NVDA</span></div>
+                            <span id="p-nvda">177.19</span><span id="c-nvda" class="up-text">▲ +4.16%</span>
+                        </div>
+                        <div id="row-aapl" class="watch-row">
+                            <div class="watch-left"><img src="https://www.google.com/s2/favicons?domain=apple.com&sz=128" class="logo-sm"><span>AAPL</span></div>
+                            <span id="p-aapl">264.18</span><span id="c-aapl" class="down-text">▼ -1.21%</span>
+                        </div>
+                        <div id="row-tcs" class="watch-row">
+                            <div class="watch-left"><img src="https://www.google.com/s2/favicons?domain=tcs.com&sz=128" class="logo-sm"><span>TCS</span></div>
+                            <span id="p-tcs">4,120.50</span><span id="c-tcs" class="up-text">▲ +1.85%</span>
+                        </div>
+                        <div id="row-rel" class="watch-row">
+                            <div class="watch-left"><img src="https://www.google.com/s2/favicons?domain=ril.com&sz=128" class="logo-sm"><span>RELIANCE</span></div>
+                            <span id="p-rel">2,985.00</span><span id="c-rel" class="up-text">▲ +2.10%</span>
+                        </div>
+                        <div id="row-tsla" class="watch-row">
+                            <div class="watch-left"><img src="https://www.google.com/s2/favicons?domain=tesla.com&sz=128" class="logo-sm"><span>TSLA</span></div>
+                            <span id="p-tsla">402.51</span><span id="c-tsla" class="down-text">▼ -1.49%</span>
+                        </div>
                     </div>
                 </div>
 
-                <div class="panel">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; padding-bottom:6px; border-bottom:1px solid #1e293b;">
-                        <span style="font-size:0.76rem; font-weight:800; color:#94a3b8; letter-spacing:0.04em;">📋 LIVE WATCHLIST</span>
-                        <span style="font-size:0.7rem; color:#38bdf8; font-family:'JetBrains Mono',monospace;">REAL-TIME TICKS</span>
-                    </div>
-
-                    <div id="row-nvda" class="watch-row">
-                        <div class="watch-left">
-                            <img src="https://www.google.com/s2/favicons?domain=nvidia.com&sz=128" class="logo-sm">
-                            <span>NVDA</span>
+                <div style="text-align:center;">
+                    <div class="explore-btn">
+                        <span style="font-size:1.15rem;">⚡</span>
+                        <div style="text-align:left;">
+                            <div style="font-weight:800; font-size:0.88rem; color:#38bdf8;">Online platform to invest in stocks, derivatives, mutual funds & algos</div>
+                            <div style="font-size:0.74rem; color:#94a3b8;">1.5+ Crore clients • 15%+ of all Indian retail trading volume</div>
                         </div>
-                        <span id="p-nvda">177.19</span>
-                        <span id="c-nvda" class="up-text">▲ +4.16%</span>
-                    </div>
-
-                    <div id="row-aapl" class="watch-row">
-                        <div class="watch-left">
-                            <img src="https://www.google.com/s2/favicons?domain=apple.com&sz=128" class="logo-sm">
-                            <span>AAPL</span>
-                        </div>
-                        <span id="p-aapl">264.18</span>
-                        <span id="c-aapl" class="down-text">▼ -1.21%</span>
-                    </div>
-
-                    <div id="row-tcs" class="watch-row">
-                        <div class="watch-left">
-                            <img src="https://www.google.com/s2/favicons?domain=tcs.com&sz=128" class="logo-sm">
-                            <span>TCS</span>
-                        </div>
-                        <span id="p-tcs">4,120.50</span>
-                        <span id="c-tcs" class="up-text">▲ +1.85%</span>
-                    </div>
-
-                    <div id="row-rel" class="watch-row">
-                        <div class="watch-left">
-                            <img src="https://www.google.com/s2/favicons?domain=ril.com&sz=128" class="logo-sm">
-                            <span>RELIANCE</span>
-                        </div>
-                        <span id="p-rel">2,985.00</span>
-                        <span id="c-rel" class="up-text">▲ +2.10%</span>
-                    </div>
-
-                    <div id="row-tsla" class="watch-row">
-                        <div class="watch-left">
-                            <img src="https://www.google.com/s2/favicons?domain=tesla.com&sz=128" class="logo-sm">
-                            <span>TSLA</span>
-                        </div>
-                        <span id="p-tsla">402.51</span>
-                        <span id="c-tsla" class="down-text">▼ -1.49%</span>
-                    </div>
-                </div>
-            </div>
-
-            <div style="text-align:center;">
-                <div class="explore-btn" onclick="cycleMode()">
-                    <span style="font-size:1.15rem;">⚡</span>
-                    <div style="text-align:left;">
-                        <div id="explore-title" style="font-weight:800; font-size:0.88rem; color:#38bdf8;">Explore all features › (Click to Cycle Live AI Feeds)</div>
-                        <div id="explore-sub" style="font-size:0.74rem; color:#94a3b8;">Showing: Real-Time Volume Profile + Multi-Exchange Watchlist</div>
                     </div>
                 </div>
             </div>
-        </div>
 
-        <script>
-            const stocks = [
-                { id: 'nvda', price: 177.19, pct: 4.16 },
-                { id: 'aapl', price: 264.18, pct: -1.21 },
-                { id: 'tcs',  price: 4120.50, pct: 1.85 },
-                { id: 'rel',  price: 2985.00, pct: 2.10 },
-                { id: 'tsla', price: 402.51, pct: -1.49 }
-            ];
-            let btc = 89420.50;
-            let modeIdx = 0;
-            const modes = [
-                "Showing: Real-Time Volume Profile + Multi-Exchange Watchlist",
-                "Showing: Streak v4 Algorithmic Crossover Scanner Active",
-                "Showing: Groq LLaMA 3.3 + Random Forest 7-Day Predictor Active"
-            ];
+            <script>
+                const stocks = [
+                    { id: 'nvda', price: 177.19, pct: 4.16 },
+                    { id: 'aapl', price: 264.18, pct: -1.21 },
+                    { id: 'tcs',  price: 4120.50, pct: 1.85 },
+                    { id: 'rel',  price: 2985.00, pct: 2.10 },
+                    { id: 'tsla', price: 402.51, pct: -1.49 }
+                ];
+                let btc = 89420.50;
+                setInterval(() => {
+                    stocks.forEach(s => {
+                        const delta = (Math.random() - 0.48) * (s.price * 0.003);
+                        s.price = Math.max(1, s.price + delta);
+                        s.pct = s.pct + (delta >= 0 ? 0.03 : -0.03);
+                        const pEl = document.getElementById('p-' + s.id);
+                        const cEl = document.getElementById('c-' + s.id);
+                        const rEl = document.getElementById('row-' + s.id);
+                        pEl.innerText = s.price >= 1000 ? s.price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : s.price.toFixed(2);
+                        cEl.innerText = (s.pct >= 0 ? '▲ +' : '▼ ') + s.pct.toFixed(2) + '%';
+                        cEl.className = s.pct >= 0 ? 'up-text' : 'down-text';
+                        rEl.classList.remove('flash-up', 'flash-down');
+                        void rEl.offsetWidth;
+                        rEl.classList.add(delta >= 0 ? 'flash-up' : 'flash-down');
+                    });
+                    btc += (Math.random() - 0.47) * 45;
+                    document.getElementById('btc-price').innerText = (btc >= 89400 ? '▲ $' : '▼ $') + btc.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                    document.getElementById('bar1').style.width = (60 + Math.random()*25) + '%';
+                    document.getElementById('bar2').style.width = (70 + Math.random()*22) + '%';
+                }, 1100);
+            </script>
+            </body>
+            </html>
+            """
+            components.html(live_hero_html, height=420)
 
-            function cycleMode() {
-                modeIdx = (modeIdx + 1) % modes.length;
-                document.getElementById('explore-sub').innerText = modes[modeIdx];
-                document.getElementById('bar1').style.width = (50 + Math.random()*40) + '%';
-                document.getElementById('bar2').style.width = (50 + Math.random()*40) + '%';
-                document.getElementById('bar3').style.width = (40 + Math.random()*40) + '%';
-                document.getElementById('bar4').style.width = (60 + Math.random()*35) + '%';
-            }
+        with hero_right:
+            st.markdown("""
+            <div style="background:linear-gradient(145deg, #0f172a, #090d16); border:1px solid #1e293b; border-radius:20px; padding:20px 24px; margin-bottom:12px;">
+                <span style="background:rgba(56,126,209,0.2); color:#60a5fa; padding:4px 12px; border-radius:999px; font-size:0.75rem; font-weight:700;">
+                    ⚡ KITE WEB TERMINAL • ZERO-LATENCY ACCESS
+                </span>
+                <h3 style="margin:10px 0 4px 0; font-weight:800; color:#ffffff;">Sign In to Kite Dashboard</h3>
+                <p style="color:#94a3b8; font-size:0.83rem; margin:0;">Includes Orders, Holdings, Positions, Funds, SuperCharts & LLaMA 3.3 AI</p>
+            </div>
+            """, unsafe_allow_html=True)
 
-            setInterval(() => {
-                stocks.forEach(s => {
-                    const delta = (Math.random() - 0.48) * (s.price * 0.003);
-                    s.price = Math.max(1, s.price + delta);
-                    s.pct = s.pct + (delta >= 0 ? 0.03 : -0.03);
-                    const pEl = document.getElementById('p-' + s.id);
-                    const cEl = document.getElementById('c-' + s.id);
-                    const rEl = document.getElementById('row-' + s.id);
+            auth_tab1, auth_tab2 = st.tabs(["🔐 Kite Login", "✨ Open Free Account"])
 
-                    pEl.innerText = s.price >= 1000 ? s.price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : s.price.toFixed(2);
-                    const arrow = s.pct >= 0 ? '▲ +' : '▼ ';
-                    cEl.innerText = arrow + s.pct.toFixed(2) + '%';
-                    cEl.className = s.pct >= 0 ? 'up-text' : 'down-text';
+            with auth_tab1:
+                login_user = st.text_input("Kite User ID", value="trader_pro")
+                login_pass = st.text_input("Password", type="password", value="demo123")
+                
+                b1, b2 = st.columns(2)
+                if b1.button("🚀 Login to Kite", use_container_width=True, type="primary"):
+                    c = conn.cursor()
+                    pw_hash = hashlib.sha256(login_pass.encode()).hexdigest()
+                    c.execute("SELECT full_name FROM users WHERE username = ? AND password_hash = ?", (login_user, pw_hash))
+                    res = c.fetchone()
+                    if res:
+                        st.session_state.logged_in = True
+                        st.session_state.username = login_user
+                        st.session_state.full_name = res[0]
+                        st.session_state.page = "Dashboard"
+                        st.rerun()
+                    else:
+                        st.error("Invalid username or password!")
 
-                    rEl.classList.remove('flash-up', 'flash-down');
-                    void rEl.offsetWidth;
-                    rEl.classList.add(delta >= 0 ? 'flash-up' : 'flash-down');
-                });
+                if b2.button("⚡ 1-Click Demo Login", use_container_width=True):
+                    st.session_state.logged_in = True
+                    st.session_state.username = "trader_pro"
+                    st.session_state.full_name = "Final Year Demo Trader"
+                    st.session_state.page = "Dashboard"
+                    st.rerun()
 
-                btc += (Math.random() - 0.47) * 45;
-                document.getElementById('btc-price').innerText = (btc >= 89400 ? '▲ $' : '▼ $') + btc.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-                document.getElementById('btc-price').className = btc >= 89400 ? 'up-text' : 'down-text';
+            with auth_tab2:
+                new_name = st.text_input("Full Name", placeholder="e.g., Vishal Babu")
+                new_user = st.text_input("Choose Kite ID", placeholder="e.g., vishal_quant")
+                new_email = st.text_input("Email ID", placeholder="vishal@college.edu")
+                new_pass = st.text_input("Create Password", type="password")
+                if st.button("✅ Open Account & Claim ₹1,00,000", use_container_width=True, type="primary"):
+                    if new_user and new_pass and new_name:
+                        c = conn.cursor()
+                        c.execute("SELECT COUNT(*) FROM users WHERE username = ?", (new_user,))
+                        if c.fetchone()[0] > 0:
+                            st.warning("Username already exists!")
+                        else:
+                            pw_hash = hashlib.sha256(new_pass.encode()).hexdigest()
+                            c.execute("INSERT INTO users VALUES (?, ?, ?, ?, ?)",
+                                      (new_user, new_name, new_email, pw_hash, 100000.0))
+                            c.execute("""INSERT INTO funding_history (username, timestamp, type, method, reference, amount, status)
+                                         VALUES (?, ?, 'DEPOSIT', 'Signup Margin Credit', 'INIT-100K', 100000.0, 'COMPLETED')""",
+                                      (new_user, datetime.now().strftime("%Y-%m-%d %H:%M")))
+                            conn.commit()
+                            st.session_state.logged_in = True
+                            st.session_state.username = new_user
+                            st.session_state.full_name = new_name
+                            st.session_state.page = "Dashboard"
+                            st.rerun()
 
-                document.getElementById('bar1').style.width = (60 + Math.random()*25) + '%';
-                document.getElementById('bar2').style.width = (70 + Math.random()*22) + '%';
-                document.getElementById('poc-val').innerText = 'POC ' + (271 + Math.random()).toFixed(2);
-            }, 1100);
-        </script>
-        </body>
-        </html>
-        """
-        components.html(live_hero_html, height=420)
-
-    with hero_right:
+        # ZERODHA HOME COMPONENT 2: AWARDS.JS ("Largest stock broker in India")
         st.markdown("""
-        <div style="background:linear-gradient(145deg, #0f172a, #090d16); border:1px solid #1e293b; border-radius:20px; padding:20px 24px; margin-bottom:12px;">
-            <span style="background:rgba(56,189,248,0.15); color:#38bdf8; padding:4px 12px; border-radius:999px; font-size:0.75rem; font-weight:700;">
-                ⚡ GET STARTED • ZERO-LATENCY ACCESS
-            </span>
-            <h3 style="margin:10px 0 4px 0; font-weight:800; color:#ffffff;">Sign In to Trading Terminal</h3>
-            <p style="color:#94a3b8; font-size:0.83rem; margin:0;">Pre-configured with Conversational AI, Streak Backtesting & ₹1,00,000 Wallet</p>
+        <div class="z-section-card">
+            <div style="display:grid; grid-template-columns: 1fr 1.3fr; gap:32px; align-items:center;">
+                <div style="background:linear-gradient(135deg, #1e293b, #0f172a); border-radius:16px; padding:28px; text-align:center; border:1px solid #334155;">
+                    <div style="font-size:3.2rem; margin-bottom:10px;">🏆</div>
+                    <h3 style="color:#ffffff; font-weight:800; margin-bottom:6px;">India's #1 Retail & Algo Trading Ecosystem</h3>
+                    <p style="color:#38bdf8; font-family:'JetBrains Mono',monospace; font-size:0.9rem;">15%+ of all Indian retail order volumes daily</p>
+                </div>
+                <div>
+                    <h2 style="color:#ffffff; font-weight:800; font-size:1.75rem; margin-bottom:10px;">Largest stock broker in India</h2>
+                    <p style="color:#cbd5e1; font-size:0.95rem; margin-bottom:16px;">
+                        1.5+ Crore clients contribute to over 15% of all retail order volumes in India daily by trading and investing in:
+                    </p>
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; color:#38bdf8; font-weight:600; font-size:0.92rem;">
+                        <div>• Futures and Options</div>
+                        <div>• Stocks & IPOs</div>
+                        <div>• Commodity derivatives</div>
+                        <div>• Direct mutual funds</div>
+                        <div>• Currency derivatives</div>
+                        <div>• Bonds and Govt. Securities</div>
+                    </div>
+                </div>
+            </div>
         </div>
         """, unsafe_allow_html=True)
 
-        auth_tab1, auth_tab2 = st.tabs(["🔐 Sign In", "✨ Create Account"])
+        # ZERODHA HOME COMPONENT 3: STATS.JS ("Trust with confidence") & PRICING.JS ("Unbeatable pricing")
+        st_col1, st_col2 = st.columns([1.3, 1.0], gap="large")
+        with st_col1:
+            st.markdown("""
+            <div class="z-section-card" style="height:100%;">
+                <h2 style="color:#ffffff; font-weight:800; font-size:1.65rem; margin-bottom:14px;">🛡️ Trust with confidence</h2>
+                <div style="margin-bottom:14px;">
+                    <h4 style="color:#38bdf8; margin:0 0 4px 0;">Customer-first always</h4>
+                    <p style="color:#94a3b8; font-size:0.88rem; margin:0;">That's why 1.5+ crore customers trust Zerodha with ₹4.5+ lakh crores of equity investments.</p>
+                </div>
+                <div style="margin-bottom:14px;">
+                    <h4 style="color:#38bdf8; margin:0 0 4px 0;">No spam or gimmicks</h4>
+                    <p style="color:#94a3b8; font-size:0.88rem; margin:0;">No gimmicks, spam, "gamification", or annoying push notifications. High quality apps that you use at your pace.</p>
+                </div>
+                <div>
+                    <h4 style="color:#38bdf8; margin:0 0 4px 0;">The Zerodha × StreakPulse universe</h4>
+                    <p style="color:#94a3b8; font-size:0.88rem; margin:0;">Not just an app, but a whole ecosystem with Streak AI Backtesting, Random Forest ML Forecasting, and LLaMA 3.3 Advisor.</p>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
 
-        with auth_tab1:
-            login_user = st.text_input("Username", value="trader_pro")
-            login_pass = st.text_input("Password", type="password", value="demo123")
-            
-            b1, b2 = st.columns(2)
-            if b1.button("🚀 Launch Terminal", use_container_width=True, type="primary"):
-                c = conn.cursor()
-                pw_hash = hashlib.sha256(login_pass.encode()).hexdigest()
-                c.execute("SELECT full_name FROM users WHERE username = ? AND password_hash = ?", (login_user, pw_hash))
-                res = c.fetchone()
-                if res:
-                    st.session_state.logged_in = True
-                    st.session_state.username = login_user
-                    st.session_state.full_name = res[0]
-                    st.rerun()
+        with st_col2:
+            st.markdown("""
+            <div class="z-section-card" style="height:100%;">
+                <h2 style="color:#ffffff; font-weight:800; font-size:1.65rem; margin-bottom:10px;">🏷️ Unbeatable pricing</h2>
+                <p style="color:#94a3b8; font-size:0.9rem; margin-bottom:18px;">
+                    We pioneered the concept of discount broking and price transparency in India. Flat fees and no hidden charges.
+                </p>
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:14px; text-align:center;">
+                    <div style="background:#090d16; border:1px solid #10b981; border-radius:14px; padding:18px;">
+                        <div style="font-family:'JetBrains Mono',monospace; font-size:2.2rem; font-weight:800; color:#34d399;">₹0</div>
+                        <div style="font-size:0.8rem; color:#cbd5e1; margin-top:6px;">Free equity delivery & direct mutual funds</div>
+                    </div>
+                    <div style="background:#090d16; border:1px solid #38bdf8; border-radius:14px; padding:18px;">
+                        <div style="font-family:'JetBrains Mono',monospace; font-size:2.2rem; font-weight:800; color:#38bdf8;">₹20</div>
+                        <div style="font-size:0.8rem; color:#cbd5e1; margin-top:6px;">Flat Intraday, F&O & Algo trades</div>
+                    </div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        # ZERODHA HOME COMPONENT 4: EDUCATION.JS ("Free and open market education")
+        st.markdown("""
+        <div class="z-section-card">
+            <div style="display:grid; grid-template-columns: 1fr 1.4fr; gap:28px; align-items:center;">
+                <div style="background:#090d16; border:1px solid #1e293b; border-radius:16px; padding:26px; text-align:center;">
+                    <div style="font-size:3rem;">📚</div>
+                    <h3 style="color:#ffffff; font-weight:800; margin-top:8px;">Varsity × AI Quant Academy</h3>
+                    <p style="color:#94a3b8; font-size:0.85rem;">Free stock market & algorithmic trading education</p>
+                </div>
+                <div>
+                    <h2 style="color:#ffffff; font-weight:800; font-size:1.65rem; margin-bottom:10px;">Free and open market education</h2>
+                    <p style="color:#cbd5e1; font-size:0.9rem; margin-bottom:12px;">
+                        <b>Varsity</b>, the largest online stock market education book in the world covering everything from the basics to advanced technical analysis and quantitative modeling.
+                    </p>
+                    <p style="color:#cbd5e1; font-size:0.9rem; margin:0;">
+                        <b>TradingQ&A + LLaMA 3.3 AI Advisor</b>, the most active trading and investment community where our built-in AI answers every market query instantly.
+                    </p>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        render_zerodha_open_account("home")
+
+    # ----------------------------------------------------------
+    # PUBLIC PAGE B: SIGNUP PAGE (Signup.js)
+    # ----------------------------------------------------------
+    elif st.session_state.public_page == "Signup":
+        s_left, s_right = st.columns([1.2, 1.2], gap="large")
+        with s_left:
+            st.markdown("""
+            <div class="z-section-card">
+                <span style="background:rgba(56,126,209,0.2); color:#60a5fa; padding:5px 12px; border-radius:999px; font-size:0.78rem; font-weight:700;">
+                    JOIN 1.5+ CRORE INVESTORS
+                </span>
+                <h2 style="color:#ffffff; font-weight:800; margin:12px 0 10px 0;">Open a free demat and trading account online</h2>
+                <p style="color:#94a3b8; font-size:0.95rem; line-height:1.6;">
+                    Start investing brokerage-free and join a community of 1.5+ crore investors and traders. Instant paper margin of <b>₹1,00,000</b> credited immediately upon registration.
+                </p>
+                <div style="margin-top:18px; padding:16px; background:#090d16; border-radius:12px; border:1px solid #1e293b; color:#cbd5e1; font-size:0.86rem;">
+                    ✅ ₹0 Equity Delivery Brokerage<br>
+                    ✅ Built-In Groq LLaMA 3.3 AI Financial Advisor<br>
+                    ✅ 7-Day Random Forest ML Price Predictor<br>
+                    ✅ Streak v4 No-Code Strategy Backtester
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+        with s_right:
+            st.markdown("### ✨ Create Your Kite Account Now")
+            su_name = st.text_input("Your Full Name", placeholder="e.g., Vishal Babu")
+            su_user = st.text_input("Choose Kite User ID", placeholder="e.g., vishal_01")
+            su_email = st.text_input("Email Address", placeholder="vishal@example.com")
+            su_pass = st.text_input("Password", type="password")
+            if st.button("🚀 Complete Signup & Open Kite Dashboard", type="primary", use_container_width=True):
+                if su_name and su_user and su_pass:
+                    c = conn.cursor()
+                    c.execute("SELECT COUNT(*) FROM users WHERE username = ?", (su_user,))
+                    if c.fetchone()[0] > 0:
+                        st.warning("User ID already exists! Try another or log in.")
+                    else:
+                        pw_hash = hashlib.sha256(su_pass.encode()).hexdigest()
+                        c.execute("INSERT INTO users VALUES (?, ?, ?, ?, ?)", (su_user, su_name, su_email, pw_hash, 100000.0))
+                        c.execute("""INSERT INTO funding_history (username, timestamp, type, method, reference, amount, status)
+                                     VALUES (?, ?, 'DEPOSIT', 'Signup Margin Credit', 'INIT-100K', 100000.0, 'COMPLETED')""",
+                                  (su_user, datetime.now().strftime("%Y-%m-%d %H:%M")))
+                        conn.commit()
+                        st.session_state.logged_in = True
+                        st.session_state.username = su_user
+                        st.session_state.full_name = su_name
+                        st.session_state.page = "Dashboard"
+                        st.rerun()
                 else:
-                    st.error("Invalid username or password!")
-
-            if b2.button("⚡ 1-Click Demo Login", use_container_width=True):
+                    st.warning("Please fill in Name, User ID, and Password.")
+            st.markdown("---")
+            if st.button("⚡ Or Use 1-Click Examiner Demo Account", use_container_width=True):
                 st.session_state.logged_in = True
                 st.session_state.username = "trader_pro"
                 st.session_state.full_name = "Final Year Demo Trader"
+                st.session_state.page = "Dashboard"
                 st.rerun()
 
-        with auth_tab2:
-            new_name = st.text_input("Full Name", placeholder="e.g., Vishal Babu")
-            new_user = st.text_input("Choose Username", placeholder="e.g., vishal_quant")
-            new_email = st.text_input("Email ID", placeholder="vishal@college.edu")
-            new_pass = st.text_input("Create Password", type="password")
-            if st.button("✅ Register & Claim ₹1,00,000 Margin", use_container_width=True, type="primary"):
-                if new_user and new_pass and new_name:
-                    c = conn.cursor()
-                    c.execute("SELECT COUNT(*) FROM users WHERE username = ?", (new_user,))
-                    if c.fetchone()[0] > 0:
-                        st.warning("Username already exists!")
-                    else:
-                        pw_hash = hashlib.sha256(new_pass.encode()).hexdigest()
-                        c.execute("INSERT INTO users VALUES (?, ?, ?, ?, ?)",
-                                  (new_user, new_name, new_email, pw_hash, 100000.0))
-                        c.execute("""INSERT INTO funding_history (username, timestamp, type, method, reference, amount, status)
-                                     VALUES (?, ?, 'DEPOSIT', 'Signup Margin Credit', 'INIT-100K', 100000.0, 'COMPLETED')""",
-                                  (new_user, datetime.now().strftime("%Y-%m-%d %H:%M")))
-                        conn.commit()
-                        st.success("🎉 Account created! Switch to 'Sign In' tab.")
-
-    market_summary_html = """
-    <!DOCTYPE html>
-    <html>
-    <head>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@600;700;800&family=JetBrains+Mono:wght@600;700;800&display=swap" rel="stylesheet">
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { background: transparent; font-family: 'Plus Jakarta Sans', sans-serif; }
-        .white-box {
-            background: #ffffff;
-            color: #0f172a;
-            border-radius: 22px;
-            padding: 24px 28px;
-            box-shadow: 0 12px 36px rgba(0,0,0,0.4);
-        }
-        .header-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 18px;
-        }
-        .cards-grid {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 16px;
-        }
-        .idx-card {
-            background: #f8fafc;
-            border: 1px solid #e2e8f0;
-            border-radius: 16px;
-            padding: 16px 18px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            transition: all 0.3s ease;
-        }
-        .badge-circle {
-            width: 44px; height: 44px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: #ffffff;
-            font-family: 'JetBrains Mono', monospace;
-            font-weight: 800;
-            font-size: 0.95rem;
-            flex-shrink: 0;
-        }
-        .price-txt {
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 1.15rem;
-            font-weight: 800;
-            color: #0f172a;
-            margin-top: 2px;
-        }
-        .bull-pill {
-            background: rgba(16, 185, 129, 0.15);
-            color: #059669;
-            padding: 5px 10px;
-            border-radius: 999px;
-            font-family: 'JetBrains Mono', monospace;
-            font-weight: 800;
-            font-size: 0.84rem;
-        }
-        .bear-pill {
-            background: rgba(225, 29, 72, 0.12);
-            color: #e11d48;
-            padding: 5px 10px;
-            border-radius: 999px;
-            font-family: 'JetBrains Mono', monospace;
-            font-weight: 800;
-            font-size: 0.84rem;
-        }
-    </style>
-    </head>
-    <body>
-    <div class="white-box">
-        <div class="header-row">
-            <h2 style="font-weight:800; font-size:1.55rem; color:#0f172a;">Market summary ›</h2>
-            <span style="font-size:0.86rem; font-weight:700; color:#2563eb;">● Major Global & Indian Indices • Live Real-Time Ticks</span>
+    # ----------------------------------------------------------
+    # PUBLIC PAGE C: ABOUT PAGE (AboutPage.js -> Hero.js + Team.js)
+    # ----------------------------------------------------------
+    elif st.session_state.public_page == "About":
+        st.markdown("""
+        <div class="z-section-card" style="text-align:center;">
+            <h2 style="color:#ffffff; font-weight:800; font-size:1.85rem; max-width:800px; margin:0 auto;">
+                We pioneered the discount broking model in India.<br>
+                <span style="color:#38bdf8;">Now, we are breaking ground with AI & Quantitative Technology.</span>
+            </h2>
         </div>
-        <div class="cards-grid">
-            <div class="idx-card" id="card-spx">
-                <div style="display:flex; align-items:center; gap:12px;">
-                    <div class="badge-circle" style="background:#e11d48;">500</div>
-                    <div>
-                        <div style="font-weight:800; font-size:0.95rem;">S&P 500 <span style="font-size:0.72rem; color:#64748b;">SPX</span></div>
-                        <div class="price-txt" id="val-spx">7,714.21</div>
-                    </div>
-                </div>
-                <span class="bear-pill" id="pct-spx">▼ -0.38%</span>
-            </div>
+        """, unsafe_allow_html=True)
 
-            <div class="idx-card" id="card-ndx">
-                <div style="display:flex; align-items:center; gap:12px;">
-                    <div class="badge-circle" style="background:#0284c7;">100</div>
-                    <div>
-                        <div style="font-weight:800; font-size:0.95rem;">Nasdaq 100 <span style="font-size:0.72rem; color:#64748b;">NDX</span></div>
-                        <div class="price-txt" id="val-ndx">29,415.59</div>
-                    </div>
-                </div>
-                <span class="bear-pill" id="pct-ndx">▼ -1.33%</span>
+        ab_c1, ab_c2 = st.columns(2, gap="large")
+        with ab_c1:
+            st.markdown("""
+            <div class="z-section-card" style="height:100%; color:#cbd5e1; font-size:0.94rem; line-height:1.75;">
+                <p>We kick-started operations with the goal of breaking all barriers that traders and investors face in India in terms of cost, support, and institutional technology.</p>
+                <p>Today, our disruptive pricing models and in-house quantitative AI tools — including <b>Random Forest price forecasting</b> and <b>LLaMA 3.3 RAG market intelligence</b> — make institutional-grade analysis accessible to every retail investor.</p>
             </div>
-
-            <div class="idx-card" id="card-nifty">
-                <div style="display:flex; align-items:center; gap:12px;">
-                    <div class="badge-circle" style="background:#4f46e5;">50</div>
-                    <div>
-                        <div style="font-weight:800; font-size:0.95rem;">NIFTY 50 <span style="font-size:0.72rem; color:#64748b;">NSE</span></div>
-                        <div class="price-txt" id="val-nifty">24,852.10</div>
-                    </div>
-                </div>
-                <span class="bull-pill" id="pct-nifty">▲ +0.84%</span>
+            """, unsafe_allow_html=True)
+        with ab_c2:
+            st.markdown("""
+            <div class="z-section-card" style="height:100%; color:#cbd5e1; font-size:0.94rem; line-height:1.75;">
+                <p>In addition, we run a number of open educational and community initiatives to empower retail traders and investors through <b>Varsity</b> and <b>Streak Algo Lab</b>.</p>
+                <p>Through our FinTech incubator <b>Rainmatter</b>, we also support innovative startups and student engineering projects building the future of Indian capital markets.</p>
             </div>
+            """, unsafe_allow_html=True)
 
-            <div class="idx-card" id="card-sensex">
-                <div style="display:flex; align-items:center; gap:12px;">
-                    <div class="badge-circle" style="background:#059669;">30</div>
-                    <div>
-                        <div style="font-weight:800; font-size:0.95rem;">BSE SENSEX <span style="font-size:0.72rem; color:#64748b;">BSE</span></div>
-                        <div class="price-txt" id="val-sensex">81,742.65</div>
-                    </div>
+        # Team.js Section from Playlist
+        st.markdown("""
+        <div class="z-section-card">
+            <h2 style="text-align:center; color:#ffffff; font-weight:800; margin-bottom:24px;">👥 People & Engineering Team</h2>
+            <div style="display:grid; grid-template-columns: 1fr 2fr; gap:28px; align-items:center;">
+                <div style="text-align:center; background:#090d16; padding:24px; border-radius:16px; border:1px solid #38bdf8;">
+                    <div style="font-size:3.6rem;">👨‍💻</div>
+                    <h4 style="color:#ffffff; font-weight:800; margin:10px 0 4px 0;">Final Year Project Team</h4>
+                    <div style="color:#38bdf8; font-size:0.84rem; font-weight:600;">Full-Stack Python, ML & FinTech Architecture</div>
                 </div>
-                <span class="bull-pill" id="pct-sensex">▲ +0.92%</span>
+                <div style="color:#cbd5e1; font-size:0.95rem; line-height:1.75;">
+                    <p>This full-stack platform integrates the complete <b>Zerodha Kite, Console, Streak, and TradingView</b> architecture into a unified Python & SQLite web application.</p>
+                    <p>Engineered with live <b>Yahoo Finance market streams</b>, <b>Scikit-Learn Random Forest ensemble modeling</b>, <b>Groq LLaMA 3.3 conversational RAG</b>, and real-time <b>MIS/CNC order execution</b>.</p>
+                </div>
             </div>
         </div>
-    </div>
+        """, unsafe_allow_html=True)
 
-    <script>
-        const indices = [
-            { id: 'spx', val: 7714.21, pct: -0.38 },
-            { id: 'ndx', val: 29415.59, pct: -1.33 },
-            { id: 'nifty', val: 24852.10, pct: 0.84 },
-            { id: 'sensex', val: 81742.65, pct: 0.92 }
-        ];
-        setInterval(() => {
-            indices.forEach(idx => {
-                const move = (Math.random() - 0.48) * (idx.val * 0.0008);
-                idx.val += move;
-                idx.pct += (move >= 0 ? 0.01 : -0.01);
-                document.getElementById('val-' + idx.id).innerText = idx.val.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-                const pEl = document.getElementById('pct-' + idx.id);
-                pEl.innerText = (idx.pct >= 0 ? '▲ +' : '▼ ') + idx.pct.toFixed(2) + '%';
-                pEl.className = idx.pct >= 0 ? 'bull-pill' : 'bear-pill';
-            });
-        }, 1300);
-    </script>
-    </body>
-    </html>
-    """
-    components.html(market_summary_html, height=195)
+    # ----------------------------------------------------------
+    # PUBLIC PAGE D: PRODUCTS PAGE (ProductPage.js -> Hero + LeftSection + RightSection + Universe)
+    # ----------------------------------------------------------
+    elif st.session_state.public_page == "Products":
+        st.markdown("""
+        <div class="z-section-card" style="text-align:center;">
+            <h1 style="color:#ffffff; font-weight:800; font-size:2.2rem; margin-bottom:8px;">Zerodha × StreakPulse Products</h1>
+            <h4 style="color:#94a3b8; font-weight:500; margin-bottom:10px;">Sleek, modern, and intuitive trading & AI platforms</h4>
+            <div style="color:#38bdf8; font-weight:700; font-size:0.92rem;">Check out our investment offerings →</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        products_showcase = [
+            ("left", "📈 Kite SuperChart Terminal", "Our ultra-fast flagship trading platform with streaming market data, 3-layer TradingView charts (Candlesticks, Volume, RSI), an elegant UI, and instant CNC/MIS order execution.", "Terminal"),
+            ("right", "💿 Console Portfolio & Ledger", "The central dashboard for your Zerodha account. Gain insights into your trades and investments with in-depth visualisations, asset allocation donut charts, and downloadable Excel/CSV reports.", "Holdings"),
+            ("left", "🤖 StreakPulse LLaMA 3.3 AI Advisor", "Institutional conversational AI analyst pre-configured with live RAG market feeds. Type any stock name (Apple, NVIDIA, Reliance, TCS) for instant entry, stop-loss, and target levels.", "Advisor"),
+            ("right", "⚡ Kite Connect API & 7-Day ML Predictor", "Build powerful trading experiences and run live 7-Day Random Forest Machine Learning price projections trained on rolling 252-day OHLCV and momentum lag features.", "Terminal"),
+            ("left", "🧪 Streak No-Code Algo Backtester", "Create systematic trading strategies (Golden Crossover, RSI Reversal, Momentum Surge) without writing code, backtest on historical candles, and scan the live market.", "Apps")
+        ]
+
+        for align, p_title, p_desc, target_tab in products_showcase:
+            c_a, c_b = st.columns([1, 1.2] if align == "left" else [1.2, 1], gap="large")
+            visual_col = c_a if align == "left" else c_b
+            text_col = c_b if align == "left" else c_a
+
+            with visual_col:
+                st.markdown(f"""
+                <div style="background:linear-gradient(135deg, #0f172a, #090d16); border:1px solid #334155; border-radius:18px; padding:32px; text-align:center;">
+                    <div style="font-size:2.8rem; margin-bottom:8px;">{p_title.split()[0]}</div>
+                    <div style="font-weight:800; color:#ffffff; font-size:1.15rem;">{p_title}</div>
+                    <div style="color:#38bdf8; font-size:0.8rem; margin-top:6px;">📱 Available on Web • Google Play • App Store</div>
+                </div>
+                """, unsafe_allow_html=True)
+            with text_col:
+                st.markdown(f"### {p_title}")
+                st.write(p_desc)
+                b_try, b_learn = st.columns(2)
+                if b_try.button(f"🚀 Try Demo →", key=f"prod_demo_{p_title}", type="primary", use_container_width=True):
+                    st.session_state.logged_in = True
+                    st.session_state.username = "trader_pro"
+                    st.session_state.full_name = "Final Year Demo Trader"
+                    st.session_state.page = target_tab
+                    st.rerun()
+                b_learn.button("📖 Learn More →", key=f"prod_learn_{p_title}", use_container_width=True)
+            st.markdown("<hr style='border:0; border-top:1px solid #1e293b; margin:16px 0;'>", unsafe_allow_html=True)
+
+        # Universe.js Component from Playlist (6 Partner Ecosystem Cards in 3x2 Grid)
+        st.markdown("""
+        <div style="text-align:center; margin:28px 0 18px 0;">
+            <h2 style="color:#ffffff; font-weight:800;">🌌 The Zerodha Universe</h2>
+            <p style="color:#94a3b8;">Extend your trading and investment experience even further with our partner platforms</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+        universe_items = [
+            ("⚡ Streak", "Algo & strategy platform — systematic no-code backtesting and live market scanner."),
+            ("🎯 Sensibull", "Options trading platform — build strategies, analyze Greeks, and track OI data."),
+            ("🧺 smallcase", "Thematic investment platform — invest in diversified baskets of stocks on ETFs."),
+            ("🏦 Zerodha Fund House", "Our asset management venture creating simple and transparent index funds."),
+            ("📜 GoldenPi", "Bonds & fixed-income trading platform — invest in high-yield corporate bonds and G-Secs."),
+            ("🛡️ Ditto", "Personalized advice on life and health insurance — no spam and no mis-selling.")
+        ]
+        for r_idx in range(0, 6, 3):
+            u_cols = st.columns(3)
+            for c_i in range(3):
+                u_name, u_desc = universe_items[r_idx + c_i]
+                with u_cols[c_i]:
+                    st.markdown(f"""
+                    <div class="z-universe-card">
+                        <h4 style="color:#38bdf8; font-weight:800; margin-bottom:8px;">{u_name}</h4>
+                        <p style="color:#94a3b8; font-size:0.84rem; margin:0;">{u_desc}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+            st.markdown("<br>", unsafe_allow_html=True)
+
+        render_zerodha_open_account("products")
+
+    # ----------------------------------------------------------
+    # PUBLIC PAGE E: PRICING & BROKERAGE CALCULATOR PAGE (PricingPage.js -> Hero + Brokerage.js)
+    # ----------------------------------------------------------
+    elif st.session_state.public_page == "Pricing":
+        st.markdown("""
+        <div class="z-section-card" style="text-align:center;">
+            <h1 style="color:#ffffff; font-weight:800; font-size:2.1rem;">Pricing — Free equity investments and flat ₹20 intraday trades</h1>
+            <p style="color:#94a3b8; font-size:0.95rem;">All equity delivery investments (NSE, BSE), are absolutely free — ₹ 0 brokerage.</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+        pr1, pr2, pr3 = st.columns(3)
+        with pr1:
+            render_kpi("Free Equity Delivery", "₹0", "All equity delivery investments (NSE, BSE) are 100% brokerage-free.", "kpi-emerald", "#34d399")
+        with pr2:
+            render_kpi("Intraday & F&O Trades", "₹20", "Flat ₹20 or 0.03% (whichever is lower) per executed order on intraday.", "kpi-cyan", "#38bdf8")
+        with pr3:
+            render_kpi("Free Direct Mutual Funds", "₹0", "All direct mutual fund investments are completely commission-free.", "kpi-violet", "#c084fc")
+
+        # Interactive Brokerage.js Calculator from Playlist
+        st.markdown("### 🧮 Interactive Zerodha Brokerage & Statutory Charges Calculator")
+        calc_c1, calc_c2, calc_c3, calc_c4 = st.columns(4)
+        c_trade_type = calc_c1.selectbox("Segment", ["Equity Delivery (CNC)", "Equity Intraday (MIS)", "F&O Futures"])
+        c_buy_p = calc_c2.number_input("Buy Price (₹)", min_value=1.0, value=1500.0, step=10.0)
+        c_sell_p = calc_c3.number_input("Sell Price (₹)", min_value=1.0, value=1545.0, step=10.0)
+        c_qty = calc_c4.number_input("Quantity (Shares)", min_value=1, value=100, step=10)
+
+        turnover = (c_buy_p + c_sell_p) * c_qty
+        gross_pnl = (c_sell_p - c_buy_p) * c_qty
+        if "Delivery" in c_trade_type:
+            brokerage = 0.0
+            stt = turnover * 0.001
+        else:
+            brokerage = min(20.0, (c_buy_p * c_qty) * 0.0003) + min(20.0, (c_sell_p * c_qty) * 0.0003)
+            stt = (c_sell_p * c_qty) * 0.00025
+        exch_txn = turnover * 0.0000325
+        sebi_fee = turnover * 0.000001
+        gst = 0.18 * (brokerage + exch_txn + sebi_fee)
+        stamp_duty = (c_buy_p * c_qty) * 0.00015
+        total_charges = brokerage + stt + exch_txn + sebi_fee + gst + stamp_duty
+        net_pnl = gross_pnl - total_charges
+
+        bc1, bc2, bc3, bc4 = st.columns(4)
+        with bc1:
+            render_kpi("Total Turnover", f"₹{turnover:,.2f}", f"Brokerage: ₹{brokerage:.2f}", "kpi-cyan", "#38bdf8")
+        with bc2:
+            render_kpi("Total Taxes & Charges", f"₹{total_charges:,.2f}", f"STT: ₹{stt:.2f} | GST: ₹{gst:.2f}", "kpi-violet", "#c084fc")
+        with bc3:
+            render_kpi("Breakeven Per Share", f"₹{(total_charges/c_qty):.2f}", "Points needed to cover taxes", "kpi-white", "#2563eb")
+        with bc4:
+            render_kpi("Net Realized Profit / Loss", f"₹{net_pnl:,.2f}", f"Gross P&L: ₹{gross_pnl:+.2f}", "kpi-emerald" if net_pnl >= 0 else "kpi-violet", "#34d399" if net_pnl >= 0 else "#fb7185")
+
+        render_zerodha_open_account("pricing")
+
+    # ----------------------------------------------------------
+    # PUBLIC PAGE F: SUPPORT PORTAL PAGE (SupportPage.js -> Hero.js + CreateTicket.js)
+    # ----------------------------------------------------------
+    elif st.session_state.public_page == "Support":
+        st.markdown("""
+        <div class="z-support-hero">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+                <h3 style="margin:0; font-weight:800;">🎧 Support Portal</h3>
+                <span style="background:rgba(255,255,255,0.2); padding:5px 14px; border-radius:999px; font-size:0.82rem; font-weight:700;">Track Tickets</span>
+            </div>
+            <div style="display:grid; grid-template-columns: 1.4fr 1fr; gap:28px;">
+                <div>
+                    <h2 style="font-weight:800; font-size:1.6rem; margin-bottom:12px;">Search for an answer or browse help topics to create a ticket</h2>
+                    <div style="background:#ffffff; color:#0f172a; padding:12px 18px; border-radius:10px; font-size:0.9rem; margin-bottom:12px;">
+                        🔍 Eg: how do I activate F&O, why is my order getting rejected...
+                    </div>
+                    <div style="font-size:0.82rem; color:#e2e8f0; text-decoration:underline;">
+                        Track account opening &nbsp;•&nbsp; Track segment activation &nbsp;•&nbsp; Intraday margins &nbsp;•&nbsp; Kite user manual
+                    </div>
+                </div>
+                <div>
+                    <h4 style="font-weight:800; margin-bottom:10px;">📌 Featured Announcements</h4>
+                    <ol style="font-size:0.88rem; line-height:1.8; color:#f1f5f9;">
+                        <li>Current Takeovers and Delisting – Watchlist Advisory</li>
+                        <li>Latest Intraday leverages – MIS & CO (5x Margin Active)</li>
+                    </ol>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # CreateTicket.js 6-Category Grid from Playlist
+        st.subheader("📋 To create a ticket, select a relevant topic")
+        ticket_topics = [
+            ("➕ Account Opening", ["Online Account Opening", "Offline Account Opening", "Company, Partnership and HUF Account", "NRI Account Opening", "Charges at Zerodha"]),
+            ("👤 Your Zerodha Account", ["Login Credentials", "Account Modification and Segment Addition", "DP ID and bank details", "Your Profile", "Transfer and conversion of shares"]),
+            ("📊 Trading and Markets", ["Trading FAQs", "Kite Web & Mobile", "Margins & Leverage", "Product and order types (CNC / MIS)", "Corporate actions"]),
+            ("💳 Funds & Banking", ["Adding Funds (Zero Fee UPI)", "Fund Withdrawal", "eMandates", "Adding Bank Accounts", "Instant IMPS Settlement"]),
+            ("💿 Console & Reports", ["Reports & Tax P&L", "Ledger Statement", "Portfolio Analytics", "60 Day Challenge", "IPO & Corporate Bonds"]),
+            ("🪙 Coin & Mutual Funds", ["Understanding Mutual Funds", "About Coin Direct MF", "Buying and Selling through Coin", "Starting an SIP", "Managing your Portfolio"])
+        ]
+        for row_i in range(0, 6, 3):
+            t_cols = st.columns(3)
+            for col_i in range(3):
+                t_head, t_links = ticket_topics[row_i + col_i]
+                links_html = "".join([f"<div style='color:#38bdf8; font-size:0.84rem; margin:6px 0;'>• {lnk}</div>" for lnk in t_links])
+                with t_cols[col_i]:
+                    st.markdown(f"""
+                    <div class="stock-card" style="height:100%;">
+                        <h4 style="color:#ffffff; font-weight:800; margin-bottom:12px;">{t_head}</h4>
+                        {links_html}
+                    </div>
+                    """, unsafe_allow_html=True)
+
+        st.markdown("---")
+        st.markdown("#### 🎫 Submit a Live Support Ticket")
+        tk_c1, tk_c2, tk_c3 = st.columns(3)
+        tk_cat = tk_c1.selectbox("Topic Category", [t[0] for t in ticket_topics])
+        tk_email = tk_c2.text_input("Your Email", value="demo@streakpulse.ai")
+        tk_subj = tk_c3.text_input("Issue Summary", placeholder="e.g., Need help activating F&O segment")
+        if st.button("✅ Create Support Ticket", type="primary"):
+            if tk_subj:
+                c = conn.cursor()
+                t_id = f"ZTK-{np.random.randint(10000, 99999)}"
+                c.execute("INSERT INTO support_tickets (ticket_id, timestamp, category, subject, email, status) VALUES (?, ?, ?, ?, ?, 'OPEN')",
+                          (t_id, datetime.now().strftime("%Y-%m-%d %H:%M"), tk_cat, tk_subj, tk_email))
+                conn.commit()
+                st.success(f"🎉 Ticket **{t_id}** created! Our support desk will respond shortly.")
+        tk_df = pd.read_sql_query("SELECT ticket_id, timestamp, category, subject, email, status FROM support_tickets ORDER BY id DESC LIMIT 5", conn)
+        if not tk_df.empty:
+            st.dataframe(tk_df, use_container_width=True, hide_index=True)
+
+    # Render Persistent 4-Column Zerodha Footer at the bottom of every public page
+    render_zerodha_footer()
     st.stop()
 
 # ==========================================================
-# 7. GLOBAL ANIMATED LIVE TICKER TAPE (WITH LOGOS & ARROWS)
+# 8. PART 2: AUTHENTICATED ZERODHA KITE DASHBOARD (AFTER LOGIN)
 # ==========================================================
 core_tickers = ["RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "SBIN.NS", "ICICIBANK.NS", "TATAMOTORS.NS", "AAPL", "NVDA", "TSLA"]
 snapshots = fetch_market_snapshots(core_tickers)
@@ -1182,84 +1428,111 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# Top Hyperlinked Navigation Bar
-nav_cols = st.columns([1.1, 1.2, 1.25, 1.25, 1.1, 1.1, 1.1, 0.95])
-pages_list = [
-    ("🏠 Home", "Home"),
-    ("📈 Terminal", "Terminal"),
+# KITE DASHBOARD TOP NAVIGATION BAR (Matches Demo Video: Dashboard, Orders, Holdings, Positions, Funds, SuperChart, AI Advisor, Apps)
+nav_cols = st.columns([1.15, 0.95, 1.05, 1.05, 0.95, 1.15, 1.15, 1.05, 0.85])
+kite_pages = [
+    ("📊 Dashboard", "Dashboard"),
+    ("📜 Orders", "Orders"),
+    ("💼 Holdings", "Holdings"),
+    ("⚡ Positions", "Positions"),
+    ("💳 Funds", "Funds"),
+    ("📈 SuperChart", "Terminal"),
     ("🤖 AI Advisor", "Advisor"),
-    ("⚡ Streak Algo", "Streak"),
-    ("💼 Portfolio", "Portfolio"),
-    ("💳 Deposit", "Deposit"),
-    ("🏦 Withdraw", "Withdraw")
+    ("🧩 Apps (Algo)", "Apps")
 ]
-for idx, (label, p_key) in enumerate(pages_list):
+for idx, (label, p_key) in enumerate(kite_pages):
     btn_type = "primary" if st.session_state.page == p_key else "secondary"
-    if nav_cols[idx].button(label, key=f"top_nav_{p_key}", use_container_width=True, type=btn_type):
+    if nav_cols[idx].button(label, key=f"kite_nav_{p_key}", use_container_width=True, type=btn_type):
         navigate_to(p_key)
         st.rerun()
 
-if nav_cols[7].button("🚪 Exit", use_container_width=True):
+if nav_cols[8].button("🚪 Logout", use_container_width=True):
     st.session_state.logged_in = False
+    st.session_state.public_page = "Home"
     st.rerun()
 
-# Sidebar Account & Non-Truncating Margin Box
+# LEFT SIDEBAR: KITE MARKETWATCH + QUICK BUY / SELL / ANALYTICS
 user_bal = get_user_balance(st.session_state.username)
 st.sidebar.markdown(f"### 👤 {st.session_state.full_name}")
-st.sidebar.caption(f"Account ID: `@{st.session_state.username}` • **KYC Verified**")
+st.sidebar.caption(f"Kite ID: `@{st.session_state.username}` • **ZERODHA KITE**")
 
 st.sidebar.markdown(f"""
-<div style="background:linear-gradient(135deg, #091526, #0f2942); border:1px solid #06b6d4; border-radius:14px; padding:16px; margin-bottom:14px; box-shadow:0 4px 16px rgba(6,182,212,0.2);">
-    <div style="font-size:0.78rem; color:#94a3b8; text-transform:uppercase; font-weight:700;">💳 Available Margin</div>
-    <div style="font-family:'JetBrains Mono',monospace; font-size:1.45rem; font-weight:800; color:#38bdf8; margin-top:4px; word-break:break-word;">
+<div style="background:linear-gradient(135deg, #091526, #0f2942); border:1px solid #06b6d4; border-radius:14px; padding:14px; margin-bottom:12px;">
+    <div style="font-size:0.75rem; color:#94a3b8; text-transform:uppercase; font-weight:700;">💳 Available Kite Margin</div>
+    <div style="font-family:'JetBrains Mono',monospace; font-size:1.4rem; font-weight:800; color:#38bdf8; margin-top:4px;">
         ₹{user_bal:,.2f}
     </div>
-    <div style="font-size:0.72rem; color:#34d399; margin-top:4px;">● Instant Equity & Algo Margin</div>
+    <div style="font-size:0.72rem; color:#34d399; margin-top:3px;">● CNC Delivery (1x) & MIS Intraday (5x)</div>
 </div>
 """, unsafe_allow_html=True)
 
-s_col1, s_col2 = st.sidebar.columns(2)
-if s_col1.button("➕ Add Funds", use_container_width=True):
-    navigate_to("Deposit")
-    st.rerun()
-if s_col2.button("🏦 Withdraw", use_container_width=True):
-    navigate_to("Withdraw")
-    st.rerun()
-
-st.sidebar.markdown("---")
-st.sidebar.subheader("🔍 Quick Stock Jump")
+st.sidebar.subheader("📋 Kite Marketwatch")
 catalog_options = [f"{k} — {v['name']}" for k, v in STOCK_CATALOG.items()]
 current_idx = list(STOCK_CATALOG.keys()).index(st.session_state.selected_ticker) if st.session_state.selected_ticker in STOCK_CATALOG else 0
-chosen_option = st.sidebar.selectbox("Select Company", catalog_options, index=current_idx)
+chosen_option = st.sidebar.selectbox("Search / Select Stock", catalog_options, index=current_idx)
 chosen_sym = chosen_option.split(" — ")[0]
 if chosen_sym != st.session_state.selected_ticker:
     st.session_state.selected_ticker = chosen_sym
     st.rerun()
 
+# Sidebar Instant Kite Buy/Sell Action Widget (Just like the Zerodha Clone Demo Video!)
+mw_snap = snapshots.get(st.session_state.selected_ticker, {"price": 1000.0, "pct": 0.0})
+mw_cur = STOCK_CATALOG.get(st.session_state.selected_ticker, {}).get("currency", "₹")
+st.sidebar.markdown(f"**Selected:** `{st.session_state.selected_ticker}` ({mw_cur}{mw_snap['price']:,.2f})")
+mw_prod = st.sidebar.radio("Product", ["CNC (Delivery)", "MIS (Intraday 5x)"], horizontal=True)
+mw_qty = st.sidebar.number_input("Qty", min_value=1, max_value=10000, value=10, step=1)
+sb_b1, sb_b2 = st.sidebar.columns(2)
+if sb_b1.button("🟦 BUY (B)", use_container_width=True, type="primary"):
+    ok, msg = execute_trade(st.session_state.username, st.session_state.selected_ticker, "BUY", mw_qty, mw_snap["price"], mw_prod)
+    if ok:
+        st.sidebar.success(msg)
+        st.rerun()
+    else:
+        st.sidebar.error(msg)
+if sb_b2.button("🟧 SELL (S)", use_container_width=True):
+    ok, msg = execute_trade(st.session_state.username, st.session_state.selected_ticker, "SELL", mw_qty, mw_snap["price"], mw_prod)
+    if ok:
+        st.sidebar.success(msg)
+        st.rerun()
+    else:
+        st.sidebar.error(msg)
+
 st.sidebar.markdown("---")
-st.sidebar.markdown("""
-<div style="background:rgba(16,185,129,0.12); border:1px solid #10b981; border-radius:12px; padding:12px 14px;">
-    <div style="font-size:0.8rem; font-weight:700; color:#34d399;">🟢 Multi-Stock AI Engine: ACTIVE</div>
-    <div style="font-size:0.74rem; color:#94a3b8; margin-top:3px;">Type any company name (Apple, Tesla, TCS, SBI) in chat to auto-switch!</div>
-</div>
-""", unsafe_allow_html=True)
+st.sidebar.caption("📌 **Watchlist Live Feed**")
+for w_sym in ["RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "SBIN.NS", "AAPL", "NVDA"]:
+    w_s = snapshots.get(w_sym, {"price": 0.0, "pct": 0.0})
+    w_c = "#34d399" if w_s["pct"] >= 0 else "#fb7185"
+    w_arr = "▲" if w_s["pct"] >= 0 else "▼"
+    st.sidebar.markdown(
+        f"<div style='display:flex; justify-content:space-between; font-family:JetBrains Mono,monospace; font-size:0.78rem; padding:3px 0; border-bottom:1px solid #1e293b;'>"
+        f"<span>{w_sym.replace('.NS','')}</span>"
+        f"<span style='color:{w_c};'>{w_s['price']:,.2f} ({w_arr}{w_s['pct']:+.2f}%)</span></div>",
+        unsafe_allow_html=True
+    )
 
 # ==========================================================
-# 8. PAGE: HOME HUB
+# 9. KITE TAB 1: DASHBOARD (SUMMARY + INSTITUTIONAL STOCKS)
 # ==========================================================
-if st.session_state.page == "Home":
+if st.session_state.page == "Dashboard":
+    port_df = pd.read_sql_query("SELECT ticker, shares, avg_price FROM portfolio WHERE username = ?", conn, params=(st.session_state.username,))
+    tot_inv = (port_df["shares"] * port_df["avg_price"]).sum() if not port_df.empty else 0.0
+    tot_cur = sum(
+        row["shares"] * snapshots.get(row["ticker"], {}).get("price", row["avg_price"])
+        for _, row in port_df.iterrows()
+    ) if not port_df.empty else 0.0
+    tot_pnl = tot_cur - tot_inv
+
     h_c1, h_c2, h_c3, h_c4 = st.columns(4)
     with h_c1:
-        render_kpi("Available Trading Margin", f"₹{user_bal:,.2f}", "▲ Instant Zero-Fee Wallet", "kpi-white", "#2563eb")
+        render_kpi("Equity Margin Available", f"₹{user_bal:,.2f}", "Opening Balance: ₹1,00,000", "kpi-white", "#2563eb")
     with h_c2:
-        render_kpi("NIFTY 50 Benchmark", "24,852.10", "▲ +0.84% Bullish Session", "kpi-cyan", "#34d399")
+        render_kpi("Holdings Value", f"₹{tot_cur:,.2f}", f"Invested: ₹{tot_inv:,.2f} ({len(port_df)} stocks)", "kpi-cyan", "#38bdf8")
     with h_c3:
-        render_kpi("S&P 500 (US Market)", "7,714.21", "▼ -0.38% Consolidation", "kpi-violet", "#fb7185")
+        render_kpi("Unrealized P&L", f"₹{tot_pnl:,.2f}", f"{'▲' if tot_pnl >= 0 else '▼'} Net Portfolio P&L", "kpi-emerald" if tot_pnl >= 0 else "kpi-violet", "#34d399")
     with h_c4:
-        render_kpi("AI Engine Status", "Multi-Stock NLP", "▲ Auto-Detects Any Company", "kpi-emerald", "#34d399")
+        render_kpi("NIFTY 50 / SENSEX", "24,852.10", "▲ +0.84% • Market Open", "kpi-violet", "#c084fc")
 
-    st.subheader("🏢 Top Traded Institutional Stocks (Real Logos & Live Signals)")
-    
+    st.subheader("🏢 Kite Institutional Marketwatch Cards (Click to Launch Chart or AI)")
     grid_tickers = ["RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "SBIN.NS", "ICICIBANK.NS", "AAPL", "NVDA", "TSLA"]
     for row_start in range(0, len(grid_tickers), 3):
         cols = st.columns(3)
@@ -1295,15 +1568,151 @@ if st.session_state.page == "Home":
                     """, unsafe_allow_html=True)
                     
                     c_btn1, c_btn2 = st.columns(2)
-                    if c_btn1.button(f"📈 SuperChart", key=f"home_chart_{sym}", use_container_width=True):
+                    if c_btn1.button(f"📈 SuperChart", key=f"dash_chart_{sym}", use_container_width=True):
                         navigate_to("Terminal", sym)
                         st.rerun()
-                    if c_btn2.button(f"🤖 Ask AI Advisor", key=f"home_ai_{sym}", use_container_width=True):
+                    if c_btn2.button(f"🤖 Ask AI Advisor", key=f"dash_ai_{sym}", use_container_width=True):
                         navigate_to("Advisor", sym)
                         st.rerun()
 
 # ==========================================================
-# 9. PAGE: PRO TERMINAL
+# 10. KITE TAB 2: ORDERS PAGE (Order Book + CSV Export)
+# ==========================================================
+elif st.session_state.page == "Orders":
+    st.subheader("📜 Kite Executed Orders & Tradebook")
+    tx_df = pd.read_sql_query(
+        "SELECT timestamp, ticker, action, shares, price, total FROM transactions WHERE username = ? ORDER BY id DESC",
+        conn, params=(st.session_state.username,)
+    )
+    if tx_df.empty:
+        st.info("You haven't placed any orders yet. Use the left sidebar **BUY (B) / SELL (S)** panel or visit **SuperChart** to place an order!")
+    else:
+        st.dataframe(tx_df, use_container_width=True, hide_index=True)
+        csv_tx = tx_df.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            label="📥 Export Order Book to Excel (CSV)",
+            data=csv_tx,
+            file_name="zerodha_kite_orders.csv",
+            mime="text/csv"
+        )
+
+# ==========================================================
+# 11. KITE TAB 3: HOLDINGS PAGE (CNC Delivery Holdings + Pie Chart)
+# ==========================================================
+elif st.session_state.page == "Holdings":
+    st.subheader("💼 Kite CNC Equity Holdings (Long-Term Demat Portfolio)")
+    port_df = pd.read_sql_query("SELECT ticker, shares, avg_price FROM portfolio WHERE username = ?", conn, params=(st.session_state.username,))
+    
+    if port_df.empty:
+        st.info("Your Demat Holdings are currently empty. Place a **CNC (Delivery) BUY** order in the sidebar or SuperChart to build your portfolio!")
+    else:
+        port_df["LTP (Live Price)"] = port_df["ticker"].apply(lambda s: snapshots.get(s, {}).get("price", float(fetch_stock_history(s, "5d")["Close"].iloc[-1])))
+        port_df["Invested (₹)"] = port_df["shares"] * port_df["avg_price"]
+        port_df["Current Value (₹)"] = port_df["shares"] * port_df["LTP (Live Price)"]
+        port_df["Net P&L (₹)"] = port_df["Current Value (₹)"] - port_df["Invested (₹)"]
+        port_df["Net Change (%)"] = (port_df["Net P&L (₹)"] / port_df["Invested (₹)"]) * 100
+
+        tot_inv = port_df["Invested (₹)"].sum()
+        tot_cur = port_df["Current Value (₹)"].sum()
+        tot_pnl = tot_cur - tot_inv
+
+        pc1, pc2, pc3, pc4 = st.columns(4)
+        with pc1:
+            render_kpi("Total Account Net Worth", f"₹{(user_bal + tot_cur):,.2f}", "Cash + Demat Holdings", "kpi-white", "#2563eb")
+        with pc2:
+            render_kpi("Total Investment", f"₹{tot_inv:,.2f}", f"{len(port_df)} Active Stocks", "kpi-cyan", "#38bdf8")
+        with pc3:
+            render_kpi("Current Value", f"₹{tot_cur:,.2f}", "Live Mark-to-Market", "kpi-violet", "#c084fc")
+        with pc4:
+            render_kpi("Total P&L", f"₹{tot_pnl:,.2f}", f"{'▲' if tot_pnl >= 0 else '▼'} {(tot_pnl/tot_inv)*100:+.2f}% ROI", "kpi-emerald" if tot_pnl >= 0 else "kpi-violet", "#34d399")
+
+        d_col1, d_col2 = st.columns([1.8, 1.2])
+        with d_col1:
+            st.markdown("##### 📂 Demat Holdings Breakdown")
+            st.dataframe(port_df.round(2), use_container_width=True, hide_index=True)
+            csv_hold = port_df.round(2).to_csv(index=False).encode("utf-8")
+            st.download_button("📥 Download Holdings Statement (CSV)", data=csv_hold, file_name="kite_holdings.csv", mime="text/csv")
+        with d_col2:
+            pie_fig = go.Figure(data=[go.Pie(labels=port_df["ticker"], values=port_df["Current Value (₹)"], hole=0.52)])
+            pie_fig.update_layout(title="Holdings Allocation (Zerodha Console)", template="plotly_dark", paper_bgcolor="#090d16", height=340, margin=dict(l=10, r=10, t=40, b=10))
+            st.plotly_chart(pie_fig, use_container_width=True)
+
+# ==========================================================
+# 12. KITE TAB 4: POSITIONS PAGE (MIS Intraday & CNC Open Positions + Square-Off)
+# ==========================================================
+elif st.session_state.page == "Positions":
+    st.subheader("⚡ Kite Open Positions (MIS Intraday 5x & CNC Delivery)")
+    pos_df = pd.read_sql_query("SELECT ticker, product_type, shares, avg_price FROM positions WHERE username = ?", conn, params=(st.session_state.username,))
+    
+    if pos_df.empty:
+        st.info("No open positions right now. Place an **MIS (Intraday 5x)** or **CNC** order from the sidebar to track live M2M Positions!")
+    else:
+        pos_df["LTP"] = pos_df["ticker"].apply(lambda s: snapshots.get(s, {}).get("price", float(fetch_stock_history(s, "5d")["Close"].iloc[-1])))
+        pos_df["M2M P&L (₹)"] = (pos_df["LTP"] - pos_df["avg_price"]) * pos_df["shares"]
+        pos_df["Return (%)"] = ((pos_df["LTP"] - pos_df["avg_price"]) / pos_df["avg_price"]) * 100
+
+        tot_m2m = pos_df["M2M P&L (₹)"].sum()
+        render_kpi("Total Open Positions M2M P&L", f"₹{tot_m2m:,.2f}", f"{len(pos_df)} Active Positions", "kpi-emerald" if tot_m2m >= 0 else "kpi-violet", "#34d399")
+        st.dataframe(pos_df.round(2), use_container_width=True, hide_index=True)
+
+        st.markdown("##### ⚡ 1-Click Position Square-Off (Exit at Market)")
+        sq_cols = st.columns(min(4, len(pos_df)))
+        for idx, row in pos_df.iterrows():
+            col_target = sq_cols[idx % len(sq_cols)]
+            if col_target.button(f"🔴 Square Off {row['ticker']} ({row['product_type']})", key=f"sq_{idx}", use_container_width=True):
+                ok, msg = execute_trade(st.session_state.username, row["ticker"], "SELL", int(row["shares"]), float(row["LTP"]), row["product_type"])
+                if ok:
+                    st.success(msg)
+                    st.rerun()
+
+# ==========================================================
+# 13. KITE TAB 5: FUNDS PAGE (Add Money UPI + Withdraw IMPS)
+# ==========================================================
+elif st.session_state.page == "Funds":
+    st.subheader("💳 Kite Funds, Margin & Banking Gateway")
+    f_tab1, f_tab2 = st.tabs(["➕ Add Funds (Zero-Fee UPI / NetBanking)", "🏦 Withdraw Funds (Instant IMPS)"])
+
+    with f_tab1:
+        dep_col1, dep_col2 = st.columns([1.4, 1.6])
+        with dep_col1:
+            render_kpi("Available Cash Margin", f"₹{user_bal:,.2f}", "Zero Gateway Charges • Instant Credit", "kpi-white", "#2563eb")
+            preset = st.radio("Quick Top-Up Amount", ["₹10,000", "₹25,000", "₹50,000", "₹1,00,000"], horizontal=True)
+            preset_map = {"₹10,000": 10000.0, "₹25,000": 25000.0, "₹50,000": 50000.0, "₹1,00,000": 100000.0}
+            dep_amount = st.number_input("Enter Deposit Amount (₹)", min_value=500.0, max_value=10000000.0, value=preset_map.get(preset, 25000.0), step=1000.0)
+            pay_method = st.selectbox("Payment Mode", ["📱 Instant UPI (GPay / PhonePe / Paytm)", "🏦 NetBanking (HDFC / SBI / ICICI)", "💳 RuPay / Visa Debit Card"])
+            pay_ref = st.text_input("UPI ID / Reference", value=f"{st.session_state.username}@okaxis")
+            if st.button("✅ Authorize & Add Funds Instantly", type="primary", use_container_width=True):
+                ok, msg = update_funds(st.session_state.username, dep_amount, "DEPOSIT", pay_method, pay_ref)
+                if ok:
+                    st.success(msg)
+                    st.rerun()
+        with dep_col2:
+            st.markdown("##### 🧾 Recent Funding & Banking Ledger")
+            f_df = pd.read_sql_query("SELECT timestamp, type, method, reference, amount, status FROM funding_history WHERE username = ? ORDER BY id DESC", conn, params=(st.session_state.username,))
+            st.dataframe(f_df, use_container_width=True, hide_index=True)
+
+    with f_tab2:
+        w_col1, w_col2 = st.columns([1.4, 1.6])
+        with w_col1:
+            render_kpi("Withdrawable Balance", f"₹{user_bal:,.2f}", "Instant IMPS Bank Settlement", "kpi-emerald", "#34d399")
+            bank_name = st.selectbox("Linked Bank", ["State Bank of India (SBI)", "HDFC Bank", "ICICI Bank", "Axis Bank", "Punjab National Bank"])
+            acc_num = st.text_input("Account Number", value="XXXX-XXXX-8821")
+            ifsc_code = st.text_input("IFSC Code", value="SBIN0004821")
+            w_amount = st.number_input("Withdrawal Amount (₹)", min_value=100.0, max_value=max(100.0, float(user_bal)), value=min(5000.0, max(100.0, float(user_bal))), step=500.0)
+            if st.button("🏦 Initiate Instant Bank Payout", type="primary", use_container_width=True):
+                ok, msg = update_funds(st.session_state.username, w_amount, "WITHDRAW", bank_name, f"A/C {acc_num[-4:]} ({ifsc_code})")
+                if ok:
+                    st.success(msg)
+                    st.rerun()
+                else:
+                    st.error(msg)
+        with w_col2:
+            st.markdown("##### 📜 Complete Payout History")
+            f_df = pd.read_sql_query("SELECT timestamp, type, method, reference, amount, status FROM funding_history WHERE username = ? ORDER BY id DESC", conn, params=(st.session_state.username,))
+            st.dataframe(f_df, use_container_width=True, hide_index=True)
+
+# ==========================================================
+# 14. KITE TAB 6: SUPERCHART & 7-DAY ML PREDICTOR
 # ==========================================================
 elif st.session_state.page == "Terminal":
     ticker = st.session_state.selected_ticker
@@ -1352,7 +1761,7 @@ elif st.session_state.page == "Terminal":
     main_col, trade_col = st.columns([2.7, 1.1])
 
     with main_col:
-        sub_t1, sub_t2, sub_t3 = st.tabs(["📊 TradingView SuperChart", "🤖 7-Day AI Price Forecast", "🧠 Built-In AI Stock Analyst"])
+        sub_t1, sub_t2, sub_t3 = st.tabs(["📊 Kite × TradingView SuperChart", "🤖 7-Day AI Price Forecast", "🧠 Built-In AI Stock Analyst"])
         
         with sub_t1:
             fig = make_subplots(
@@ -1446,16 +1855,17 @@ elif st.session_state.page == "Terminal":
     with trade_col:
         st.markdown("""
         <div class="kpi-box kpi-white" style="margin-bottom:14px;">
-            <div style="font-weight:800; font-size:1.05rem; color:#0f172a;">⚡ Instant Order Dock</div>
-            <div style="font-size:0.78rem; color:#475569;">Zero-Latency Paper Execution</div>
+            <div style="font-weight:800; font-size:1.05rem; color:#0f172a;">⚡ Kite Order Window</div>
+            <div style="font-size:0.78rem; color:#475569;">CNC (1x) & MIS Intraday (5x Leverage)</div>
         </div>
         """, unsafe_allow_html=True)
 
-        order_type = st.radio("Order Type", ["MARKET ORDER", "LIMIT ORDER"], horizontal=True)
+        prod_mode = st.radio("Kite Product", ["CNC (Delivery)", "MIS (Intraday 5x)"], horizontal=True)
+        order_type = st.radio("Order Type", ["MARKET", "LIMIT"], horizontal=True)
         qty = st.number_input("Quantity (Shares)", min_value=1, max_value=10000, value=10, step=1)
-        exec_price = st.number_input("Limit Price", value=float(round(latest_c, 2))) if order_type == "LIMIT ORDER" else latest_c
+        exec_price = st.number_input("Limit Price", value=float(round(latest_c, 2))) if order_type == "LIMIT" else latest_c
         
-        req_margin = qty * exec_price
+        req_margin = (qty * exec_price) * (0.20 if "MIS" in prod_mode else 1.0)
         st.markdown(f"""
         <div style="background:#0f172a; padding:14px; border-radius:12px; border:1px solid #06b6d4; margin:10px 0; font-family:'JetBrains Mono',monospace; font-size:0.86rem;">
             <div style="display:flex; justify-content:space-between; color:#cbd5e1;"><span>Req. Margin:</span><b style="color:#ffffff;">₹{req_margin:,.2f}</b></div>
@@ -1464,15 +1874,15 @@ elif st.session_state.page == "Terminal":
         """, unsafe_allow_html=True)
 
         ob1, ob2 = st.columns(2)
-        if ob1.button("🟢 ▲ BUY", use_container_width=True, type="primary"):
-            ok, msg = execute_trade(st.session_state.username, ticker, "BUY", qty, exec_price)
+        if ob1.button("🟦 BUY", use_container_width=True, type="primary"):
+            ok, msg = execute_trade(st.session_state.username, ticker, "BUY", qty, exec_price, prod_mode)
             if ok:
                 st.success(msg)
                 st.rerun()
             else:
                 st.error(msg)
-        if ob2.button("🔴 ▼ SELL", use_container_width=True):
-            ok, msg = execute_trade(st.session_state.username, ticker, "SELL", qty, exec_price)
+        if ob2.button("🟧 SELL", use_container_width=True):
+            ok, msg = execute_trade(st.session_state.username, ticker, "SELL", qty, exec_price, prod_mode)
             if ok:
                 st.success(msg)
                 st.rerun()
@@ -1482,13 +1892,12 @@ elif st.session_state.page == "Terminal":
         st.markdown("---")
         bull_count = sum([latest_c > sma20_val, latest_c > ema50_val, 35 < rsi_val < 68])
         verdict = "STRONG BUY ▲" if bull_count == 3 else ("BUY / HOLD ▲" if bull_count == 2 else "SELL / AVOID ▼")
-        render_kpi("TradingView Technical Rating", verdict, f"14-Day RSI: {rsi_val:.1f}", "kpi-cyan", "#38bdf8")
+        render_kpi("Technical Rating", verdict, f"14-Day RSI: {rsi_val:.1f}", "kpi-cyan", "#38bdf8")
 
 # ==========================================================
-# 10. PAGE: DEDICATED BUILT-IN AI STOCK ADVISOR (AUTO-SWITCHING)
+# 15. KITE TAB 7: AI STOCK ADVISOR (AUTO-SWITCHING)
 # ==========================================================
 elif st.session_state.page == "Advisor":
-    # Capture chat input FIRST so if the user types "apple" or "tesla", we switch the stock immediately!
     custom_q = st.chat_input("Ask anything! Try typing 'Hello', 'Apple', 'NVIDIA', 'Tesla', 'TCS', or 'What is RSI?'...")
     
     if custom_q:
@@ -1574,17 +1983,17 @@ elif st.session_state.page == "Advisor":
             st.markdown("---")
 
 # ==========================================================
-# 11. PAGE: STREAK BY ZERODHA — ALGO BACKTESTER & SCANNER
+# 16. KITE TAB 8: APPS (STREAK ALGO BACKTESTER & SCANNER)
 # ==========================================================
-elif st.session_state.page == "Streak":
+elif st.session_state.page == "Apps":
     st.markdown("""
     <div style="background: radial-gradient(circle at top right, #3b0764, #090d16 70%); border:1px solid #9333ea; border-radius:18px; padding:22px 28px; margin-bottom:20px;">
         <span style="background:rgba(168,85,247,0.25); color:#e9d5ff; padding:4px 12px; border-radius:999px; font-size:0.78rem; font-weight:700;">
-            STREAK v4 ENGINE • NO-CODE SYSTEMATIC TRADING
+            ZERODHA KITE APPS • STREAK v4 ALGO ENGINE
         </span>
-        <h2 style="margin:8px 0 4px 0; color:#ffffff; font-weight:800;">⚡ Streak Strategy Builder, Backtester & Scanner</h2>
+        <h2 style="margin:8px 0 4px 0; color:#ffffff; font-weight:800;">🧩 Kite Integrated Apps — Streak Strategy Backtester & Scanner</h2>
         <p style="margin:0; color:#cbd5e1; font-size:0.9rem;">
-            Build algorithmic trading rules without coding, backtest them on historical candles, and scan the live market.
+            Build algorithmic trading rules without coding, backtest them on historical candles, and export CSV reports.
         </p>
     </div>
     """, unsafe_allow_html=True)
@@ -1671,11 +2080,11 @@ elif st.session_state.page == "Streak":
             st.dataframe(pd.DataFrame(trades_log), use_container_width=True, hide_index=True)
             csv_bt = pd.DataFrame(trades_log).to_csv(index=False).encode("utf-8")
             st.download_button(
-           label="📥 Download Backtest Trade Report (CSV/Excel)",
-           data=csv_bt,
-           file_name=f"{bt_symbol}_streak_backtest.csv",
-           mime="text/csv"
-       )
+                label="📥 Download Backtest Trade Report (CSV/Excel)",
+                data=csv_bt,
+                file_name=f"{bt_symbol}_streak_backtest.csv",
+                mime="text/csv"
+            )
 
     with st_tab2:
         st.subheader("📡 Real-Time Streak Market Scanner")
@@ -1693,114 +2102,3 @@ elif st.session_state.page == "Streak":
                 "Scanner Signal": status
             })
         st.dataframe(pd.DataFrame(scan_rows), use_container_width=True, hide_index=True)
-
-# ==========================================================
-# 12. PAGE: PORTFOLIO & ORDER BOOK
-# ==========================================================
-elif st.session_state.page == "Portfolio":
-    st.subheader("💼 Your Equity Portfolio & Order Book")
-    port_df = pd.read_sql_query("SELECT ticker, shares, avg_price FROM portfolio WHERE username = ?", conn, params=(st.session_state.username,))
-    
-    if port_df.empty:
-        st.info("Your portfolio is currently empty. Visit the **Terminal** page to buy your first stock!")
-    else:
-        port_df["Live Price"] = port_df["ticker"].apply(lambda s: snapshots.get(s, {}).get("price", fetch_stock_history(s, "5d")["Close"].iloc[-1]))
-        port_df["Invested (₹)"] = port_df["shares"] * port_df["avg_price"]
-        port_df["Current Value (₹)"] = port_df["shares"] * port_df["Live Price"]
-        port_df["Net P&L (₹)"] = port_df["Current Value (₹)"] - port_df["Invested (₹)"]
-        port_df["Return (%)"] = (port_df["Net P&L (₹)"] / port_df["Invested (₹)"]) * 100
-
-        tot_inv = port_df["Invested (₹)"].sum()
-        tot_cur = port_df["Current Value (₹)"].sum()
-        tot_pnl = tot_cur - tot_inv
-
-        pc1, pc2, pc3, pc4 = st.columns(4)
-        with pc1:
-            render_kpi("Total Account Net Worth", f"₹{(user_bal + tot_cur):,.2f}", "Cash + Equity Holdings", "kpi-white", "#2563eb")
-        with pc2:
-            render_kpi("Invested Margin", f"₹{tot_inv:,.2f}", "Active Cost Basis", "kpi-cyan", "#38bdf8")
-        with pc3:
-            render_kpi("Current Holdings Value", f"₹{tot_cur:,.2f}", "Live Mark-to-Market", "kpi-violet", "#c084fc")
-        with pc4:
-            render_kpi("Unrealized P&L", f"₹{tot_pnl:,.2f}", f"{'▲' if tot_pnl >= 0 else '▼'} {(tot_pnl/tot_inv)*100:+.2f}% Net ROI", "kpi-emerald", "#34d399")
-
-        d_col1, d_col2 = st.columns([2, 1])
-        with d_col1:
-            st.markdown("##### 📂 Active Equity Holdings")
-            st.dataframe(port_df.round(2), use_container_width=True, hide_index=True)
-        with d_col2:
-            pie_fig = go.Figure(data=[go.Pie(labels=port_df["ticker"], values=port_df["Current Value (₹)"], hole=0.55)])
-            pie_fig.update_layout(title="Asset Allocation", template="plotly_dark", paper_bgcolor="#090d16", height=320, margin=dict(l=10, r=10, t=40, b=10))
-            st.plotly_chart(pie_fig, use_container_width=True)
-
-    st.markdown("##### 📜 Executed Trade Order Book")
-    tx_df = pd.read_sql_query("SELECT timestamp, ticker, action, shares, price, total FROM transactions WHERE username = ? ORDER BY id DESC", conn, params=(st.session_state.username,))
-    st.dataframe(tx_df, use_container_width=True, hide_index=True)
-    if not tx_df.empty:
-        csv_tx = tx_df.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            label="📥 Export Order Book to Excel (CSV)",
-            data=csv_tx,
-            file_name="portfolio_order_book.csv",
-            mime="text/csv"
-        )
-
-# ==========================================================
-# 13. PAGE: DEPOSIT / ADD MONEY
-# ==========================================================
-elif st.session_state.page == "Deposit":
-    st.subheader("💳 Instant Margin Deposit Gateway")
-    dep_col1, dep_col2 = st.columns([1.4, 1.6])
-
-    with dep_col1:
-        render_kpi("Instant Margin Top-Up", f"₹{user_bal:,.2f}", "Zero Gateway Charges • UPI & NetBanking", "kpi-white", "#2563eb")
-
-        preset = st.radio("Quick Top-Up Amount", ["₹10,000", "₹25,000", "₹50,000", "₹1,00,000", "Custom Amount"], horizontal=True)
-        preset_map = {"₹10,000": 10000.0, "₹25,000": 25000.0, "₹50,000": 50000.0, "₹1,00,000": 100000.0}
-        dep_amount = st.number_input("Enter Deposit Amount (₹)", min_value=500.0, max_value=10000000.0, value=preset_map.get(preset, 25000.0), step=1000.0)
-        
-        pay_method = st.selectbox("Select Payment Mode", [
-            "📱 Instant UPI (Google Pay / PhonePe / Paytm)",
-            "🏦 NetBanking (HDFC / SBI / ICICI / Axis)",
-            "💳 RuPay / Visa Debit Card"
-        ])
-        pay_ref = st.text_input("UPI ID / Bank Reference Number", value=f"{st.session_state.username}@okaxis")
-
-        if st.button("✅ Authorize & Deposit Funds Instantly", type="primary", use_container_width=True):
-            ok, msg = update_funds(st.session_state.username, dep_amount, "DEPOSIT", pay_method, pay_ref)
-            if ok:
-                st.success(msg)
-                st.rerun()
-
-    with dep_col2:
-        st.markdown("##### 🧾 Recent Deposit & Withdrawal Ledger")
-        f_df = pd.read_sql_query("SELECT timestamp, type, method, reference, amount, status FROM funding_history WHERE username = ? ORDER BY id DESC", conn, params=(st.session_state.username,))
-        st.dataframe(f_df, use_container_width=True, hide_index=True)
-
-# ==========================================================
-# 14. PAGE: WITHDRAWAL PAGE
-# ==========================================================
-elif st.session_state.page == "Withdraw":
-    st.subheader("🏦 Withdraw Funds to Linked Bank Account")
-    w_col1, w_col2 = st.columns([1.4, 1.6])
-
-    with w_col1:
-        render_kpi("Withdrawable Cash Balance", f"₹{user_bal:,.2f}", "Instant IMPS Bank Settlement", "kpi-emerald", "#34d399")
-
-        bank_name = st.selectbox("Select Linked Bank", ["State Bank of India (SBI)", "HDFC Bank", "ICICI Bank", "Axis Bank", "Punjab National Bank"])
-        acc_num = st.text_input("Bank Account Number", value="XXXX-XXXX-8821")
-        ifsc_code = st.text_input("IFSC Code", value="SBIN0004821")
-        w_amount = st.number_input("Withdrawal Amount (₹)", min_value=100.0, max_value=max(100.0, float(user_bal)), value=min(5000.0, max(100.0, float(user_bal))), step=500.0)
-
-        if st.button("🏦 Initiate Instant Bank Payout", type="primary", use_container_width=True):
-            ok, msg = update_funds(st.session_state.username, w_amount, "WITHDRAW", bank_name, f"A/C {acc_num[-4:]} ({ifsc_code})")
-            if ok:
-                st.success(msg)
-                st.rerun()
-            else:
-                st.error(msg)
-
-    with w_col2:
-        st.markdown("##### 📜 Complete Banking & Payout History")
-        f_df = pd.read_sql_query("SELECT timestamp, type, method, reference, amount, status FROM funding_history WHERE username = ? ORDER BY id DESC", conn, params=(st.session_state.username,))
-        st.dataframe(f_df, use_container_width=True, hide_index=True)
