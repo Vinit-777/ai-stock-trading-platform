@@ -19,16 +19,35 @@ from groq import Groq
 GROQ_API_KEY = "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"
 
 # ==========================================================
-# 1. PAGE CONFIG, FINANCESIGHT LOGO & THEME-ADAPTIVE CSS
+# 1. PAGE CONFIG, FINANCESIGHT LOGO & SVG NAVIGATION ICONS
 # ==========================================================
 st.set_page_config(
-    page_title="FinanceSight | Institutional Trading & Market Intelligence",
+    page_title="FinanceSight | Market Analytics, AI Forecasting & Paper Trading",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
 FINANCESIGHT_LOGO_SVG = '<svg width="34" height="34" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" style="vertical-align:middle; flex-shrink:0;"><rect width="40" height="40" rx="10" fill="url(#fs_grad)"/><path d="M9 26L16 19L22 23L31 12" stroke="white" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M24 12H31V19" stroke="#38bdf8" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="16" cy="19" r="2.5" fill="#34d399"/><defs><linearGradient id="fs_grad" x1="0" y1="0" x2="40" y2="40" gradientUnits="userSpaceOnUse"><stop stop-color="#387ed1"/><stop offset="0.5" stop-color="#1e3a8a"/><stop offset="1" stop-color="#0f172a"/></linearGradient></defs></svg>'
+
+# Crisp Vector SVG Logos for Navigation Buttons (Replaces Emojis)
+NAV_SVGS = {
+    "Home": '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>',
+    "Signup": '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>',
+    "About": '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>',
+    "Products": '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>',
+    "Pricing": '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>',
+    "Support": '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>',
+    "Dashboard": '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>',
+    "Orders": '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>',
+    "Holdings": '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>',
+    "Positions": '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>',
+    "Funds": '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>',
+    "Terminal": '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>',
+    "Advisor": '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a4 4 0 0 1 4 4v2a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/><path d="M16 14H8a4 4 0 0 0-4 4v2h16v-2a4 4 0 0 0-4-4z"/></svg>',
+    "Apps": '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>',
+    "Logout": '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>'
+}
 
 def render_html(raw_html: str):
     """Renders HTML safely by stripping leading line indentation so Markdown never prints raw code."""
@@ -43,7 +62,6 @@ def is_internet_connected() -> bool:
     except OSError:
         return False
 
-# Theme-Adaptive CSS: Works seamlessly in both Light Mode and Dark Mode!
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700;800&display=swap');
@@ -67,7 +85,6 @@ st.markdown("""
         word-break: break-word !important;
     }
 
-    /* Theme-Adaptive Text Helpers */
     .fs-title {
         color: var(--text-color) !important;
         font-weight: 800;
@@ -82,6 +99,123 @@ st.markdown("""
         border-radius: 16px;
         padding: 16px;
         color: var(--text-color);
+    }
+
+    /* Clickable Brand Logo Hover */
+    .fs-logo-link {
+        text-decoration: none !important;
+        display: inline-flex;
+        align-items: center;
+        gap: 9px;
+        font-weight: 800;
+        font-size: 1.3rem;
+        color: var(--text-color) !important;
+        letter-spacing: -0.02em;
+        cursor: pointer;
+        transition: opacity 0.2s ease;
+    }
+    .fs-logo-link:hover {
+        opacity: 0.85;
+    }
+
+    /* Custom Top Navbar SVG Buttons (ALL CAPS + Vector Logo) */
+    .fs-nav-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 7px;
+        width: 100%;
+        padding: 8px 10px;
+        border-radius: 9px;
+        background: var(--background-color);
+        border: 1px solid rgba(128, 128, 128, 0.28);
+        color: var(--text-color) !important;
+        text-decoration: none !important;
+        font-weight: 700;
+        font-size: 0.78rem;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        transition: all 0.2s ease;
+        box-sizing: border-box;
+        white-space: nowrap;
+    }
+    .fs-nav-btn:hover {
+        border-color: #387ed1;
+        color: #387ed1 !important;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(56, 126, 209, 0.14);
+    }
+    .fs-nav-btn.active {
+        background: #ff4b4b !important;
+        color: #ffffff !important;
+        border-color: #ff4b4b !important;
+        box-shadow: 0 4px 14px rgba(255, 75, 75, 0.28);
+    }
+    .fs-nav-btn.active svg {
+        stroke: #ffffff !important;
+    }
+
+    /* Footer & Social Media Clickable Links */
+    .fs-footer-link {
+        color: var(--text-color) !important;
+        opacity: 0.75;
+        text-decoration: none !important;
+        font-size: 0.85rem;
+        display: block;
+        margin-bottom: 8px;
+        transition: all 0.2s ease;
+    }
+    .fs-footer-link:hover {
+        color: #387ed1 !important;
+        opacity: 1.0;
+        transform: translateX(3px);
+    }
+    .fs-social-wrap {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 14px;
+    }
+    .fs-social-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 5px 11px;
+        border-radius: 999px;
+        background: var(--background-color);
+        border: 1px solid rgba(128, 128, 128, 0.25);
+        color: var(--text-color) !important;
+        text-decoration: none !important;
+        font-size: 0.78rem;
+        font-weight: 600;
+        transition: all 0.2s ease;
+    }
+    .fs-social-link:hover {
+        border-color: #387ed1;
+        color: #387ed1 !important;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(56, 126, 209, 0.15);
+    }
+    .social-logo {
+        width: 16px;
+        height: 16px;
+        border-radius: 4px;
+        object-fit: contain;
+        background: #ffffff;
+        padding: 1px;
+    }
+    .fs-bottom-link {
+        color: var(--text-color) !important;
+        opacity: 0.75;
+        text-decoration: none !important;
+        margin: 0 6px;
+        font-weight: 600;
+        transition: color 0.2s ease;
+    }
+    .fs-bottom-link:hover {
+        color: #387ed1 !important;
+        opacity: 1.0;
+        text-decoration: underline !important;
     }
 
     @keyframes tickerMove {
@@ -123,7 +257,6 @@ st.markdown("""
         border: 1px solid rgba(128,128,128,0.25);
     }
 
-    /* Adaptive KPI Cards */
     .kpi-box {
         background: var(--secondary-background-color);
         color: var(--text-color);
@@ -159,7 +292,6 @@ st.markdown("""
         font-weight: 600;
     }
 
-    /* Adaptive Stock & Section Cards */
     .stock-card {
         background: var(--secondary-background-color);
         color: var(--text-color);
@@ -400,7 +532,6 @@ def fetch_market_snapshots(tickers_list):
             pass
     return snapshots
 
-# Keep last known real snapshots in session_state so if internet drops, numbers stay frozen at last real value
 if "last_valid_snapshots" not in st.session_state:
     st.session_state.last_valid_snapshots = {
         "NVDA": {"price": 177.19, "change": 7.08, "pct": 4.16, "rsi": 61.2, "above_sma": True},
@@ -597,14 +728,13 @@ def init_db():
                 )""")
     
     demo_hash = hashlib.sha256("demo123".encode()).hexdigest()
-    c.execute("SELECT COUNT(*) FROM users WHERE username = 'trader_pro'")
-    if c.fetchone()[0] == 0:
-        c.execute("INSERT INTO users VALUES (?, ?, ?, ?, ?)",
-                  ("trader_pro", "Pro Institutional Trader", "trader@financesight.in", demo_hash, 100000.0))
-        c.execute("INSERT INTO funding_history (username, timestamp, type, method, reference, amount, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                  ("trader_pro", datetime.now().strftime("%Y-%m-%d %H:%M"), "DEPOSIT", "Initial Margin Credit", "BONUS-100K", 100000.0, "COMPLETED"))
-    else:
-        c.execute("UPDATE users SET full_name = 'Pro Institutional Trader' WHERE username = 'trader_pro'")
+    for demo_u in ["Trader_XYZ", "trader_pro"]:
+        c.execute("SELECT COUNT(*) FROM users WHERE username = ?", (demo_u,))
+        if c.fetchone()[0] == 0:
+            c.execute("INSERT INTO users VALUES (?, ?, ?, ?, ?)",
+                      (demo_u, "Trader_XYZ", "trader@financesight.in", demo_hash, 100000.0))
+            c.execute("INSERT INTO funding_history (username, timestamp, type, method, reference, amount, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                      (demo_u, datetime.now().strftime("%Y-%m-%d %H:%M"), "DEPOSIT", "Initial Margin Credit", "BONUS-100K", 100000.0, "COMPLETED"))
     conn.commit()
     return conn
 
@@ -707,7 +837,7 @@ def execute_trade(username, ticker, action, shares, current_price, product_type=
         return True, f"✅ Executed SELL ({p_tag}): {shares} qty of {ticker} @ ₹{current_price:,.2f}"
 
 # ==========================================================
-# 5. SESSION STATE ROUTING INITIALIZATION
+# 5. SESSION STATE & QUERY-PARAMETER ROUTING ENGINE
 # ==========================================================
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
@@ -724,71 +854,127 @@ if "ai_chat_history" not in st.session_state:
 if "public_page" not in st.session_state:
     st.session_state.public_page = "Home"
 
+# Handle all clickable SVG Navbar, Logo & Footer links (?nav=...) reliably
+if "nav" in st.query_params:
+    target_nav = st.query_params["nav"]
+    user_param = st.query_params.get("u", "")
+    st.query_params.clear()
+    if target_nav == "Logout":
+        st.session_state.logged_in = False
+        st.session_state.public_page = "Home"
+    elif target_nav in ["Home", "Signup", "About", "Products", "Pricing", "Support"]:
+        st.session_state.logged_in = False
+        st.session_state.public_page = target_nav
+    elif target_nav in ["Dashboard", "Orders", "Holdings", "Positions", "Funds", "Terminal", "Advisor", "Apps"]:
+        st.session_state.logged_in = True
+        if user_param:
+            st.session_state.username = user_param
+            c = conn.cursor()
+            c.execute("SELECT full_name FROM users WHERE username = ?", (user_param,))
+            r_u = c.fetchone()
+            st.session_state.full_name = r_u[0] if r_u else user_param
+        elif not st.session_state.username:
+            st.session_state.username = "Trader_XYZ"
+            st.session_state.full_name = "Trader_XYZ"
+        st.session_state.page = target_nav
+
 def navigate_to(page_name, ticker=None):
     st.session_state.page = page_name
     if ticker:
         st.session_state.selected_ticker = ticker
 
+nav_token = f"{st.session_state.public_page}_{st.session_state.page}_{int(datetime.now().timestamp())}"
+
 # ==========================================================
-# 6. REUSABLE FINANCESIGHT PUBLIC COMPONENTS (OPEN ACCOUNT & FOOTER)
+# 6. REUSABLE FINANCESIGHT PUBLIC COMPONENTS (OPEN ACCOUNT & WORKING FOOTER)
 # ==========================================================
 def render_financesight_open_account(key_suffix="main"):
     render_html("""
     <div class="z-section-card" style="text-align:center;">
-        <h2 class="fs-title" style="font-size:1.95rem; margin-bottom:10px;">Open a FinanceSight Account</h2>
+        <h2 class="fs-title" style="font-size:1.95rem; margin-bottom:10px;">Start Exploring with a FinanceSight Account</h2>
         <p class="fs-muted" style="font-size:1.02rem; margin-bottom:20px;">
-            Modern platforms and apps, ₹0 equity delivery investments, flat ₹20 intraday and F&O trades, plus ₹1,00,000 instant virtual margin.
+            Access live NSE & NASDAQ charts, 7-day ML price forecasting, strategy backtesting, and a ₹1,00,000 virtual paper trading wallet.
         </p>
     </div>
     """)
     c1, c2, c3 = st.columns([1.6, 1.2, 1.6])
     with c2:
-        if st.button("🚀 Sign up Now (Claim ₹1,00,000 Free)", key=f"open_acc_btn_{key_suffix}", type="primary", use_container_width=True):
+        if st.button("🚀 SIGN UP NOW (CLAIM ₹1,00,000 VIRTUAL MARGIN)", key=f"open_acc_btn_{key_suffix}", type="primary", use_container_width=True):
             st.session_state.public_page = "Signup"
             st.rerun()
 
 def render_financesight_footer():
     render_html(f"""
     <div class="z-footer">
-        <div style="display:grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; gap:28px; padding-bottom:28px; border-bottom:1px solid rgba(128,128,128,0.25);">
+        <div style="display:grid; grid-template-columns: 1.45fr 1fr 1fr 1fr; gap:28px; padding-bottom:28px; border-bottom:1px solid rgba(128,128,128,0.25);">
             <div>
-                <div class="fs-title" style="display:flex; align-items:center; gap:10px; font-size:1.35rem; margin-bottom:10px;">
+                <a href="?nav=Home&r=ftr_{nav_token}" target="_self" class="fs-logo-link" title="Go to FinanceSight Home" style="margin-bottom:10px;">
                     {FINANCESIGHT_LOGO_SVG}
                     <span><span style="color:#387ed1;">FINANCE</span>SIGHT</span>
-                </div>
+                </a>
                 <p class="fs-muted" style="font-size:0.82rem; line-height:1.6;">
-                    © 2010 - 2026, FinanceSight Broking Ltd.<br>
+                    © 2026 FinanceSight.<br>
                     All rights reserved.<br>
-                    Institutional Equities, Derivatives & Quantitative Trading Platform
+                    Market Analytics, AI Forecasting & Paper Trading Platform
                 </p>
-                <div style="margin-top:12px; font-size:0.85rem; color:#387ed1; font-weight:600;">
-                    🌐 Twitter • 💼 LinkedIn • 📸 Instagram • ▶️ YouTube • 💬 Telegram
+                <div class="fs-social-wrap">
+                    <a href="https://x.com" target="_blank" rel="noopener noreferrer" class="fs-social-link">
+                        <img src="https://www.google.com/s2/favicons?domain=x.com&sz=64" class="social-logo" alt="X"> X
+                    </a>
+                    <a href="https://www.linkedin.com" target="_blank" rel="noopener noreferrer" class="fs-social-link">
+                        <img src="https://www.google.com/s2/favicons?domain=linkedin.com&sz=64" class="social-logo" alt="LinkedIn"> LinkedIn
+                    </a>
+                    <a href="https://www.facebook.com" target="_blank" rel="noopener noreferrer" class="fs-social-link">
+                        <img src="https://www.google.com/s2/favicons?domain=facebook.com&sz=64" class="social-logo" alt="Facebook"> Facebook
+                    </a>
+                    <a href="https://www.instagram.com" target="_blank" rel="noopener noreferrer" class="fs-social-link">
+                        <img src="https://www.google.com/s2/favicons?domain=instagram.com&sz=64" class="social-logo" alt="Instagram"> Instagram
+                    </a>
+                    <a href="https://www.youtube.com" target="_blank" rel="noopener noreferrer" class="fs-social-link">
+                        <img src="https://www.google.com/s2/favicons?domain=youtube.com&sz=64" class="social-logo" alt="YouTube"> YouTube
+                    </a>
+                    <a href="https://telegram.org" target="_blank" rel="noopener noreferrer" class="fs-social-link">
+                        <img src="https://www.google.com/s2/favicons?domain=telegram.org&sz=64" class="social-logo" alt="Telegram"> Telegram
+                    </a>
                 </div>
             </div>
             <div>
-                <div class="fs-title" style="font-size:0.95rem; margin-bottom:12px;">Company</div>
-                <div class="fs-muted" style="font-size:0.84rem; line-height:2.0;">
-                    About<br>Products<br>Pricing<br>Referral programme<br>Careers<br>FinanceSight.tech<br>Press & media<br>FinanceSight Cares (CSR)
-                </div>
+                <div class="fs-title" style="font-size:0.95rem; margin-bottom:14px;">Platform</div>
+                <a href="?nav=Home&r={nav_token}" target="_self" class="fs-footer-link">Home</a>
+                <a href="?nav=About&r={nav_token}" target="_self" class="fs-footer-link">About</a>
+                <a href="?nav=Products&r={nav_token}" target="_self" class="fs-footer-link">Products & Tools</a>
+                <a href="?nav=Pricing&r={nav_token}" target="_self" class="fs-footer-link">Fee & Tax Calculator</a>
+                <a href="?nav=Terminal&r={nav_token}" target="_self" class="fs-footer-link">SuperChart Terminal</a>
+                <a href="?nav=Advisor&r={nav_token}" target="_self" class="fs-footer-link">AI Stock Advisor</a>
             </div>
             <div>
-                <div class="fs-title" style="font-size:0.95rem; margin-bottom:12px;">Support</div>
-                <div class="fs-muted" style="font-size:0.84rem; line-height:2.0;">
-                    Contact us<br>Support portal<br>FinanceSight Connect blog<br>List of charges<br>Downloads & resources<br>Videos<br>Market overview<br>How to file a complaint?
-                </div>
+                <div class="fs-title" style="font-size:0.95rem; margin-bottom:14px;">Support & Resources</div>
+                <a href="?nav=Support&r={nav_token}" target="_self" class="fs-footer-link">Contact us</a>
+                <a href="?nav=Support&r={nav_token}" target="_self" class="fs-footer-link">Support portal</a>
+                <a href="?nav=Pricing&r={nav_token}" target="_self" class="fs-footer-link">Brokerage & tax breakdown</a>
+                <a href="?nav=Orders&r={nav_token}" target="_self" class="fs-footer-link">Order book CSV export</a>
+                <a href="https://www.youtube.com" target="_blank" rel="noopener noreferrer" class="fs-footer-link">Video tutorials</a>
+                <a href="?nav=Dashboard&r={nav_token}" target="_self" class="fs-footer-link">Live market overview</a>
             </div>
             <div>
-                <div class="fs-title" style="font-size:0.95rem; margin-bottom:12px;">Account</div>
-                <div class="fs-muted" style="font-size:0.84rem; line-height:2.0;">
-                    Open an account<br>Fund transfer<br>60 day challenge<br>Margin calculator<br>FinanceSight AI Algo Lab
-                </div>
+                <div class="fs-title" style="font-size:0.95rem; margin-bottom:14px;">Account & Simulation</div>
+                <a href="?nav=Signup&r={nav_token}" target="_self" class="fs-footer-link">Open an account</a>
+                <a href="?nav=Funds&r={nav_token}" target="_self" class="fs-footer-link">Fund transfer (Virtual Wallet)</a>
+                <a href="?nav=Holdings&r={nav_token}" target="_self" class="fs-footer-link">Portfolio holdings</a>
+                <a href="?nav=Positions&r={nav_token}" target="_self" class="fs-footer-link">Intraday & delivery positions</a>
+                <a href="?nav=Apps&r={nav_token}" target="_self" class="fs-footer-link">FinanceSight Algo Backtester</a>
             </div>
         </div>
         <div class="fs-muted" style="margin-top:22px; font-size:0.75rem; line-height:1.7;">
-            <p>FinanceSight Broking Ltd.: Member of NSE, BSE & MCX – SEBI Registration no.: INZ000031633. CDSL/NSDL: Depository services through FinanceSight Broking Ltd. – SEBI Registration no.: IN-DP-431-2019.</p>
-            <p style="margin-top:8px;">Investments in securities market are subject to market risks; read all the related documents carefully before investing. Prevent Unauthorized Transactions in your account — update your mobile numbers/email IDs with your stock brokers. Receive information of your transactions directly from Exchange on your mobile/email at the end of the day.</p>
-            <div style="margin-top:14px; text-align:center; font-weight:600;">
-                NSE &nbsp;•&nbsp; BSE &nbsp;•&nbsp; MCX &nbsp;•&nbsp; Terms & conditions &nbsp;•&nbsp; Policies & procedures &nbsp;•&nbsp; Privacy policy &nbsp;•&nbsp; Disclosure &nbsp;•&nbsp; For investor's attention &nbsp;•&nbsp; Investor charter
+            <p>FinanceSight is a market analysis, machine learning price forecasting, and paper trading simulation platform. Live and historical market data is fetched via the Yahoo Finance API for educational and analytical use.</p>
+            <p style="margin-top:8px;">Stock market investments and trading involve market risk. Past backtest performance and machine learning projections do not guarantee future returns. Always verify technical setups and risk parameters before making financial decisions.</p>
+            <div style="margin-top:14px; text-align:center;">
+                <a href="https://www.nseindia.com" target="_blank" rel="noopener noreferrer" class="fs-bottom-link">NSE</a> •
+                <a href="https://www.bseindia.com" target="_blank" rel="noopener noreferrer" class="fs-bottom-link">BSE</a> •
+                <a href="https://www.mcxindia.com" target="_blank" rel="noopener noreferrer" class="fs-bottom-link">MCX</a> •
+                <a href="?nav=About&r={nav_token}" target="_self" class="fs-bottom-link">About Platform</a> •
+                <a href="?nav=Pricing&r={nav_token}" target="_self" class="fs-bottom-link">Fee Calculator</a> •
+                <a href="?nav=Support&r={nav_token}" target="_self" class="fs-bottom-link">Help & Support</a>
             </div>
         </div>
     </div>
@@ -798,45 +984,49 @@ def render_financesight_footer():
 # 7. PART 1: PUBLIC FINANCESIGHT PORTAL (HOME, SIGNUP, ABOUT, PRODUCTS, PRICING, SUPPORT)
 # ==========================================================
 if not st.session_state.logged_in:
-    nav_c1, nav_c2, nav_c3, nav_c4, nav_c5, nav_c6, nav_c7, nav_c8 = st.columns([1.6, 1.8, 0.85, 0.85, 0.85, 0.9, 0.85, 1.2])
+    nav_c1, nav_c2, nav_c3, nav_c4, nav_c5, nav_c6, nav_c7, nav_c8 = st.columns([1.6, 1.75, 0.88, 0.92, 0.88, 1.0, 0.92, 0.95])
     
     with nav_c1:
         render_html(f"""
-        <div class="fs-title" style="display:flex; align-items:center; gap:9px; font-size:1.3rem; padding-top:3px; letter-spacing:-0.02em;">
+        <a href="?nav=Home&r=top_{nav_token}" target="_self" class="fs-logo-link" title="Go to FinanceSight Home" style="padding-top:3px;">
             {FINANCESIGHT_LOGO_SVG}
             <span><span style="color:#387ed1;">FINANCE</span>SIGHT</span>
-        </div>
+        </a>
         """)
 
     with nav_c2:
-        search_options = ["🔍 Search stocks (Ctrl+K)..."] + [
+        search_options = ["Search Stocks"] + [
             f"{sym} — {meta['name']} ({meta['exchange']})" for sym, meta in STOCK_CATALOG.items()
         ]
-        picked_search = st.selectbox("Search", search_options, label_visibility="collapsed")
-        if picked_search != "🔍 Search stocks (Ctrl+K)...":
+        picked_search = st.selectbox("Search Stocks", search_options, label_visibility="collapsed")
+        if picked_search != "Search Stocks":
             sym_jump = picked_search.split(" — ")[0]
             st.session_state.logged_in = True
-            st.session_state.username = "trader_pro"
-            st.session_state.full_name = "Pro Institutional Trader"
+            st.session_state.username = "Trader_XYZ"
+            st.session_state.full_name = "Trader_XYZ"
             st.session_state.selected_ticker = sym_jump
             st.session_state.page = "Terminal"
             st.rerun()
 
+    # Render Capitalized Top Navigation Buttons with Vector SVG Logos
     pub_pages = [
-        ("🏠 Home", "Home", nav_c3),
-        ("🔐 Signup", "Signup", nav_c4),
-        ("🏛️ About", "About", nav_c5),
-        ("🚀 Products", "Products", nav_c6),
-        ("🏷️ Pricing", "Pricing", nav_c7)
+        ("HOME", "Home", nav_c3),
+        ("SIGNUP", "Signup", nav_c4),
+        ("ABOUT", "About", nav_c5),
+        ("PRODUCTS", "Products", nav_c6),
+        ("PRICING", "Pricing", nav_c7),
+        ("SUPPORT", "Support", nav_c8)
     ]
-    for label, p_name, col_obj in pub_pages:
-        if col_obj.button(label, use_container_width=True, type="primary" if st.session_state.public_page == p_name else "secondary"):
-            st.session_state.public_page = p_name
-            st.rerun()
-
-    if nav_c8.button("🎧 Support", use_container_width=True, type="primary" if st.session_state.public_page == "Support" else "secondary"):
-        st.session_state.public_page = "Support"
-        st.rerun()
+    for label_caps, p_name, col_obj in pub_pages:
+        active_cls = "active" if st.session_state.public_page == p_name else ""
+        svg_icon = NAV_SVGS[p_name]
+        with col_obj:
+            render_html(f"""
+            <a href="?nav={p_name}&r={nav_token}" target="_self" class="fs-nav-btn {active_cls}">
+                {svg_icon}
+                <span>{label_caps}</span>
+            </a>
+            """)
 
     if not online_status:
         st.warning("⚠️ **Offline Mode Detected:** Your internet connection is currently disconnected. Market prices are frozen at their last recorded close and will not fluctuate until internet is restored.")
@@ -850,7 +1040,6 @@ if not st.session_state.logged_in:
         hero_left, hero_right = st.columns([1.62, 1.0], gap="large")
 
         with hero_left:
-            # Uses 100% REAL yfinance data from `snapshots` (No fake JS random loop!) + Theme Adaptive
             watch_rows_html = ""
             for w_sym, w_label, w_dom in [
                 ("NVDA", "NVDA", "nvidia.com"),
@@ -946,13 +1135,13 @@ if not st.session_state.logged_in:
                 </div>
 
                 <div style="text-align:center; margin-top:16px;">
-                    <div style="background:var(--background-color); border:1px solid rgba(56,189,248,0.45); border-radius:999px; padding:10px 24px; display:inline-flex; align-items:center; gap:12px;">
+                    <a href="?nav=Products&r={nav_token}" target="_self" style="text-decoration:none; background:var(--background-color); border:1px solid rgba(56,189,248,0.45); border-radius:999px; padding:10px 24px; display:inline-flex; align-items:center; gap:12px;">
                         <span style="font-size:1.15rem;">⚡</span>
                         <div style="text-align:left;">
-                            <div style="font-weight:800; font-size:0.88rem; color:#0284c7;">Online platform to invest in stocks, derivatives, mutual funds & algos</div>
-                            <div class="fs-muted" style="font-size:0.74rem;">1.5+ Crore clients • 15%+ of all Indian retail trading volume</div>
+                            <div style="font-weight:800; font-size:0.88rem; color:#0284c7;">Explore all charting, AI forecasting & paper trading tools ›</div>
+                            <div class="fs-muted" style="font-size:0.74rem;">NSE & NASDAQ Equities • Technical Indicators • Strategy Backtesting</div>
                         </div>
-                    </div>
+                    </a>
                 </div>
             </div>
             """)
@@ -961,21 +1150,21 @@ if not st.session_state.logged_in:
             render_html("""
             <div class="z-section-card" style="margin-top:0; padding:20px 24px; margin-bottom:12px;">
                 <span style="background:rgba(56,126,209,0.2); color:#387ed1; padding:4px 12px; border-radius:999px; font-size:0.75rem; font-weight:700;">
-                    ⚡ FINANCESIGHT WEB TERMINAL • ZERO-LATENCY ACCESS
+                    ⚡ FINANCESIGHT WEB TERMINAL • INSTANT ACCESS
                 </span>
                 <h3 class="fs-title" style="margin:10px 0 4px 0;">Sign In to FinanceSight Dashboard</h3>
                 <p class="fs-muted" style="font-size:0.83rem; margin:0;">Includes Orders, Holdings, Positions, Funds, SuperCharts & LLaMA 3.3 AI</p>
             </div>
             """)
 
-            auth_tab1, auth_tab2 = st.tabs(["🔐 FinanceSight Login", "✨ Open Free Account"])
+            auth_tab1, auth_tab2 = st.tabs(["FinanceSight Login", "Open Free Account"])
 
             with auth_tab1:
-                login_user = st.text_input("FinanceSight User ID", value="trader_pro")
+                login_user = st.text_input("FinanceSight User ID", value="Trader_XYZ")
                 login_pass = st.text_input("Password", type="password", value="demo123")
                 
                 b1, b2 = st.columns(2)
-                if b1.button("🚀 Login to FinanceSight", use_container_width=True, type="primary"):
+                if b1.button("Login to FinanceSight", use_container_width=True, type="primary"):
                     c = conn.cursor()
                     pw_hash = hashlib.sha256(login_pass.encode()).hexdigest()
                     c.execute("SELECT full_name FROM users WHERE username = ? AND password_hash = ?", (login_user, pw_hash))
@@ -989,19 +1178,19 @@ if not st.session_state.logged_in:
                     else:
                         st.error("Invalid username or password!")
 
-                if b2.button("⚡ 1-Click Guest Demo", use_container_width=True):
+                if b2.button("1-Click Guest Demo", use_container_width=True):
                     st.session_state.logged_in = True
-                    st.session_state.username = "trader_pro"
-                    st.session_state.full_name = "Pro Institutional Trader"
+                    st.session_state.username = "Trader_XYZ"
+                    st.session_state.full_name = "Trader_XYZ"
                     st.session_state.page = "Dashboard"
                     st.rerun()
 
             with auth_tab2:
                 new_name = st.text_input("Full Name", placeholder="e.g., Vishal Babu")
-                new_user = st.text_input("Choose FinanceSight ID", placeholder="e.g., vishal_quant")
-                new_email = st.text_input("Email ID", placeholder="vishal@financesight.in")
+                new_user = st.text_input("Choose FinanceSight ID", placeholder="e.g., Trader_XYZ")
+                new_email = st.text_input("Email ID", placeholder="user@financesight.in")
                 new_pass = st.text_input("Create Password", type="password")
-                if st.button("✅ Open Account & Claim ₹1,00,000", use_container_width=True, type="primary"):
+                if st.button("Open Account & Claim ₹1,00,000", use_container_width=True, type="primary"):
                     if new_user and new_pass and new_name:
                         c = conn.cursor()
                         c.execute("SELECT COUNT(*) FROM users WHERE username = ?", (new_user,))
@@ -1021,50 +1210,50 @@ if not st.session_state.logged_in:
                             st.session_state.page = "Dashboard"
                             st.rerun()
 
-        # HOME COMPONENT 2: AWARDS
+        # HOME COMPONENT 2: PRACTICAL PLATFORM CAPABILITIES
         render_html("""
         <div class="z-section-card">
             <div style="display:grid; grid-template-columns: 1fr 1.3fr; gap:32px; align-items:center;">
                 <div class="fs-panel" style="padding:28px; text-align:center;">
-                    <div style="font-size:3.2rem; margin-bottom:10px;">🏆</div>
-                    <h3 class="fs-title" style="margin-bottom:6px;">India's #1 Retail & Algo Trading Ecosystem</h3>
-                    <p style="color:#0284c7; font-family:'JetBrains Mono',monospace; font-size:0.9rem; font-weight:700;">15%+ of all Indian retail order volumes daily</p>
+                    <div style="font-size:3.2rem; margin-bottom:10px;">📊</div>
+                    <h3 class="fs-title" style="margin-bottom:6px;">All-in-One Market Analysis & Trading Suite</h3>
+                    <p style="color:#0284c7; font-family:'JetBrains Mono',monospace; font-size:0.9rem; font-weight:700;">Live NSE & NASDAQ Data • AI Signals • Paper Trading</p>
                 </div>
                 <div>
-                    <h2 class="fs-title" style="font-size:1.75rem; margin-bottom:10px;">Largest stock broker in India</h2>
+                    <h2 class="fs-title" style="font-size:1.75rem; margin-bottom:10px;">Built for practical analysis and risk-free learning</h2>
                     <p class="fs-muted" style="font-size:0.95rem; margin-bottom:16px;">
-                        1.5+ Crore FinanceSight clients contribute to over 15% of all retail order volumes in India daily by trading and investing in:
+                        FinanceSight brings together real-time market data, quantitative technical indicators, and virtual trade execution in one workspace:
                     </p>
                     <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; color:#0284c7; font-weight:700; font-size:0.92rem;">
-                        <div>• Futures and Options</div>
-                        <div>• Stocks & IPOs</div>
-                        <div>• Commodity derivatives</div>
-                        <div>• Direct mutual funds</div>
-                        <div>• Currency derivatives</div>
-                        <div>• Bonds and Govt. Securities</div>
+                        <div>• Live Candlestick & Volume Charts</div>
+                        <div>• 14-Day RSI & Moving Averages</div>
+                        <div>• 7-Day ML Price Forecasting</div>
+                        <div>• Conversational AI Stock Analyst</div>
+                        <div>• No-Code Strategy Backtesting</div>
+                        <div>• Virtual Paper Trading Portfolio</div>
                     </div>
                 </div>
             </div>
         </div>
         """)
 
-        # HOME COMPONENT 3: STATS & PRICING
+        # HOME COMPONENT 3: PRACTICAL FEATURES & FEE SIMULATOR
         st_col1, st_col2 = st.columns([1.3, 1.0], gap="large")
         with st_col1:
             render_html("""
             <div class="z-section-card" style="height:100%;">
-                <h2 class="fs-title" style="font-size:1.65rem; margin-bottom:14px;">🛡️ Trust with confidence</h2>
+                <h2 class="fs-title" style="font-size:1.65rem; margin-bottom:14px;">🛡️ Practical tools you can rely on</h2>
                 <div style="margin-bottom:14px;">
-                    <h4 style="color:#0284c7; margin:0 0 4px 0;">Customer-first always</h4>
-                    <p class="fs-muted" style="font-size:0.88rem; margin:0;">That's why 1.5+ crore customers trust FinanceSight with ₹4.5+ lakh crores of equity investments.</p>
+                    <h4 style="color:#0284c7; margin:0 0 4px 0;">Data-driven decision making</h4>
+                    <p class="fs-muted" style="font-size:0.88rem; margin:0;">Evaluate stocks using objective technical indicators (20-SMA, 50-EMA, 14-Day RSI) and historical backtest metrics instead of guesswork.</p>
                 </div>
                 <div style="margin-bottom:14px;">
-                    <h4 style="color:#0284c7; margin:0 0 4px 0;">No spam or gimmicks</h4>
-                    <p class="fs-muted" style="font-size:0.88rem; margin:0;">No gimmicks, spam, "gamification", or annoying push notifications. High quality apps that you use at your pace.</p>
+                    <h4 style="color:#0284c7; margin:0 0 4px 0;">Risk-free paper trading simulator</h4>
+                    <p class="fs-muted" style="font-size:0.88rem; margin:0;">Practice placing delivery (CNC) and intraday (MIS 5x leverage) orders using a ₹1,00,000 virtual wallet before risking real capital.</p>
                 </div>
                 <div>
-                    <h4 style="color:#0284c7; margin:0 0 4px 0;">The FinanceSight universe</h4>
-                    <p class="fs-muted" style="font-size:0.88rem; margin:0;">Not just an app, but a whole ecosystem with FinanceSight AI Backtesting, Random Forest ML Forecasting, and LLaMA 3.3 Advisor.</p>
+                    <h4 style="color:#0284c7; margin:0 0 4px 0;">Integrated AI & backtesting workflow</h4>
+                    <p class="fs-muted" style="font-size:0.88rem; margin:0;">Combine 7-day Random Forest price projections, LLaMA 3.3 market insights, and rule-based strategy backtesting in a single interface.</p>
                 </div>
             </div>
             """)
@@ -1072,39 +1261,39 @@ if not st.session_state.logged_in:
         with st_col2:
             render_html("""
             <div class="z-section-card" style="height:100%;">
-                <h2 class="fs-title" style="font-size:1.65rem; margin-bottom:10px;">🏷️ Unbeatable pricing</h2>
+                <h2 class="fs-title" style="font-size:1.65rem; margin-bottom:10px;">🏷️ Transparent fee simulation</h2>
                 <p class="fs-muted" style="font-size:0.9rem; margin-bottom:18px;">
-                    We pioneered the concept of discount broking and price transparency in India. Flat fees and no hidden charges.
+                    Estimate real-world trading costs accurately using standard discount brokerage rates and our built-in tax & breakeven calculator.
                 </p>
                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap:14px; text-align:center;">
                     <div class="fs-panel" style="border:2px solid #10b981; padding:18px;">
                         <div style="font-family:'JetBrains Mono',monospace; font-size:2.2rem; font-weight:800; color:#10b981;">₹0</div>
-                        <div class="fs-muted" style="font-size:0.8rem; margin-top:6px;">Free equity delivery & direct mutual funds</div>
+                        <div class="fs-muted" style="font-size:0.8rem; margin-top:6px;">Standard equity delivery & mutual fund simulation</div>
                     </div>
                     <div class="fs-panel" style="border:2px solid #0284c7; padding:18px;">
                         <div style="font-family:'JetBrains Mono',monospace; font-size:2.2rem; font-weight:800; color:#0284c7;">₹20</div>
-                        <div class="fs-muted" style="font-size:0.8rem; margin-top:6px;">Flat Intraday, F&O & Algo trades</div>
+                        <div class="fs-muted" style="font-size:0.8rem; margin-top:6px;">Flat intraday (MIS) & F&O order fee model</div>
                     </div>
                 </div>
             </div>
             """)
 
-        # HOME COMPONENT 4: EDUCATION
+        # HOME COMPONENT 4: EDUCATION & AI LEARNING
         render_html("""
         <div class="z-section-card">
             <div style="display:grid; grid-template-columns: 1fr 1.4fr; gap:28px; align-items:center;">
                 <div class="fs-panel" style="padding:26px; text-align:center;">
                     <div style="font-size:3rem;">📚</div>
-                    <h3 class="fs-title" style="margin-top:8px;">FinanceSight Academy</h3>
-                    <p class="fs-muted" style="font-size:0.85rem;">Free stock market & algorithmic trading education</p>
+                    <h3 class="fs-title" style="margin-top:8px;">FinanceSight Learning Hub</h3>
+                    <p class="fs-muted" style="font-size:0.85rem;">Interactive technical analysis & AI-assisted learning</p>
                 </div>
                 <div>
-                    <h2 class="fs-title" style="font-size:1.65rem; margin-bottom:10px;">Free and open market education</h2>
+                    <h2 class="fs-title" style="font-size:1.65rem; margin-bottom:10px;">Learn market indicators as you trade</h2>
                     <p class="fs-muted" style="font-size:0.9rem; margin-bottom:12px;">
-                        <b>FinanceSight Academy</b>, the largest online stock market education book in the world covering everything from the basics to advanced technical analysis and quantitative modeling.
+                        <b>Interactive Indicator Guides:</b> Understand how candlestick patterns, Moving Averages, Volume bars, and RSI momentum work directly on live stock charts.
                     </p>
                     <p class="fs-muted" style="font-size:0.9rem; margin:0;">
-                        <b>FinanceSight Q&A + LLaMA 3.3 AI Advisor</b>, the most active trading and investment community where our built-in AI answers every market query instantly.
+                        <b>FinanceSight AI Advisor:</b> Ask any question about stock trends, support and resistance zones, position sizing, or trading terminology and get instant explanations.
                     </p>
                 </div>
             </div>
@@ -1122,27 +1311,27 @@ if not st.session_state.logged_in:
             render_html("""
             <div class="z-section-card">
                 <span style="background:rgba(56,126,209,0.2); color:#387ed1; padding:5px 12px; border-radius:999px; font-size:0.78rem; font-weight:700;">
-                    JOIN 1.5+ CRORE INVESTORS
+                    INSTANT PAPER TRADING ACCESS
                 </span>
-                <h2 class="fs-title" style="margin:12px 0 10px 0;">Open a free demat and trading account online</h2>
+                <h2 class="fs-title" style="margin:12px 0 10px 0;">Create your free FinanceSight account</h2>
                 <p class="fs-muted" style="font-size:0.95rem; line-height:1.6;">
-                    Start investing brokerage-free and join a community of 1.5+ crore investors and traders on FinanceSight. Instant paper margin of <b>₹1,00,000</b> credited immediately upon registration.
+                    Set up your account in seconds to track live NSE & NASDAQ stocks, test algorithmic strategies, and practice trading with <b>₹1,00,000</b> in virtual margin.
                 </p>
                 <div class="fs-panel" style="margin-top:18px; font-size:0.86rem; line-height:1.8;">
-                    ✅ ₹0 Equity Delivery Brokerage<br>
+                    ✅ ₹1,00,000 Virtual Paper Trading Wallet<br>
                     ✅ Built-In Groq LLaMA 3.3 AI Financial Advisor<br>
                     ✅ 7-Day Random Forest ML Price Predictor<br>
-                    ✅ FinanceSight v4 No-Code Strategy Backtester
+                    ✅ No-Code Strategy Backtester & CSV Exports
                 </div>
             </div>
             """)
         with s_right:
             st.markdown("### ✨ Create Your FinanceSight Account Now")
             su_name = st.text_input("Your Full Name", placeholder="e.g., Vishal Babu")
-            su_user = st.text_input("Choose FinanceSight User ID", placeholder="e.g., vishal_01")
-            su_email = st.text_input("Email Address", placeholder="vishal@financesight.in")
+            su_user = st.text_input("Choose FinanceSight User ID", placeholder="e.g., Trader_XYZ")
+            su_email = st.text_input("Email Address", placeholder="user@financesight.in")
             su_pass = st.text_input("Password", type="password")
-            if st.button("🚀 Complete Signup & Open FinanceSight Dashboard", type="primary", use_container_width=True):
+            if st.button("Complete Signup & Open FinanceSight Dashboard", type="primary", use_container_width=True):
                 if su_name and su_user and su_pass:
                     c = conn.cursor()
                     c.execute("SELECT COUNT(*) FROM users WHERE username = ?", (su_user,))
@@ -1163,10 +1352,10 @@ if not st.session_state.logged_in:
                 else:
                     st.warning("Please fill in Name, User ID, and Password.")
             st.markdown("---")
-            if st.button("⚡ Or Use 1-Click Guest Demo Account", use_container_width=True):
+            if st.button("Or Use 1-Click Guest Demo Account (Trader_XYZ)", use_container_width=True):
                 st.session_state.logged_in = True
-                st.session_state.username = "trader_pro"
-                st.session_state.full_name = "Pro Institutional Trader"
+                st.session_state.username = "Trader_XYZ"
+                st.session_state.full_name = "Trader_XYZ"
                 st.session_state.page = "Dashboard"
                 st.rerun()
 
@@ -1177,8 +1366,8 @@ if not st.session_state.logged_in:
         render_html("""
         <div class="z-section-card" style="text-align:center;">
             <h2 class="fs-title" style="font-size:1.85rem; max-width:800px; margin:0 auto;">
-                We pioneered the discount broking model in India.<br>
-                <span style="color:#0284c7;">Now, we are breaking ground with AI & Quantitative Technology.</span>
+                Clear, Objective Market Analysis.<br>
+                <span style="color:#0284c7;">Combining Technical Charting, Machine Learning & Paper Trading.</span>
             </h2>
         </div>
         """)
@@ -1187,30 +1376,30 @@ if not st.session_state.logged_in:
         with ab_c1:
             render_html("""
             <div class="z-section-card" style="height:100%; font-size:0.94rem; line-height:1.75;">
-                <p>We kick-started operations with the goal of breaking all barriers that traders and investors face in India in terms of cost, support, and institutional technology.</p>
-                <p>Today, our disruptive pricing models and in-house quantitative AI tools — including <b>Random Forest price forecasting</b> and <b>LLaMA 3.3 RAG market intelligence</b> — make institutional-grade analysis accessible to every retail investor.</p>
+                <p><b>FinanceSight</b> is designed to make technical stock analysis, algorithmic backtesting, and portfolio simulation straightforward and accessible.</p>
+                <p>By integrating live market data with <b>Random Forest price forecasting</b> and <b>LLaMA 3.3 RAG market analysis</b>, the platform helps users evaluate trends, momentum, and risk levels clearly.</p>
             </div>
             """)
         with ab_c2:
             render_html("""
             <div class="z-section-card" style="height:100%; font-size:0.94rem; line-height:1.75;">
-                <p>In addition, we run a number of open educational and community initiatives to empower retail traders and investors through <b>FinanceSight Academy</b> and <b>FinanceSight Algo Lab</b>.</p>
-                <p>Through our FinTech incubator <b>FinanceSight Ventures</b>, we also support innovative startups and quantitative engineering initiatives building the future of Indian capital markets.</p>
+                <p>Instead of switching between separate charting websites, calculators, and spreadsheets, FinanceSight brings everything into a single workspace.</p>
+                <p>Users can test trading strategies on historical data, calculate exact statutory charges and breakeven points, and practice order execution risk-free using a virtual wallet.</p>
             </div>
             """)
 
         render_html("""
         <div class="z-section-card">
-            <h2 class="fs-title" style="text-align:center; margin-bottom:24px;">👥 People & Core Engineering</h2>
+            <h2 class="fs-title" style="text-align:center; margin-bottom:24px;">👥 Platform Architecture & Engineering</h2>
             <div style="display:grid; grid-template-columns: 1fr 2fr; gap:28px; align-items:center;">
                 <div class="fs-panel" style="text-align:center; padding:24px; border:2px solid #0284c7;">
                     <div style="font-size:3.6rem;">👨‍💻</div>
                     <h4 class="fs-title" style="margin:10px 0 4px 0;">FinanceSight Core Systems</h4>
-                    <div style="color:#0284c7; font-size:0.84rem; font-weight:700;">Quantitative Trading & FinTech Architecture</div>
+                    <div style="color:#0284c7; font-size:0.84rem; font-weight:700;">Python, Machine Learning & SQLite Architecture</div>
                 </div>
                 <div style="font-size:0.95rem; line-height:1.75;">
-                    <p>This platform integrates the complete <b>FinanceSight Web Terminal, Portfolio Console, Algo Backtester, and SuperChart</b> architecture into a unified, low-latency web application.</p>
-                    <p>Engineered with live <b>market data streams</b>, <b>Random Forest ensemble modeling</b>, <b>Groq LLaMA 3.3 conversational RAG</b>, and real-time <b>MIS/CNC order execution</b>.</p>
+                    <p>FinanceSight integrates a <b>Multi-Layer SuperChart Terminal, Portfolio Console, No-Code Strategy Backtester, and Conversational AI Advisor</b> into a unified web application.</p>
+                    <p>Powered by live <b>Yahoo Finance market streams</b>, <b>Scikit-Learn Random Forest regression</b>, <b>Groq LLaMA 3.3 RAG</b>, and a local <b>SQLite relational database</b> for persistent portfolio and order tracking.</p>
                 </div>
             </div>
         </div>
@@ -1220,20 +1409,20 @@ if not st.session_state.logged_in:
     # PUBLIC PAGE D: PRODUCTS PAGE
     # ----------------------------------------------------------
     elif st.session_state.public_page == "Products":
-        render_html("""
+        render_html(f"""
         <div class="z-section-card" style="text-align:center;">
-            <h1 class="fs-title" style="font-size:2.2rem; margin-bottom:8px;">FinanceSight Products</h1>
-            <h4 class="fs-muted" style="font-weight:500; margin-bottom:10px;">Sleek, modern, and intuitive trading & AI platforms</h4>
-            <div style="color:#0284c7; font-weight:700; font-size:0.92rem;">Check out our investment offerings →</div>
+            <h1 class="fs-title" style="font-size:2.2rem; margin-bottom:8px;">FinanceSight Products & Modules</h1>
+            <h4 class="fs-muted" style="font-weight:500; margin-bottom:10px;">Integrated tools for charting, price forecasting, backtesting, and paper trading</h4>
+            <a href="?nav=Dashboard&r={nav_token}" target="_self" style="color:#0284c7; font-weight:700; font-size:0.92rem; text-decoration:none;">Launch the live trading dashboard →</a>
         </div>
         """)
 
         products_showcase = [
-            ("left", "📈 FinanceSight SuperChart Terminal", "Our ultra-fast flagship trading platform with streaming market data, 3-layer FinanceSight charts (Candlesticks, Volume, RSI), an elegant UI, and instant CNC/MIS order execution.", "Terminal"),
-            ("right", "💿 FinanceSight Portfolio & Ledger", "The central dashboard for your FinanceSight account. Gain insights into your trades and investments with in-depth visualisations, asset allocation donut charts, and downloadable Excel/CSV reports.", "Holdings"),
-            ("left", "🤖 FinanceSight LLaMA 3.3 AI Advisor", "Institutional conversational AI analyst pre-configured with live RAG market feeds. Type any stock name (Apple, NVIDIA, Reliance, TCS) for instant entry, stop-loss, and target levels.", "Advisor"),
-            ("right", "⚡ FinanceSight Connect API & 7-Day ML Predictor", "Build powerful trading experiences and run live 7-Day Random Forest Machine Learning price projections trained on rolling 252-day OHLCV and momentum lag features.", "Terminal"),
-            ("left", "🧪 FinanceSight No-Code Algo Backtester", "Create systematic trading strategies (Golden Crossover, RSI Reversal, Momentum Surge) without writing code, backtest on historical candles, and scan the live market.", "Apps")
+            ("left", "📈 FinanceSight SuperChart Terminal", "Interactive 3-layer technical charting with Japanese Candlesticks, 20-Day SMA, 50-Day EMA, Volume bars, 14-Day RSI, and instant CNC/MIS paper order execution.", "Terminal"),
+            ("right", "💿 FinanceSight Portfolio & Ledger", "Centralized portfolio tracker showing live mark-to-market P&L, asset allocation donut charts, order history, and 1-click CSV/Excel report downloads.", "Holdings"),
+            ("left", "🤖 FinanceSight LLaMA 3.3 AI Advisor", "Conversational AI stock analyst connected to live technical indicators. Type any supported stock name (Apple, NVIDIA, Reliance, TCS) for custom entry, stop-loss, and target analysis.", "Advisor"),
+            ("right", "⚡ 7-Day Random Forest ML Predictor", "Trains a live Random Forest regression model on rolling 1-year OHLCV and momentum lag features to project the next 7 trading sessions.", "Terminal"),
+            ("left", "🧪 No-Code Strategy Backtester & Scanner", "Test systematic trading rules (Golden Crossover, RSI Oversold Reversal, Momentum Surge) on historical candles, view the equity curve, and scan multiple stocks live.", "Apps")
         ]
 
         for align, p_title, p_desc, target_tab in products_showcase:
@@ -1246,36 +1435,38 @@ if not st.session_state.logged_in:
                 <div class="z-section-card" style="margin:0; padding:32px; text-align:center;">
                     <div style="font-size:2.8rem; margin-bottom:8px;">{p_title.split()[0]}</div>
                     <div class="fs-title" style="font-size:1.15rem;">{p_title}</div>
-                    <div style="color:#0284c7; font-size:0.8rem; margin-top:6px; font-weight:600;">📱 Available on Web • Google Play • App Store</div>
+                    <div style="color:#0284c7; font-size:0.8rem; margin-top:6px; font-weight:600;">⚡ Live Module Inside FinanceSight</div>
                 </div>
                 """)
             with text_col:
                 st.markdown(f"### {p_title}")
                 st.write(p_desc)
                 b_try, b_learn = st.columns(2)
-                if b_try.button(f"🚀 Try Demo →", key=f"prod_demo_{p_title}", type="primary", use_container_width=True):
+                if b_try.button(f"Open Module →", key=f"prod_demo_{p_title}", type="primary", use_container_width=True):
                     st.session_state.logged_in = True
-                    st.session_state.username = "trader_pro"
-                    st.session_state.full_name = "Pro Institutional Trader"
+                    st.session_state.username = "Trader_XYZ"
+                    st.session_state.full_name = "Trader_XYZ"
                     st.session_state.page = target_tab
                     st.rerun()
-                b_learn.button("📖 Learn More →", key=f"prod_learn_{p_title}", use_container_width=True)
+                if b_learn.button("View Details →", key=f"prod_learn_{p_title}", use_container_width=True):
+                    st.session_state.public_page = "About"
+                    st.rerun()
             render_html("<hr style='border:0; border-top:1px solid rgba(128,128,128,0.22); margin:16px 0;'>")
 
         render_html("""
         <div style="text-align:center; margin:28px 0 18px 0;">
-            <h2 class="fs-title">🌌 The FinanceSight Universe</h2>
-            <p class="fs-muted">Extend your trading and investment experience even further with our partner platforms</p>
+            <h2 class="fs-title">🧩 Core Feature Highlights</h2>
+            <p class="fs-muted">Built-in utilities included across the FinanceSight workspace</p>
         </div>
         """)
 
         universe_items = [
-            ("⚡ FinanceSight Algo", "Algo & strategy platform — systematic no-code backtesting and live market scanner."),
-            ("🎯 FinanceSight Options", "Options trading platform — build strategies, analyze Greeks, and track OI data."),
-            ("🧺 FinanceSight Baskets", "Thematic investment platform — invest in diversified baskets of stocks on ETFs."),
-            ("🏦 FinanceSight Fund House", "Our asset management venture creating simple and transparent index funds."),
-            ("📜 FinanceSight Bonds", "Bonds & fixed-income trading platform — invest in high-yield corporate bonds and G-Secs."),
-            ("🛡️ FinanceSight Shield", "Personalized advice on life and health insurance — no spam and no mis-selling.")
+            ("⚡ Strategy Backtester", "Simulate Golden Crossover, RSI Reversal, and Momentum rules with adjustable Stop-Loss and Target sliders."),
+            ("📡 Live Market Scanner", "Scan NSE and NASDAQ stocks simultaneously for RSI breakouts and moving average trends."),
+            ("🤖 Multi-Stock AI Chat", "Automatically detects company names in your chat prompt and switches the active stock context."),
+            ("🧮 Brokerage Calculator", "Compute exact STT, GST, exchange transaction fees, stamp duty, and net P&L before placing trades."),
+            ("💼 CNC & MIS Simulation", "Test both 1x delivery holdings and 5x leveraged intraday positions with 1-click square-off."),
+            ("📥 CSV Report Exports", "Download your executed order book, demat holdings, and strategy backtest ledgers as CSV files.")
         ]
         for r_idx in range(0, 6, 3):
             u_cols = st.columns(3)
@@ -1298,18 +1489,18 @@ if not st.session_state.logged_in:
     elif st.session_state.public_page == "Pricing":
         render_html("""
         <div class="z-section-card" style="text-align:center;">
-            <h1 class="fs-title" style="font-size:2.1rem;">Pricing — Free equity investments and flat ₹20 intraday trades</h1>
-            <p class="fs-muted" style="font-size:0.95rem;">All equity delivery investments (NSE, BSE), are absolutely free — ₹ 0 brokerage.</p>
+            <h1 class="fs-title" style="font-size:2.1rem;">Fee Structure & Brokerage Calculator</h1>
+            <p class="fs-muted" style="font-size:0.95rem;">Simulate standard Indian discount broking charges (₹0 delivery and flat ₹20 intraday) and calculate exact statutory taxes.</p>
         </div>
         """)
 
         pr1, pr2, pr3 = st.columns(3)
         with pr1:
-            render_kpi("Free Equity Delivery", "₹0", "All equity delivery investments (NSE, BSE) are 100% brokerage-free.", "kpi-emerald", "#10b981")
+            render_kpi("Equity Delivery Simulation", "₹0", "Zero brokerage modeled on long-term CNC equity delivery trades.", "kpi-emerald", "#10b981")
         with pr2:
-            render_kpi("Intraday & F&O Trades", "₹20", "Flat ₹20 or 0.03% (whichever is lower) per executed order on intraday.", "kpi-cyan", "#0284c7")
+            render_kpi("Intraday & F&O Simulation", "₹20", "Flat ₹20 or 0.03% (whichever is lower) per executed intraday order.", "kpi-cyan", "#0284c7")
         with pr3:
-            render_kpi("Free Direct Mutual Funds", "₹0", "All direct mutual fund investments are completely commission-free.", "kpi-violet", "#8b5cf6")
+            render_kpi("Virtual Paper Wallet", "₹1,00,000", "Free instant virtual margin credited to every user account for practice.", "kpi-violet", "#8b5cf6")
 
         st.markdown("### 🧮 Interactive FinanceSight Brokerage & Statutory Charges Calculator")
         calc_c1, calc_c2, calc_c3, calc_c4 = st.columns(4)
@@ -1349,47 +1540,50 @@ if not st.session_state.logged_in:
     # PUBLIC PAGE F: SUPPORT PORTAL PAGE
     # ----------------------------------------------------------
     elif st.session_state.public_page == "Support":
-        render_html("""
+        render_html(f"""
         <div class="z-support-hero">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
-                <h3 style="margin:0; font-weight:800; color:#ffffff;">🎧 FinanceSight Support Portal</h3>
-                <span style="background:rgba(255,255,255,0.2); padding:5px 14px; border-radius:999px; font-size:0.82rem; font-weight:700; color:#ffffff;">Track Tickets</span>
+                <h3 style="margin:0; font-weight:800; color:#ffffff;">🎧 FinanceSight Help & Support Center</h3>
+                <span style="background:rgba(255,255,255,0.2); padding:5px 14px; border-radius:999px; font-size:0.82rem; font-weight:700; color:#ffffff;">Support Desk</span>
             </div>
             <div style="display:grid; grid-template-columns: 1.4fr 1fr; gap:28px;">
                 <div>
-                    <h2 style="font-weight:800; font-size:1.6rem; margin-bottom:12px; color:#ffffff;">Search for an answer or browse help topics to create a ticket</h2>
+                    <h2 style="font-weight:800; font-size:1.6rem; margin-bottom:12px; color:#ffffff;">Browse platform guides or submit a support ticket below</h2>
                     <div style="background:#ffffff; color:#0f172a; padding:12px 18px; border-radius:10px; font-size:0.9rem; margin-bottom:12px;">
-                        🔍 Eg: how do I activate F&O, why is my order getting rejected...
+                        🔍 Quick links to platform modules and user guides:
                     </div>
-                    <div style="font-size:0.82rem; color:#e2e8f0; text-decoration:underline;">
-                        Track account opening &nbsp;•&nbsp; Track segment activation &nbsp;•&nbsp; Intraday margins &nbsp;•&nbsp; FinanceSight user manual
+                    <div style="font-size:0.82rem; color:#e2e8f0;">
+                        <a href="?nav=Signup&r={nav_token}" target="_self" style="color:#ffffff; text-decoration:underline;">Create an account</a> &nbsp;•&nbsp;
+                        <a href="?nav=Terminal&r={nav_token}" target="_self" style="color:#ffffff; text-decoration:underline;">Open SuperChart</a> &nbsp;•&nbsp;
+                        <a href="?nav=Pricing&r={nav_token}" target="_self" style="color:#ffffff; text-decoration:underline;">Brokerage calculator</a> &nbsp;•&nbsp;
+                        <a href="?nav=Advisor&r={nav_token}" target="_self" style="color:#ffffff; text-decoration:underline;">Ask AI Advisor</a>
                     </div>
                 </div>
                 <div>
-                    <h4 style="font-weight:800; margin-bottom:10px; color:#ffffff;">📌 Featured Announcements</h4>
+                    <h4 style="font-weight:800; margin-bottom:10px; color:#ffffff;">📌 Platform Highlights</h4>
                     <ol style="font-size:0.88rem; line-height:1.8; color:#f1f5f9;">
-                        <li>Current Takeovers and Delisting – Watchlist Advisory</li>
-                        <li>Latest Intraday leverages – MIS & CO (5x Margin Active)</li>
+                        <li>Type any stock name in AI Advisor to switch charts automatically</li>
+                        <li>Intraday MIS orders use 5x margin leverage (20% margin required)</li>
                     </ol>
                 </div>
             </div>
         </div>
         """)
 
-        st.subheader("📋 To create a ticket, select a relevant topic")
+        st.subheader("📋 Browse Help Topics by Module")
         ticket_topics = [
-            ("➕ Account Opening", ["Online Account Opening", "Offline Account Opening", "Company, Partnership and HUF Account", "NRI Account Opening", "Charges at FinanceSight"]),
-            ("👤 Your FinanceSight Account", ["Login Credentials", "Account Modification and Segment Addition", "DP ID and bank details", "Your Profile", "Transfer and conversion of shares"]),
-            ("📊 Trading and Markets", ["Trading FAQs", "FinanceSight Web & Mobile", "Margins & Leverage", "Product and order types (CNC / MIS)", "Corporate actions"]),
-            ("💳 Funds & Banking", ["Adding Funds (Zero Fee UPI)", "Fund Withdrawal", "eMandates", "Adding Bank Accounts", "Instant IMPS Settlement"]),
-            ("💿 Portfolio & Reports", ["Reports & Tax P&L", "Ledger Statement", "Portfolio Analytics", "60 Day Challenge", "IPO & Corporate Bonds"]),
-            ("🪙 Mutual Funds & Wealth", ["Understanding Mutual Funds", "About FinanceSight Direct MF", "Buying and Selling Direct MF", "Starting an SIP", "Managing your Portfolio"])
+            ("➕ Account & Login", f"?nav=Signup&r={nav_token}", ["Creating a New User Account", "Using 1-Click Guest Demo Login", "Managing Profile & Credentials", "Virtual Margin Overview", "Platform Navigation Guide"]),
+            ("📊 Charting & Indicators", f"?nav=Terminal&r={nav_token}", ["Reading Japanese Candlesticks", "Using 20-SMA & 50-EMA Lines", "Understanding 14-Day RSI", "Volume Bar Color Coding", "Refreshing Live Market Data"]),
+            ("⚡ Paper Trading Orders", f"?nav=Positions&r={nav_token}", ["CNC Delivery vs MIS Intraday (5x)", "Placing Market & Limit Orders", "Tracking Open Positions M2M", "1-Click Position Square-Off", "Exporting Order Book to CSV"]),
+            ("💳 Virtual Funds & Wallet", f"?nav=Funds&r={nav_token}", ["Adding Virtual Cash via UPI Simulator", "Withdrawing Funds to Linked Bank", "Checking Available Margin", "Viewing Funding History Ledger", "Margin Release on Square-Off"]),
+            ("🤖 AI Advisor & ML Forecast", f"?nav=Advisor&r={nav_token}", ["How the 7-Day Random Forest Model Works", "Asking Custom Stock Questions", "Auto-Switching Stocks via Chat", "Understanding ATR Stop-Loss Levels", "Position Sizing Rules"]),
+            ("🧪 Strategy Backtesting", f"?nav=Apps&r={nav_token}", ["SMA 20 Golden Crossover Logic", "RSI < 35 Oversold Reversal Rule", "Setting Stop-Loss & Target Sliders", "Reading the Backtest Equity Curve", "Downloading Backtest Reports"])
         ]
         for row_i in range(0, 6, 3):
             t_cols = st.columns(3)
             for col_i in range(3):
-                t_head, t_links = ticket_topics[row_i + col_i]
-                links_html = "".join([f"<div style='color:#0284c7; font-size:0.84rem; margin:6px 0; font-weight:600;'>• {lnk}</div>" for lnk in t_links])
+                t_head, t_href, t_links = ticket_topics[row_i + col_i]
+                links_html = "".join([f"<a href='{t_href}' target='_self' style='display:block; color:#0284c7; font-size:0.84rem; margin:6px 0; font-weight:600; text-decoration:none;'>• {lnk}</a>" for lnk in t_links])
                 with t_cols[col_i]:
                     render_html(f"""
                     <div class="stock-card" style="height:100%;">
@@ -1399,11 +1593,11 @@ if not st.session_state.logged_in:
                     """)
 
         st.markdown("---")
-        st.markdown("#### 🎫 Submit a Live Support Ticket")
+        st.markdown("#### 🎫 Submit a Support Ticket")
         tk_c1, tk_c2, tk_c3 = st.columns(3)
         tk_cat = tk_c1.selectbox("Topic Category", [t[0] for t in ticket_topics])
-        tk_email = tk_c2.text_input("Your Email", value="support@financesight.in")
-        tk_subj = tk_c3.text_input("Issue Summary", placeholder="e.g., Need help activating F&O segment")
+        tk_email = tk_c2.text_input("Your Email", value="user@financesight.in")
+        tk_subj = tk_c3.text_input("Issue Summary", placeholder="e.g., Question about backtest CSV export")
         if st.button("✅ Create Support Ticket", type="primary"):
             if tk_subj:
                 c = conn.cursor()
@@ -1411,7 +1605,7 @@ if not st.session_state.logged_in:
                 c.execute("INSERT INTO support_tickets (ticket_id, timestamp, category, subject, email, status) VALUES (?, ?, ?, ?, ?, 'OPEN')",
                           (t_id, datetime.now().strftime("%Y-%m-%d %H:%M"), tk_cat, tk_subj, tk_email))
                 conn.commit()
-                st.success(f"🎉 Ticket **{t_id}** created! Our FinanceSight support desk will respond shortly.")
+                st.success(f"🎉 Ticket **{t_id}** logged in the database!")
         tk_df = pd.read_sql_query("SELECT ticket_id, timestamp, category, subject, email, status FROM support_tickets ORDER BY id DESC LIMIT 5", conn)
         if not tk_df.empty:
             st.dataframe(tk_df, use_container_width=True, hide_index=True)
@@ -1448,36 +1642,52 @@ render_html(f"""
 </div>
 """)
 
-# FINANCESIGHT DASHBOARD TOP NAVIGATION BAR
-nav_cols = st.columns([1.15, 0.95, 1.05, 1.05, 0.95, 1.15, 1.15, 1.05, 0.85])
-fs_pages = [
-    ("📊 Dashboard", "Dashboard"),
-    ("📜 Orders", "Orders"),
-    ("💼 Holdings", "Holdings"),
-    ("⚡ Positions", "Positions"),
-    ("💳 Funds", "Funds"),
-    ("📈 SuperChart", "Terminal"),
-    ("🤖 AI Advisor", "Advisor"),
-    ("🧩 Apps (Algo)", "Apps")
-]
-for idx, (label, p_key) in enumerate(fs_pages):
-    btn_type = "primary" if st.session_state.page == p_key else "secondary"
-    if nav_cols[idx].button(label, key=f"fs_nav_{p_key}", use_container_width=True, type=btn_type):
-        navigate_to(p_key)
-        st.rerun()
+# FINANCESIGHT DASHBOARD TOP NAVIGATION BAR (ALL CAPS + VECTOR SVG LOGOS)
+nav_cols = st.columns([1.45, 1.08, 0.92, 1.02, 1.05, 0.9, 1.15, 1.12, 0.92, 0.92])
+with nav_cols[0]:
+    render_html(f"""
+    <a href="?nav=Home&r=dash_{nav_token}" target="_self" class="fs-logo-link" title="Go to FinanceSight Home" style="font-size:1.15rem; padding-top:4px;">
+        {FINANCESIGHT_LOGO_SVG}
+        <span><span style="color:#387ed1;">FINANCE</span>SIGHT</span>
+    </a>
+    """)
 
-if nav_cols[8].button("🚪 Logout", use_container_width=True):
-    st.session_state.logged_in = False
-    st.session_state.public_page = "Home"
-    st.rerun()
+fs_pages = [
+    ("DASHBOARD", "Dashboard"),
+    ("ORDERS", "Orders"),
+    ("HOLDINGS", "Holdings"),
+    ("POSITIONS", "Positions"),
+    ("FUNDS", "Funds"),
+    ("SUPERCHART", "Terminal"),
+    ("AI ADVISOR", "Advisor"),
+    ("APPS", "Apps")
+]
+for idx, (label_caps, p_key) in enumerate(fs_pages):
+    active_cls = "active" if st.session_state.page == p_key else ""
+    svg_icon = NAV_SVGS[p_key]
+    with nav_cols[idx + 1]:
+        render_html(f"""
+        <a href="?nav={p_key}&u={st.session_state.username}&r={nav_token}" target="_self" class="fs-nav-btn {active_cls}">
+            {svg_icon}
+            <span>{label_caps}</span>
+        </a>
+        """)
+
+with nav_cols[9]:
+    render_html(f"""
+    <a href="?nav=Logout&r={nav_token}" target="_self" class="fs-nav-btn">
+        {NAV_SVGS['Logout']}
+        <span>LOGOUT</span>
+    </a>
+    """)
 
 # LEFT SIDEBAR: FINANCESIGHT MARKETWATCH + QUICK BUY / SELL
 user_bal = get_user_balance(st.session_state.username)
 st.sidebar.markdown(
-    f'<div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">'
+    f'<a href="?nav=Home&r=sb_{nav_token}" target="_self" style="text-decoration:none; display:flex; align-items:center; gap:10px; margin-bottom:8px;" title="Go to FinanceSight Home">'
     f'{FINANCESIGHT_LOGO_SVG}'
     f'<div><div class="fs-title" style="font-size:1.05rem;">{st.session_state.full_name}</div>'
-    f'<div class="fs-muted" style="font-size:0.75rem;">ID: @{st.session_state.username} • <b>FINANCESIGHT</b></div></div></div>',
+    f'<div class="fs-muted" style="font-size:0.75rem;">ID: @{st.session_state.username} • <b>FINANCESIGHT</b></div></div></a>',
     unsafe_allow_html=True
 )
 
@@ -1489,14 +1699,14 @@ st.sidebar.markdown(
     unsafe_allow_html=True
 )
 
-if st.sidebar.button("🔄 Refresh Live Market Data", use_container_width=True):
+if st.sidebar.button("Refresh Live Market Data", use_container_width=True):
     st.cache_data.clear()
     st.rerun()
 
 st.sidebar.subheader("📋 FinanceSight Marketwatch")
 catalog_options = [f"{k} — {v['name']}" for k, v in STOCK_CATALOG.items()]
 current_idx = list(STOCK_CATALOG.keys()).index(st.session_state.selected_ticker) if st.session_state.selected_ticker in STOCK_CATALOG else 0
-chosen_option = st.sidebar.selectbox("Search / Select Stock", catalog_options, index=current_idx)
+chosen_option = st.sidebar.selectbox("Search Stocks", catalog_options, index=current_idx)
 chosen_sym = chosen_option.split(" — ")[0]
 if chosen_sym != st.session_state.selected_ticker:
     st.session_state.selected_ticker = chosen_sym
@@ -1537,7 +1747,7 @@ for w_sym in ["RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "SBIN.NS", "AAP
     )
 
 # ==========================================================
-# 9. TAB 1: DASHBOARD (SUMMARY + INSTITUTIONAL STOCKS)
+# 9. TAB 1: DASHBOARD (SUMMARY + STOCKS)
 # ==========================================================
 if st.session_state.page == "Dashboard":
     port_df = pd.read_sql_query("SELECT ticker, shares, avg_price FROM portfolio WHERE username = ?", conn, params=(st.session_state.username,))
@@ -1558,7 +1768,7 @@ if st.session_state.page == "Dashboard":
     with h_c4:
         render_kpi("Feed Connectivity", "LIVE ONLINE" if online_status else "OFFLINE CACHED", "Real-Time Yahoo Finance API", "kpi-emerald" if online_status else "kpi-violet", "#10b981" if online_status else "#f43f5e")
 
-    st.subheader("🏢 FinanceSight Institutional Marketwatch Cards (Click to Launch Chart or AI)")
+    st.subheader("🏢 FinanceSight Marketwatch Cards (Click to Launch SuperChart or AI)")
     grid_tickers = ["RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "SBIN.NS", "ICICIBANK.NS", "AAPL", "NVDA", "TSLA"]
     for row_start in range(0, len(grid_tickers), 3):
         cols = st.columns(3)
@@ -1594,10 +1804,10 @@ if st.session_state.page == "Dashboard":
                     """)
                     
                     c_btn1, c_btn2 = st.columns(2)
-                    if c_btn1.button(f"📈 SuperChart", key=f"dash_chart_{sym}", use_container_width=True):
+                    if c_btn1.button(f"SUPERCHART", key=f"dash_chart_{sym}", use_container_width=True):
                         navigate_to("Terminal", sym)
                         st.rerun()
-                    if c_btn2.button(f"🤖 Ask AI Advisor", key=f"dash_ai_{sym}", use_container_width=True):
+                    if c_btn2.button(f"ASK AI ADVISOR", key=f"dash_ai_{sym}", use_container_width=True):
                         navigate_to("Advisor", sym)
                         st.rerun()
 
@@ -1626,11 +1836,11 @@ elif st.session_state.page == "Orders":
 # 11. TAB 3: HOLDINGS PAGE (CNC Delivery Holdings + Pie Chart)
 # ==========================================================
 elif st.session_state.page == "Holdings":
-    st.subheader("💼 FinanceSight CNC Equity Holdings (Long-Term Demat Portfolio)")
+    st.subheader("💼 FinanceSight CNC Equity Holdings (Long-Term Portfolio)")
     port_df = pd.read_sql_query("SELECT ticker, shares, avg_price FROM portfolio WHERE username = ?", conn, params=(st.session_state.username,))
     
     if port_df.empty:
-        st.info("Your Demat Holdings are currently empty. Place a **CNC (Delivery) BUY** order in the sidebar or SuperChart to build your portfolio!")
+        st.info("Your Holdings are currently empty. Place a **CNC (Delivery) BUY** order in the sidebar or SuperChart to build your portfolio!")
     else:
         port_df["LTP (Live Price)"] = port_df["ticker"].apply(lambda s: snapshots.get(s, {}).get("price", float(port_df.loc[port_df["ticker"] == s, "avg_price"].iloc[0])))
         port_df["Invested (₹)"] = port_df["shares"] * port_df["avg_price"]
@@ -1644,7 +1854,7 @@ elif st.session_state.page == "Holdings":
 
         pc1, pc2, pc3, pc4 = st.columns(4)
         with pc1:
-            render_kpi("Total Account Net Worth", f"₹{(user_bal + tot_cur):,.2f}", "Cash + Demat Holdings", "kpi-white", "#2563eb")
+            render_kpi("Total Account Net Worth", f"₹{(user_bal + tot_cur):,.2f}", "Cash + Holdings", "kpi-white", "#2563eb")
         with pc2:
             render_kpi("Total Investment", f"₹{tot_inv:,.2f}", f"{len(port_df)} Active Stocks", "kpi-cyan", "#0284c7")
         with pc3:
@@ -1654,13 +1864,13 @@ elif st.session_state.page == "Holdings":
 
         d_col1, d_col2 = st.columns([1.8, 1.2])
         with d_col1:
-            st.markdown("##### 📂 Demat Holdings Breakdown")
+            st.markdown("##### 📂 Holdings Breakdown")
             st.dataframe(port_df.round(2), use_container_width=True, hide_index=True)
             csv_hold = port_df.round(2).to_csv(index=False).encode("utf-8")
             st.download_button("📥 Download Holdings Statement (CSV)", data=csv_hold, file_name="financesight_holdings.csv", mime="text/csv")
         with d_col2:
             pie_fig = go.Figure(data=[go.Pie(labels=port_df["ticker"], values=port_df["Current Value (₹)"], hole=0.52)])
-            pie_fig.update_layout(title="Holdings Allocation (FinanceSight Console)", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=340, margin=dict(l=10, r=10, t=40, b=10))
+            pie_fig.update_layout(title="Holdings Allocation", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=340, margin=dict(l=10, r=10, t=40, b=10))
             st.plotly_chart(pie_fig, use_container_width=True)
 
 # ==========================================================
@@ -1695,8 +1905,8 @@ elif st.session_state.page == "Positions":
 # 13. TAB 5: FUNDS PAGE (Add Money UPI + Withdraw IMPS)
 # ==========================================================
 elif st.session_state.page == "Funds":
-    st.subheader("💳 FinanceSight Funds, Margin & Banking Gateway")
-    f_tab1, f_tab2 = st.tabs(["➕ Add Funds (Zero-Fee UPI / NetBanking)", "🏦 Withdraw Funds (Instant IMPS)"])
+    st.subheader("💳 FinanceSight Virtual Funds & Margin Gateway")
+    f_tab1, f_tab2 = st.tabs(["➕ Add Virtual Funds (UPI / NetBanking Simulator)", "🏦 Withdraw Funds (Bank Settlement Simulator)"])
 
     with f_tab1:
         dep_col1, dep_col2 = st.columns([1.4, 1.6])
@@ -1720,7 +1930,7 @@ elif st.session_state.page == "Funds":
     with f_tab2:
         w_col1, w_col2 = st.columns([1.4, 1.6])
         with w_col1:
-            render_kpi("Withdrawable Balance", f"₹{user_bal:,.2f}", "Instant IMPS Bank Settlement", "kpi-emerald", "#10b981")
+            render_kpi("Withdrawable Balance", f"₹{user_bal:,.2f}", "Instant Bank Settlement", "kpi-emerald", "#10b981")
             bank_name = st.selectbox("Linked Bank", ["State Bank of India (SBI)", "HDFC Bank", "ICICI Bank", "Axis Bank", "Punjab National Bank"])
             acc_num = st.text_input("Account Number", value="XXXX-XXXX-8821")
             ifsc_code = st.text_input("IFSC Code", value="SBIN0004821")
