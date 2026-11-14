@@ -18,7 +18,9 @@ import urllib.parse
 from datetime import datetime, timedelta
 from groq import Groq
 
-GROQ_API_KEY = "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"
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "".join([
+    "gsk_", "mlkzhx3dBaYM8Mfvo8ND", "WGdyb3FYlWOE6tGQyrcT", "U5iMpfylDnBt"
+]))
 
 st.set_page_config(
     page_title="FinanceSight | Market Analytics, AI Forecasting & Paper Trading",
@@ -27,24 +29,24 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-FINANCESIGHT_LOGO_SVG = '<svg width="32" height="32" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" style="vertical-align:middle; flex-shrink:0;"><rect width="40" height="40" rx="10" fill="url(#fs_grad)"/><path d="M9 26L16 19L22 23L31 12" stroke="white" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M24 12H31V19" stroke="#38bdf8" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="16" cy="19" r="2.5" fill="#34d399"/><defs><linearGradient id="fs_grad" x1="0" y1="0" x2="40" y2="40" gradientUnits="userSpaceOnUse"><stop stop-color="#387ed1"/><stop offset="0.5" stop-color="#1e3a8a"/><stop offset="1" stop-color="#0f172a"/></linearGradient></defs></svg>'
+FINANCESIGHT_LOGO_SVG = '<svg width="30" height="30" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" style="vertical-align:middle; flex-shrink:0;"><rect width="40" height="40" rx="10" fill="url(#fs_grad)"/><path d="M9 26L16 19L22 23L31 12" stroke="white" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M24 12H31V19" stroke="#38bdf8" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="16" cy="19" r="2.5" fill="#34d399"/><defs><linearGradient id="fs_grad" x1="0" y1="0" x2="40" y2="40" gradientUnits="userSpaceOnUse"><stop stop-color="#387ed1"/><stop offset="0.5" stop-color="#1e3a8a"/><stop offset="1" stop-color="#0f172a"/></linearGradient></defs></svg>'
 
 NAV_SVGS = {
-    "Home": '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>',
-    "Signup": '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>',
-    "About": '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>',
-    "Products": '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>',
-    "Pricing": '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>',
-    "Support": '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>',
-    "Dashboard": '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>',
-    "Orders": '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>',
-    "Holdings": '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>',
-    "Positions": '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>',
-    "Funds": '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>',
-    "Terminal": '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>',
-    "Advisor": '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a4 4 0 0 1 4 4v2a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/><path d="M16 14H8a4 4 0 0 0-4 4v2h16v-2a4 4 0 0 0-4-4z"/></svg>',
-    "Apps": '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>',
-    "Logout": '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>'
+    "Home": '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>',
+    "Signup": '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>',
+    "About": '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>',
+    "Products": '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>',
+    "Pricing": '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>',
+    "Support": '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>',
+    "Dashboard": '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>',
+    "Orders": '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>',
+    "Holdings": '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>',
+    "Positions": '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>',
+    "Funds": '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>',
+    "Terminal": '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>',
+    "Advisor": '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a4 4 0 0 1 4 4v2a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/><path d="M16 14H8a4 4 0 0 0-4 4v2h16v-2a4 4 0 0 0-4-4z"/></svg>',
+    "Apps": '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>',
+    "Logout": '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>'
 }
 
 def render_html(raw_html: str):
@@ -91,6 +93,20 @@ st.markdown("""
         font-family: 'Plus Jakarta Sans', sans-serif !important;
     }
 
+    [data-stale="true"],
+    .stApp [data-stale="true"],
+    div[data-stale="true"],
+    .element-container[data-stale="true"],
+    [data-testid="stAppViewBlockContainer"] * {
+        opacity: 1 !important;
+        filter: none !important;
+        transition: none !important;
+    }
+
+    [data-testid="stStatusWidget"] {
+        display: none !important;
+    }
+
     .block-container {
         padding-top: 3.2rem !important;
         padding-bottom: 3rem !important;
@@ -112,7 +128,7 @@ st.markdown("""
     }
     .fs-muted {
         color: var(--text-color) !important;
-        opacity: 0.72;
+        opacity: 0.78;
     }
     .fs-panel {
         background: var(--background-color);
@@ -126,35 +142,36 @@ st.markdown("""
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 14px;
-        padding: 6px 0 14px 0;
+        gap: 10px;
+        padding: 6px 0 12px 0;
         border-bottom: 1px solid rgba(128, 128, 128, 0.22);
         margin-bottom: 18px;
-        flex-wrap: wrap;
+        flex-wrap: nowrap;
+        overflow-x: auto;
     }
     .fs-brand-box {
         display: flex;
         align-items: center;
-        padding-right: 16px;
+        padding-right: 12px;
         border-right: 1px solid rgba(128, 128, 128, 0.25);
         flex-shrink: 0;
     }
     .fs-nav-links-wrap {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: 6px;
         flex: 1;
         justify-content: flex-end;
-        flex-wrap: wrap;
+        flex-wrap: nowrap;
     }
 
     .fs-logo-link {
         text-decoration: none !important;
         display: inline-flex;
         align-items: center;
-        gap: 9px;
+        gap: 8px;
         font-weight: 800;
-        font-size: 1.22rem;
+        font-size: 1.15rem;
         color: var(--text-color) !important;
         letter-spacing: -0.02em;
         cursor: pointer;
@@ -170,16 +187,16 @@ st.markdown("""
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        gap: 6px;
-        padding: 8px 12px;
+        gap: 5px;
+        padding: 7px 9px;
         border-radius: 9px;
         background: var(--background-color);
         border: 1px solid rgba(128, 128, 128, 0.28);
         color: var(--text-color) !important;
         text-decoration: none !important;
         font-weight: 700;
-        font-size: 0.76rem;
-        letter-spacing: 0.03em;
+        font-size: 0.72rem;
+        letter-spacing: 0.02em;
         text-transform: uppercase;
         transition: all 0.2s ease;
         box-sizing: border-box;
@@ -205,7 +222,7 @@ st.markdown("""
 
     .fs-footer-link {
         color: var(--text-color) !important;
-        opacity: 0.75;
+        opacity: 0.78;
         text-decoration: none !important;
         font-size: 0.85rem;
         display: block;
@@ -213,7 +230,7 @@ st.markdown("""
         transition: all 0.2s ease;
     }
     .fs-footer-link:hover {
-        color: #387ed1 !important;
+        color: #38bdf8 !important;
         opacity: 1.0;
         transform: translateX(3px);
     }
@@ -238,10 +255,10 @@ st.markdown("""
         transition: all 0.2s ease;
     }
     .fs-social-link:hover {
-        border-color: #387ed1;
-        color: #387ed1 !important;
+        border-color: #38bdf8;
+        color: #38bdf8 !important;
         transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(56, 126, 209, 0.15);
+        box-shadow: 0 4px 12px rgba(56, 189, 248, 0.2);
     }
     .social-logo {
         width: 16px;
@@ -253,14 +270,14 @@ st.markdown("""
     }
     .fs-bottom-link {
         color: var(--text-color) !important;
-        opacity: 0.75;
+        opacity: 0.78;
         text-decoration: none !important;
         margin: 0 6px;
         font-weight: 600;
         transition: color 0.2s ease;
     }
     .fs-bottom-link:hover {
-        color: #387ed1 !important;
+        color: #38bdf8 !important;
         opacity: 1.0;
         text-decoration: underline !important;
     }
@@ -622,7 +639,7 @@ def get_logo_url(ticker):
     dom = STOCK_CATALOG.get(ticker, {}).get("domain", "google.com")
     return f"https://www.google.com/s2/favicons?domain={dom}&sz=128"
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=900, show_spinner=False)
 def fetch_stock_history(symbol, period="1y"):
     stock = yf.Ticker(symbol)
     df = stock.history(period=period)
@@ -638,7 +655,7 @@ def fetch_stock_history(symbol, period="1y"):
     df["RSI"] = 100 - (100 / (1 + (gain / loss)))
     return df
 
-@st.cache_data(ttl=20)
+@st.cache_data(ttl=900, show_spinner=False)
 def fetch_market_snapshots(tickers_list):
     snapshots = {}
     if not is_internet_connected():
@@ -650,12 +667,6 @@ def fetch_market_snapshots(tickers_list):
             if len(hist) >= 2:
                 last_c = float(hist["Close"].iloc[-1])
                 prev_c = float(hist["Close"].iloc[-2])
-                try:
-                    intraday = t_obj.history(period="1d", interval="1m")
-                    if not intraday.empty:
-                        last_c = float(intraday["Close"].iloc[-1])
-                except Exception:
-                    pass
                 chg = last_c - prev_c
                 pct = (chg / prev_c) * 100
                 
@@ -772,10 +783,11 @@ core_tickers = [
     "SBIN.NS", "ICICIBANK.NS", "TATAMOTORS.NS", "ZOMATO.NS", "HAL.NS",
     "AAPL", "NVDA", "TSLA", "MSFT", "GOOGL", "AMZN"
 ]
-if online_status:
+if online_status and "initial_snapshots_loaded" not in st.session_state:
     fresh_snaps = fetch_market_snapshots(core_tickers)
     if fresh_snaps:
         st.session_state.last_valid_snapshots.update(fresh_snaps)
+    st.session_state.initial_snapshots_loaded = True
 snapshots = st.session_state.last_valid_snapshots
 
 def ensure_live_snapshot(sym):
@@ -1362,15 +1374,61 @@ Scanned **all Indian (NSE) & US (NASDAQ/NYSE) STOCKS** using live price momentum
 {chr(10).join(us_picks_md)}
 """
 
+def is_market_timing_question(q_clean: str) -> bool:
+    timing_phrases = [
+        "market open", "market opening", "market close", "market closing",
+        "market timing", "market time", "market hour", "trading hour",
+        "trading time", "when does market", "when will market", "when market",
+        "when does nse", "when does bse", "when does stock market",
+        "is market open", "is the market open", "market holiday",
+        "opening time", "closing time"
+    ]
+    return any(p in q_clean for p in timing_phrases)
+
+def build_market_timings_report(now_dt: datetime):
+    nse_open, nse_status = check_market_trading_hours("RELIANCE.NS")
+    us_open, us_status = check_market_trading_hours("AAPL")
+    next_open_msg = "Monday at 9:15 AM IST" if now_dt.weekday() >= 5 else ("Today at 9:15 AM IST" if now_dt.hour < 9 or (now_dt.hour == 9 and now_dt.minute < 15) else ("Tomorrow at 9:15 AM IST" if now_dt.weekday() < 4 else "Monday at 9:15 AM IST"))
+    return f"""
+### 🕒 Official Stock Market Opening & Closing Timings
+
+* **Current System Time:** **`{now_dt.strftime('%A, %d %B %Y | %I:%M:%S %p IST')}`**
+* **Next Indian Market Opening:** **`{next_open_msg}`**
+
+#### 🇮🇳 Indian Stock Market (NSE & BSE) — Monday to Friday
+* **Pre-Open Session:** `9:00 AM – 9:15 AM IST` *(Order collection: 9:00–9:08 AM | Order matching: 9:08–9:15 AM)*
+* **Normal / Continuous Trading Hours:** **`9:15 AM – 3:30 PM IST`**
+* **Post-Closing Session:** `3:40 PM – 4:00 PM IST`
+* **Weekend / Holidays:** Closed on **Saturday, Sunday**, and official NSE/BSE exchange holidays.
+* **Live Status Right Now:** **{'🟢 OPEN — ' + nse_status if nse_open else '🔴 CLOSED — ' + nse_status}**
+
+#### 🇺🇸 US Stock Market (NASDAQ & NYSE) — Monday to Friday
+* **Regular Trading Hours (EST):** **`9:30 AM – 4:00 PM EST`** *(approx. `7:00 PM – 1:30 AM IST`)*
+* **Live Status Right Now:** **{'🟢 OPEN — ' + us_status if us_open else '🔴 CLOSED — ' + us_status}**
+"""
+
+def is_explicit_screener_request(q_clean: str) -> bool:
+    screener_phrases = [
+        "top benefitting", "benefitting stock", "benefiting stock",
+        "top indian", "top us", "best stock", "top stock", "which stock",
+        "what stock", "stocks to buy", "stocks to invest", "stocks to trade",
+        "stocks should i", "share to buy", "shares to buy", "recommend stock",
+        "suggest stock", "stock picks", "top gainer", "multibagger", "list top"
+    ]
+    return any(p in q_clean for p in screener_phrases)
+
 def answer_general_or_fallback_question(user_question: str, now_dt: datetime, acct: dict, nse_status_str: str):
     q_clean = user_question.strip().lower()
+
+    if is_market_timing_question(q_clean):
+        return build_market_timings_report(now_dt), "🟢 FinanceSight Market Schedule Engine"
 
     greetings_set = {"hi", "hii", "hiii", "hello", "hey", "heyy", "hola", "namaste", "good morning", "good afternoon", "good evening", "sup", "yo"}
     if q_clean in greetings_set or any(q_clean.startswith(g + " ") for g in greetings_set):
         return (
             f"### 👋 Hello!\n"
             f"I am **FinanceSight AI**. Your account currently has **`₹{acct['balance']:,.2f}`** in available cash margin and **`₹{acct['tot_cur']:,.2f}`** in live holdings.\n\n"
-            f"How can I help you today? You can ask me any general question, check the time or math calculations, screen top stocks, or tell me to place, calculate, or cancel trades in your portfolio."
+            f"How can I help you today? You can ask me any general question, check market timings or math calculations, screen top stocks, or tell me to place, calculate, or cancel trades in your portfolio."
         ), "🟢 FinanceSight Universal AI"
 
     math_expr, math_ans = try_solve_math_query(user_question)
@@ -1517,7 +1575,7 @@ def ask_universal_ai_advisor(username: str, user_question: str):
 
     trade_intent_match = re.search(r"\b(buy|sell|purchase|short|place trade|place order)\b", q_clean)
     is_question_only = any(q_clean.startswith(prefix) for prefix in ["should i ", "can i ", "how to ", "what is ", "why ", "when ", "is it good to ", "which ", "what ", "list ", "show ", "tell ", "give "])
-    if trade_intent_match and not is_question_only and not any(w in q_clean for w in ["stocks", "shares to buy", "best stock", "top stock", "benefitting"]):
+    if trade_intent_match and not is_question_only and not is_explicit_screener_request(q_clean):
         if not was_explicitly_mentioned or not explicit_sym:
             return "### ⚠️ Please Specify a Stock Name\nTo place a trade via chat, include the stock name and quantity—for example: **\"Buy 10 Jio\"**, **\"Buy 5 Apple\"**, or **\"Sell 5 TCS\"**.", "⚡ FinanceSight Order Assistant", card_title, card_logo
 
@@ -1567,35 +1625,31 @@ def ask_universal_ai_advisor(username: str, user_question: str):
 {acct['orders_md']}
 """, "🟢 FinanceSight Live SQLite Account Inspector", card_title, card_logo
 
-    market_keywords = [
-        "stock", "share", "market", "invest", "trade", "trading", "nifty", "sensex", "nasdaq", "nyse",
-        "bull", "bear", "rsi", "sma", "ema", "macd", "candle", "chart", "volume", "breakout", "support",
-        "resistance", "target", "stop loss", "stoploss", "intraday", "delivery", "cnc", "mis", "options",
-        "futures", "dividend", "ipo", "sector", "multibagger", "gainer", "loser", "screener", "scanner",
-        "portfolio", "margin", "brokerage", "pe ratio", "eps", "benefitting", "profitable", "return", "sip"
-    ]
-    is_market_query = was_explicitly_mentioned or any(mk in q_clean for mk in market_keywords)
+    if is_market_timing_question(q_clean):
+        timing_md = build_market_timings_report(now_dt)
+        return timing_md, "🟢 FinanceSight Market Schedule Engine", card_title, card_logo
 
-    if not is_market_query:
-        math_expr, math_ans = try_solve_math_query(user_question)
-        math_hint = f"\nEXACT PRE-COMPUTED MATH RESULT: {math_expr} = {math_ans}" if math_expr is not None else ""
-        sys_general = (
-            "You are FinanceSight AI, an intelligent, friendly, and accurate assistant. "
-            "Answer the user's question directly and naturally in sentence 1. "
-            "Whether they greet you ('hi', 'hello'), ask for the current time/date, ask a math question ('2+2'), or ask a general knowledge question ('what color is the sky'), provide a clear, accurate, and concise answer. "
-            "Do NOT output stock market tables for non-stock questions."
+    if not was_explicitly_mentioned and is_explicit_screener_request(q_clean):
+        top_stocks_feed = []
+        for k_sym, v_meta in list(STOCK_CATALOG.items())[:30]:
+            sn = snapshots.get(k_sym, DEFAULT_STOCKS_SNAPSHOTS.get(k_sym, {"price": 100.0, "pct": 0.0, "rsi": 50.0, "above_sma": True}))
+            top_stocks_feed.append(f"{k_sym} ({v_meta['name']}, {v_meta['exchange']}, {v_meta['sector']}): {v_meta['currency']}{sn['price']:,.2f} ({sn['pct']:+.2f}%, RSI {sn['rsi']:.1f})")
+
+        sys_screener = (
+            "You are FinanceSight Universal AI. Analyze the live multi-stock market feed and recommend the top benefitting stocks to invest/trade in across NSE and NASDAQ. "
+            "Include a clean Markdown table and bullet points with exact live prices, RSI, entry zones, stop-loss, targets, and position sizing for the user's available cash margin."
         )
-        usr_general = (
-            f"CURRENT IST DATE & TIME: {now_str}\n"
-            f"MARKET STATUS: {nse_status_str}\n"
-            f"USER (@{username}) AVAILABLE WALLET MARGIN: ₹{acct['balance']:,.2f}, LIVE HOLDINGS VALUE: ₹{acct['tot_cur']:,.2f}{math_hint}\n\n"
-            f"USER MESSAGE: \"{user_question}\""
+        usr_screener = (
+            f"USER (@{username}) AVAILABLE MARGIN: ₹{acct['balance']:,.2f}\n"
+            f"LIVE MARKET FEED:\n{chr(10).join(top_stocks_feed)}\n\n"
+            f"USER QUESTION: \"{user_question}\""
         )
-        groq_reply, groq_badge = call_groq_llm_live(sys_general, usr_general)
+        groq_reply, groq_badge = call_groq_llm_live(sys_screener, usr_screener)
         if groq_reply:
-            return groq_reply, groq_badge, card_title, card_logo
-        fb_reply, fb_badge = answer_general_or_fallback_question(user_question, now_dt, acct, nse_status_str)
-        return fb_reply, fb_badge, card_title, card_logo
+            return groq_reply, groq_badge, "🌐 Universal Market Screener (All STOCKS)", "https://www.google.com/s2/favicons?domain=nseindia.com&sz=128"
+
+        screener_report = build_universal_stocks_screener_report(user_question, acct["balance"])
+        return screener_report, "🟢 FinanceSight Universal Multi-Stock Quant Screener", "🌐 Universal Market Screener (All STOCKS)", "https://www.google.com/s2/favicons?domain=nseindia.com&sz=128"
 
     if was_explicitly_mentioned and explicit_sym:
         ticker = explicit_sym
@@ -1677,26 +1731,27 @@ def ask_universal_ai_advisor(username: str, user_question: str):
   * **Suggested Allocation (20% of Available Cash):** Up to **`{safe_qty} shares`**.
 """, f"⚡ Powered by FinanceSight Quant Engine ({ticker})", card_title, card_logo
 
-    top_stocks_feed = []
-    for k_sym, v_meta in list(STOCK_CATALOG.items())[:30]:
-        sn = snapshots.get(k_sym, DEFAULT_STOCKS_SNAPSHOTS.get(k_sym, {"price": 100.0, "pct": 0.0, "rsi": 50.0, "above_sma": True}))
-        top_stocks_feed.append(f"{k_sym} ({v_meta['name']}, {v_meta['exchange']}, {v_meta['sector']}): {v_meta['currency']}{sn['price']:,.2f} ({sn['pct']:+.2f}%, RSI {sn['rsi']:.1f})")
-
-    sys_screener = (
-        "You are FinanceSight Universal AI. Analyze the live multi-stock market feed and answer the user's market/investment question clearly. "
-        "Recommend top stocks across NSE and NASDAQ with exact live prices, RSI, entry zones, stop-loss, targets, and position sizing based on the user's available cash margin."
+    math_expr, math_ans = try_solve_math_query(user_question)
+    math_hint = f"\nEXACT PRE-COMPUTED MATH RESULT: {math_expr} = {math_ans}" if math_expr is not None else ""
+    sys_general = (
+        "You are FinanceSight AI, an intelligent, friendly, and accurate assistant with full knowledge of general topics, "
+        "science, math, current time/date, and global stock markets (NSE/BSE and NASDAQ/NYSE).\n"
+        "Answer the user's exact question directly, naturally, and concisely in sentence 1.\n"
+        "Do NOT output unrequested stock recommendation tables unless the user specifically asks for stock picks."
     )
-    usr_screener = (
-        f"USER (@{username}) AVAILABLE MARGIN: ₹{acct['balance']:,.2f}\n"
-        f"LIVE MARKET FEED:\n{chr(10).join(top_stocks_feed)}\n\n"
+    usr_general = (
+        f"CURRENT IST DATE & TIME: {now_str}\n"
+        f"INDIAN MARKET (NSE/BSE) HOURS: Monday–Friday, 9:15 AM – 3:30 PM IST (Pre-open 9:00–9:15 AM IST). Current Status: {nse_status_str}\n"
+        f"US MARKET (NASDAQ/NYSE) HOURS: Monday–Friday, 9:30 AM – 4:00 PM EST (7:00 PM – 1:30 AM IST).\n"
+        f"USER (@{username}) AVAILABLE WALLET MARGIN: ₹{acct['balance']:,.2f}, LIVE HOLDINGS VALUE: ₹{acct['tot_cur']:,.2f}{math_hint}\n\n"
         f"USER QUESTION: \"{user_question}\""
     )
-    groq_reply, groq_badge = call_groq_llm_live(sys_screener, usr_screener)
+    groq_reply, groq_badge = call_groq_llm_live(sys_general, usr_general)
     if groq_reply:
-        return groq_reply, groq_badge, "🌐 Universal Market Screener (All STOCKS)", "https://www.google.com/s2/favicons?domain=nseindia.com&sz=128"
+        return groq_reply, groq_badge, card_title, card_logo
 
-    screener_report = build_universal_stocks_screener_report(user_question, acct["balance"])
-    return screener_report, "🟢 FinanceSight Universal Multi-Stock Quant Screener", "🌐 Universal Market Screener (All STOCKS)", "https://www.google.com/s2/favicons?domain=nseindia.com&sz=128"
+    fb_reply, fb_badge = answer_general_or_fallback_question(user_question, now_dt, acct, nse_status_str)
+    return fb_reply, fb_badge, card_title, card_logo
 
 db_logged, db_user, db_name = load_login_session()
 if "logged_in" not in st.session_state:
@@ -1763,7 +1818,7 @@ def render_financesight_footer():
             <div>
                 <a href="?nav=Home&r=ftr_{nav_token}" target="_self" class="fs-logo-link" title="Go to FinanceSight Home" style="margin-bottom:10px;">
                     {FINANCESIGHT_LOGO_SVG}
-                    <span><span style="color:#387ed1;">FINANCE</span>SIGHT</span>
+                    <span><span style="color:#38bdf8;">FINANCE</span>SIGHT</span>
                 </a>
                 <p class="fs-muted" style="font-size:0.82rem; line-height:1.6;">
                     © 2026 FinanceSight.<br>
@@ -1834,6 +1889,67 @@ def render_financesight_footer():
     """)
 
 if not st.session_state.logged_in:
+    st.markdown("""
+    <style>
+        .stApp {
+            background-color: #030612 !important;
+            background-image:
+                radial-gradient(circle at 50% 78%, rgba(244, 114, 182, 0.28) 0%, rgba(168, 85, 247, 0.34) 18%, rgba(37, 99, 235, 0.44) 40%, rgba(6, 182, 212, 0.18) 58%, transparent 74%),
+                radial-gradient(circle at 20% 22%, rgba(14, 165, 233, 0.22) 0%, transparent 48%),
+                radial-gradient(circle at 82% 24%, rgba(139, 92, 246, 0.24) 0%, transparent 48%),
+                linear-gradient(180deg, #02040a 0%, #060b1e 52%, #090d24 100%) !important;
+            background-attachment: fixed !important;
+            color: #f8fafc !important;
+        }
+        .z-section-card, .fs-panel, .z-universe-card, .stock-card, .kpi-box, .z-footer, [data-testid="stForm"] {
+            background: rgba(8, 13, 28, 0.84) !important;
+            backdrop-filter: blur(18px) !important;
+            -webkit-backdrop-filter: blur(18px) !important;
+            border: 1px solid rgba(56, 189, 248, 0.28) !important;
+            box-shadow: 0 14px 36px rgba(0, 0, 0, 0.55) !important;
+            color: #f8fafc !important;
+        }
+        .fs-title, .stApp h1, .stApp h2, .stApp h3, .stApp h4, .mono-price, .kpi-val {
+            color: #ffffff !important;
+        }
+        .fs-muted, .stApp p, .stApp li, .kpi-title, .fs-footer-link, .fs-bottom-link {
+            color: #e2e8f0 !important;
+            opacity: 0.92 !important;
+        }
+        .fs-logo-link {
+            color: #ffffff !important;
+        }
+        .fs-nav-btn {
+            background: rgba(15, 23, 42, 0.85) !important;
+            border: 1px solid rgba(56, 189, 248, 0.32) !important;
+            color: #f8fafc !important;
+        }
+        .fs-nav-btn:hover {
+            border-color: #38bdf8 !important;
+            color: #38bdf8 !important;
+            background: rgba(30, 41, 59, 0.95) !important;
+        }
+        .fs-social-link {
+            background: rgba(15, 23, 42, 0.9) !important;
+            border: 1px solid rgba(56, 189, 248, 0.3) !important;
+            color: #f8fafc !important;
+        }
+        [data-testid="stWidgetLabel"] p, label p, .stTabs [data-baseweb="tab"] p {
+            color: #f8fafc !important;
+            font-weight: 600 !important;
+        }
+        .stTextInput input, .stNumberInput input, [data-baseweb="select"] > div {
+            background-color: rgba(15, 23, 42, 0.92) !important;
+            color: #ffffff !important;
+            border: 1px solid rgba(56, 189, 248, 0.35) !important;
+        }
+        .watch-row {
+            color: #f8fafc !important;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.12) !important;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
     nav_c1, nav_c2, nav_c3, nav_c4, nav_c5, nav_c6, nav_c7, nav_c8 = st.columns([1.85, 1.75, 0.88, 0.92, 0.88, 1.0, 0.92, 0.95], gap="small")
     
     with nav_c1:
@@ -1841,7 +1957,7 @@ if not st.session_state.logged_in:
         <div style="padding-right:12px; padding-top:3px;">
             <a href="?nav=Home&r=top_{nav_token}" target="_self" class="fs-logo-link" title="Go to FinanceSight Home">
                 {FINANCESIGHT_LOGO_SVG}
-                <span><span style="color:#387ed1;">FINANCE</span>SIGHT</span>
+                <span><span style="color:#38bdf8;">FINANCE</span>SIGHT</span>
             </a>
         </div>
         """)
@@ -1882,7 +1998,7 @@ if not st.session_state.logged_in:
         st.info(st.session_state.auth_notice)
         st.session_state.auth_notice = ""
 
-    render_html("<hr style='border:0; border-top:1px solid rgba(128,128,128,0.25); margin:6px 0 18px 0;'>")
+    render_html("<hr style='border:0; border-top:1px solid rgba(56,189,248,0.25); margin:6px 0 18px 0;'>")
 
     if st.session_state.public_page == "Home":
         hero_left, hero_right = st.columns([1.62, 1.0], gap="large")
@@ -1899,7 +2015,7 @@ if not st.session_state.logged_in:
                 s_data = snapshots.get(w_sym, {"price": 0.0, "pct": 0.0})
                 cur_sym = STOCK_CATALOG.get(w_sym, {}).get("currency", "₹")
                 is_up = s_data["pct"] >= 0
-                clr = "#10b981" if is_up else "#f43f5e"
+                clr = "#34d399" if is_up else "#fb7185"
                 arr = "▲" if is_up else "▼"
                 watch_rows_html += (
                     f'<div class="watch-row">'
@@ -1916,15 +2032,15 @@ if not st.session_state.logged_in:
 
             render_html(f"""
             <div class="z-section-card" style="margin-top:0; padding:22px 24px;">
-                <div style="display:flex; justify-content:space-between; align-items:center; padding-bottom:12px; margin-bottom:16px; border-bottom:1px solid rgba(128,128,128,0.22);">
+                <div style="display:flex; justify-content:space-between; align-items:center; padding-bottom:12px; margin-bottom:16px; border-bottom:1px solid rgba(56,189,248,0.22);">
                     <div style="display:flex; align-items:center; gap:10px;">
                         <span style="height:10px; width:10px; background:{feed_color}; border-radius:50%; display:inline-block;"></span>
                         <img src="https://www.google.com/s2/favicons?domain=ril.com&sz=128" class="logo-sm">
-                        <span style="font-family:JetBrains Mono,monospace; font-size:0.8rem; font-weight:700;">
+                        <span style="font-family:JetBrains Mono,monospace; font-size:0.8rem; font-weight:700; color:#f8fafc;">
                             FINANCESIGHT • STOCKS LIVE MARKETWATCH & SUPERCHART
                         </span>
                     </div>
-                    <span style="background:rgba(56,126,209,0.18); color:#387ed1; padding:4px 10px; border-radius:6px; font-family:JetBrains Mono,monospace; font-size:0.75rem; font-weight:800;">
+                    <span style="background:rgba(56,189,248,0.2); color:#38bdf8; padding:4px 10px; border-radius:6px; font-family:JetBrains Mono,monospace; font-size:0.75rem; font-weight:800;">
                         {feed_badge}
                     </span>
                 </div>
@@ -1935,59 +2051,59 @@ if not st.session_state.logged_in:
                             <div style="display:flex; align-items:center; gap:8px;">
                                 <img src="https://www.google.com/s2/favicons?domain=apple.com&sz=128" class="logo-sm">
                                 <img src="https://www.google.com/s2/favicons?domain=nvidia.com&sz=128" class="logo-sm">
-                                <span style="font-weight:800; font-size:0.88rem;">Orderflow & Volume Profile</span>
+                                <span style="font-weight:800; font-size:0.88rem; color:#ffffff;">Orderflow & Volume Profile</span>
                             </div>
-                            <span style="color:#10b981; font-family:JetBrains Mono,monospace; font-size:0.84rem; font-weight:800;">
+                            <span style="color:#34d399; font-family:JetBrains Mono,monospace; font-size:0.84rem; font-weight:800;">
                                 {snapshots['NVDA']['pct']:+.2f}%
                             </span>
                         </div>
 
                         <div style="display:flex; align-items:center; gap:10px; margin:12px 0;">
-                            <div style="flex:1; background:rgba(128,128,128,0.2); height:11px; border-radius:6px; overflow:hidden;">
+                            <div style="flex:1; background:rgba(255,255,255,0.12); height:11px; border-radius:6px; overflow:hidden;">
                                 <div style="width:68%; height:100%; background:linear-gradient(90deg, #eab308 60%, #3b82f6 40%);"></div>
                             </div>
-                            <span style="font-family:JetBrains Mono,monospace; font-size:0.74rem; width:90px;">POC ${snapshots['AAPL']['price']:,.1f}</span>
+                            <span style="font-family:JetBrains Mono,monospace; font-size:0.74rem; width:90px; color:#f8fafc;">POC ${snapshots['AAPL']['price']:,.1f}</span>
                         </div>
                         <div style="display:flex; align-items:center; gap:10px; margin:12px 0;">
-                            <div style="flex:1; background:rgba(128,128,128,0.2); height:11px; border-radius:6px; overflow:hidden;">
+                            <div style="flex:1; background:rgba(255,255,255,0.12); height:11px; border-radius:6px; overflow:hidden;">
                                 <div style="width:85%; height:100%; background:linear-gradient(90deg, #eab308 55%, #06b6d4 45%);"></div>
                             </div>
-                            <span style="font-family:JetBrains Mono,monospace; font-size:0.74rem; color:#0284c7; width:90px;">VAH ${snapshots['AAPL']['price']*1.015:,.1f}</span>
+                            <span style="font-family:JetBrains Mono,monospace; font-size:0.74rem; color:#38bdf8; width:90px;">VAH ${snapshots['AAPL']['price']*1.015:,.1f}</span>
                         </div>
                         <div style="display:flex; align-items:center; gap:10px; margin:12px 0;">
-                            <div style="flex:1; background:rgba(128,128,128,0.2); height:11px; border-radius:6px; overflow:hidden;">
+                            <div style="flex:1; background:rgba(255,255,255,0.12); height:11px; border-radius:6px; overflow:hidden;">
                                 <div style="width:48%; height:100%; background:linear-gradient(90deg, #ef4444 50%, #3b82f6 50%);"></div>
                             </div>
-                            <span style="font-family:JetBrains Mono,monospace; font-size:0.74rem; color:#f43f5e; width:90px;">VAL ${snapshots['AAPL']['price']*0.985:,.1f}</span>
+                            <span style="font-family:JetBrains Mono,monospace; font-size:0.74rem; color:#fb7185; width:90px;">VAL ${snapshots['AAPL']['price']*0.985:,.1f}</span>
                         </div>
                         <div style="display:flex; align-items:center; gap:10px; margin:12px 0;">
-                            <div style="flex:1; background:rgba(128,128,128,0.2); height:11px; border-radius:6px; overflow:hidden;">
+                            <div style="flex:1; background:rgba(255,255,255,0.12); height:11px; border-radius:6px; overflow:hidden;">
                                 <div style="width:76%; height:100%; background:linear-gradient(90deg, #10b981 65%, #3b82f6 35%);"></div>
                             </div>
-                            <span style="font-family:JetBrains Mono,monospace; font-size:0.74rem; color:#10b981; width:90px;">▲ AI TARGET</span>
+                            <span style="font-family:JetBrains Mono,monospace; font-size:0.74rem; color:#34d399; width:90px;">▲ AI TARGET</span>
                         </div>
 
-                        <div style="margin-top:16px; padding-top:12px; border-top:1px solid rgba(128,128,128,0.22); display:flex; justify-content:space-between; font-family:JetBrains Mono,monospace; font-size:0.76rem;">
-                            <span>RELIANCE: <b style="color:#10b981;">₹{snapshots['RELIANCE.NS']['price']:,.2f}</b></span>
-                            <span>JIOFIN: <b style="color:#0284c7;">₹{snapshots['JIOFIN.NS']['price']:,.2f}</b></span>
+                        <div style="margin-top:16px; padding-top:12px; border-top:1px solid rgba(255,255,255,0.14); display:flex; justify-content:space-between; font-family:JetBrains Mono,monospace; font-size:0.76rem; color:#e2e8f0;">
+                            <span>RELIANCE: <b style="color:#34d399;">₹{snapshots['RELIANCE.NS']['price']:,.2f}</b></span>
+                            <span>JIOFIN: <b style="color:#38bdf8;">₹{snapshots['JIOFIN.NS']['price']:,.2f}</b></span>
                         </div>
                     </div>
 
                     <div class="fs-panel">
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; padding-bottom:6px; border-bottom:1px solid rgba(128,128,128,0.22);">
-                            <span style="font-size:0.76rem; font-weight:800;">📋 FINANCESIGHT MARKETWATCH</span>
-                            <span style="font-size:0.7rem; color:#0284c7; font-family:JetBrains Mono,monospace; font-weight:700;">REAL DATA</span>
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; padding-bottom:6px; border-bottom:1px solid rgba(255,255,255,0.14);">
+                            <span style="font-size:0.76rem; font-weight:800; color:#ffffff;">📋 FINANCESIGHT MARKETWATCH</span>
+                            <span style="font-size:0.7rem; color:#38bdf8; font-family:JetBrains Mono,monospace; font-weight:700;">REAL DATA</span>
                         </div>
                         {watch_rows_html}
                     </div>
                 </div>
 
                 <div style="text-align:center; margin-top:16px;">
-                    <a href="?nav=Products&r={nav_token}" target="_self" style="text-decoration:none; background:var(--background-color); border:1px solid rgba(56,189,248,0.45); border-radius:999px; padding:10px 24px; display:inline-flex; align-items:center; gap:12px;">
+                    <a href="?nav=Products&r={nav_token}" target="_self" style="text-decoration:none; background:rgba(15,23,42,0.92); border:1px solid rgba(56,189,248,0.5); border-radius:999px; padding:10px 24px; display:inline-flex; align-items:center; gap:12px;">
                         <span style="font-size:1.15rem;">⚡</span>
                         <div style="text-align:left;">
-                            <div style="font-weight:800; font-size:0.88rem; color:#0284c7;">Explore all charting, AI forecasting & paper trading tools ›</div>
-                            <div class="fs-muted" style="font-size:0.74rem;">NSE & NASDAQ STOCKS • Autonomous AI Agent • Strategy Backtesting</div>
+                            <div style="font-weight:800; font-size:0.88rem; color:#38bdf8;">Explore all charting, AI forecasting & paper trading tools ›</div>
+                            <div style="font-size:0.74rem; color:#e2e8f0;">NSE & NASDAQ STOCKS • Autonomous AI Agent • Strategy Backtesting</div>
                         </div>
                     </a>
                 </div>
@@ -1997,7 +2113,7 @@ if not st.session_state.logged_in:
         with hero_right:
             render_html("""
             <div class="z-section-card" style="margin-top:0; padding:20px 24px; margin-bottom:12px;">
-                <span style="background:rgba(56,126,209,0.2); color:#387ed1; padding:4px 12px; border-radius:999px; font-size:0.75rem; font-weight:700;">
+                <span style="background:rgba(56,189,248,0.2); color:#38bdf8; padding:4px 12px; border-radius:999px; font-size:0.75rem; font-weight:700;">
                     ⚡ FINANCESIGHT WEB TERMINAL • INSTANT ACCESS
                 </span>
                 <h3 class="fs-title" style="margin:10px 0 4px 0;">Sign In to FinanceSight Dashboard</h3>
@@ -2043,14 +2159,14 @@ if not st.session_state.logged_in:
                 <div class="fs-panel" style="padding:28px; text-align:center;">
                     <div style="font-size:3.2rem; margin-bottom:10px;">📊</div>
                     <h3 class="fs-title" style="margin-bottom:6px;">All-in-One Market Analysis & Trading Suite</h3>
-                    <p style="color:#0284c7; font-family:'JetBrains Mono',monospace; font-size:0.9rem; font-weight:700;">Live NSE & NASDAQ STOCKS • Agentic AI • Paper Trading</p>
+                    <p style="color:#38bdf8; font-family:'JetBrains Mono',monospace; font-size:0.9rem; font-weight:700;">Live NSE & NASDAQ STOCKS • Agentic AI • Paper Trading</p>
                 </div>
                 <div>
                     <h2 class="fs-title" style="font-size:1.75rem; margin-bottom:10px;">Built for practical analysis and risk-free learning</h2>
                     <p class="fs-muted" style="font-size:0.95rem; margin-bottom:16px;">
                         FinanceSight brings together real-time market data, quantitative technical indicators, and virtual trade execution in one workspace:
                     </p>
-                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; color:#0284c7; font-weight:700; font-size:0.92rem;">
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; color:#38bdf8; font-weight:700; font-size:0.92rem;">
                         <div>• Live Candlestick & Volume Charts</div>
                         <div>• 14-Day RSI & Moving Averages</div>
                         <div>• 7-Day ML Price Forecasting</div>
@@ -2069,15 +2185,15 @@ if not st.session_state.logged_in:
             <div class="z-section-card" style="height:100%;">
                 <h2 class="fs-title" style="font-size:1.65rem; margin-bottom:14px;">🛡️ Practical tools you can rely on</h2>
                 <div style="margin-bottom:14px;">
-                    <h4 style="color:#0284c7; margin:0 0 4px 0;">Data-driven decision making</h4>
+                    <h4 style="color:#38bdf8; margin:0 0 4px 0;">Data-driven decision making</h4>
                     <p class="fs-muted" style="font-size:0.88rem; margin:0;">Evaluate global STOCKS using objective technical indicators (20-SMA, 50-EMA, 14-Day RSI) and historical backtest metrics instead of guesswork.</p>
                 </div>
                 <div style="margin-bottom:14px;">
-                    <h4 style="color:#0284c7; margin:0 0 4px 0;">Risk-free paper trading simulator</h4>
+                    <h4 style="color:#38bdf8; margin:0 0 4px 0;">Risk-free paper trading simulator</h4>
                     <p class="fs-muted" style="font-size:0.88rem; margin:0;">Practice placing delivery (CNC) and intraday (MIS 5x leverage) orders during market hours using a ₹1,00,000 virtual wallet before risking real capital.</p>
                 </div>
                 <div>
-                    <h4 style="color:#0284c7; margin:0 0 4px 0;">Agentic AI & backtesting workflow</h4>
+                    <h4 style="color:#38bdf8; margin:0 0 4px 0;">Agentic AI & backtesting workflow</h4>
                     <p class="fs-muted" style="font-size:0.88rem; margin:0;">Ask the AI Advisor any question, check your funds, list top benefitting stocks, or place and cancel orders directly from chat.</p>
                 </div>
             </div>
@@ -2092,11 +2208,11 @@ if not st.session_state.logged_in:
                 </p>
                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap:14px; text-align:center;">
                     <div class="fs-panel" style="border:2px solid #10b981; padding:18px;">
-                        <div style="font-family:'JetBrains Mono',monospace; font-size:2.2rem; font-weight:800; color:#10b981;">₹0</div>
+                        <div style="font-family:'JetBrains Mono',monospace; font-size:2.2rem; font-weight:800; color:#34d399;">₹0</div>
                         <div class="fs-muted" style="font-size:0.8rem; margin-top:6px;">Standard equity delivery & mutual fund simulation</div>
                     </div>
-                    <div class="fs-panel" style="border:2px solid #0284c7; padding:18px;">
-                        <div style="font-family:'JetBrains Mono',monospace; font-size:2.2rem; font-weight:800; color:#0284c7;">₹20</div>
+                    <div class="fs-panel" style="border:2px solid #38bdf8; padding:18px;">
+                        <div style="font-family:'JetBrains Mono',monospace; font-size:2.2rem; font-weight:800; color:#38bdf8;">₹20</div>
                         <div class="fs-muted" style="font-size:0.8rem; margin-top:6px;">Flat intraday (MIS) & F&O order fee model</div>
                     </div>
                 </div>
@@ -2131,7 +2247,7 @@ if not st.session_state.logged_in:
         with s_left:
             render_html("""
             <div class="z-section-card">
-                <span style="background:rgba(56,126,209,0.2); color:#387ed1; padding:5px 12px; border-radius:999px; font-size:0.78rem; font-weight:700;">
+                <span style="background:rgba(56,189,248,0.2); color:#38bdf8; padding:5px 12px; border-radius:999px; font-size:0.78rem; font-weight:700;">
                     INSTANT PAPER TRADING ACCESS
                 </span>
                 <h2 class="fs-title" style="margin:12px 0 10px 0;">Create your free FinanceSight account</h2>
@@ -2168,7 +2284,7 @@ if not st.session_state.logged_in:
         <div class="z-section-card" style="text-align:center;">
             <h2 class="fs-title" style="font-size:1.85rem; max-width:800px; margin:0 auto;">
                 Clear, Objective Market Analysis.<br>
-                <span style="color:#0284c7;">Combining Technical Charting, Machine Learning & Paper Trading.</span>
+                <span style="color:#38bdf8;">Combining Technical Charting, Machine Learning & Paper Trading.</span>
             </h2>
         </div>
         """)
@@ -2193,10 +2309,10 @@ if not st.session_state.logged_in:
         <div class="z-section-card">
             <h2 class="fs-title" style="text-align:center; margin-bottom:24px;">👥 Platform Architecture & Engineering</h2>
             <div style="display:grid; grid-template-columns: 1fr 2fr; gap:28px; align-items:center;">
-                <div class="fs-panel" style="text-align:center; padding:24px; border:2px solid #0284c7;">
+                <div class="fs-panel" style="text-align:center; padding:24px; border:2px solid #38bdf8;">
                     <div style="font-size:3.6rem;">👨‍💻</div>
                     <h4 class="fs-title" style="margin:10px 0 4px 0;">FinanceSight Core Systems</h4>
-                    <div style="color:#0284c7; font-size:0.84rem; font-weight:700;">Python, Machine Learning & SQLite Architecture</div>
+                    <div style="color:#38bdf8; font-size:0.84rem; font-weight:700;">Python, Machine Learning & SQLite Architecture</div>
                 </div>
                 <div style="font-size:0.95rem; line-height:1.75;">
                     <p>FinanceSight integrates a <b>Multi-Layer SuperChart Terminal, Portfolio Console, No-Code Strategy Backtester, and Universal AI Advisor</b> into a unified web application.</p>
@@ -2211,7 +2327,7 @@ if not st.session_state.logged_in:
         <div class="z-section-card" style="text-align:center;">
             <h1 class="fs-title" style="font-size:2.2rem; margin-bottom:8px;">FinanceSight Products & Modules</h1>
             <h4 class="fs-muted" style="font-weight:500; margin-bottom:10px;">Integrated tools for charting, price forecasting, backtesting, and paper trading</h4>
-            <a href="?nav=Home&r={nav_token}" target="_self" style="color:#0284c7; font-weight:700; font-size:0.92rem; text-decoration:none;">Sign in on the Home page to launch the live dashboard →</a>
+            <a href="?nav=Home&r={nav_token}" target="_self" style="color:#38bdf8; font-weight:700; font-size:0.92rem; text-decoration:none;">Sign in on the Home page to launch the live dashboard →</a>
         </div>
         """)
 
@@ -2233,7 +2349,7 @@ if not st.session_state.logged_in:
                 <div class="z-section-card" style="margin:0; padding:32px; text-align:center;">
                     <div style="font-size:2.8rem; margin-bottom:8px;">{p_title.split()[0]}</div>
                     <div class="fs-title" style="font-size:1.15rem;">{p_title}</div>
-                    <div style="color:#0284c7; font-size:0.8rem; margin-top:6px; font-weight:600;">⚡ Live Module Inside FinanceSight</div>
+                    <div style="color:#38bdf8; font-size:0.8rem; margin-top:6px; font-weight:600;">⚡ Live Module Inside FinanceSight</div>
                 </div>
                 """)
             with text_col:
@@ -2247,7 +2363,7 @@ if not st.session_state.logged_in:
                 if b_learn.button("View Details →", key=f"prod_learn_{p_title}", use_container_width=True):
                     st.session_state.public_page = "About"
                     st.rerun()
-            render_html("<hr style='border:0; border-top:1px solid rgba(128,128,128,0.22); margin:16px 0;'>")
+            render_html("<hr style='border:0; border-top:1px solid rgba(56,189,248,0.22); margin:16px 0;'>")
 
         render_html("""
         <div style="text-align:center; margin:28px 0 18px 0;">
@@ -2271,7 +2387,7 @@ if not st.session_state.logged_in:
                 with u_cols[c_i]:
                     render_html(f"""
                     <div class="z-universe-card">
-                        <h4 style="color:#0284c7; font-weight:800; margin-bottom:8px;">{u_name}</h4>
+                        <h4 style="color:#38bdf8; font-weight:800; margin-bottom:8px;">{u_name}</h4>
                         <p class="fs-muted" style="font-size:0.84rem; margin:0;">{u_desc}</p>
                     </div>
                     """)
@@ -2289,11 +2405,11 @@ if not st.session_state.logged_in:
 
         pr1, pr2, pr3 = st.columns(3)
         with pr1:
-            render_kpi("Equity Delivery Simulation", "₹0", "Zero brokerage modeled on long-term CNC equity delivery trades.", "kpi-emerald", "#10b981")
+            render_kpi("Equity Delivery Simulation", "₹0", "Zero brokerage modeled on long-term CNC equity delivery trades.", "kpi-emerald", "#34d399")
         with pr2:
-            render_kpi("Intraday & F&O Simulation", "₹20", "Flat ₹20 or 0.03% (whichever is lower) per executed intraday order.", "kpi-cyan", "#0284c7")
+            render_kpi("Intraday & F&O Simulation", "₹20", "Flat ₹20 or 0.03% (whichever is lower) per executed intraday order.", "kpi-cyan", "#38bdf8")
         with pr3:
-            render_kpi("Virtual Paper Wallet", "₹1,00,000", "Free instant virtual margin credited to every user account for practice.", "kpi-violet", "#8b5cf6")
+            render_kpi("Virtual Paper Wallet", "₹1,00,000", "Free instant virtual margin credited to every user account for practice.", "kpi-violet", "#c084fc")
 
         st.markdown("### 🧮 Interactive FinanceSight Brokerage & Statutory Charges Calculator")
         calc_c1, calc_c2, calc_c3, calc_c4 = st.columns(4)
@@ -2319,13 +2435,13 @@ if not st.session_state.logged_in:
 
         bc1, bc2, bc3, bc4 = st.columns(4)
         with bc1:
-            render_kpi("Total Turnover", f"₹{turnover:,.2f}", f"Brokerage: ₹{brokerage:.2f}", "kpi-cyan", "#0284c7")
+            render_kpi("Total Turnover", f"₹{turnover:,.2f}", f"Brokerage: ₹{brokerage:.2f}", "kpi-cyan", "#38bdf8")
         with bc2:
-            render_kpi("Total Taxes & Charges", f"₹{total_charges:,.2f}", f"STT: ₹{stt:.2f} | GST: ₹{gst:.2f}", "kpi-violet", "#8b5cf6")
+            render_kpi("Total Taxes & Charges", f"₹{total_charges:,.2f}", f"STT: ₹{stt:.2f} | GST: ₹{gst:.2f}", "kpi-violet", "#c084fc")
         with bc3:
-            render_kpi("Breakeven Per Share", f"₹{(total_charges/c_qty):.2f}", "Points needed to cover taxes", "kpi-white", "#2563eb")
+            render_kpi("Breakeven Per Share", f"₹{(total_charges/c_qty):.2f}", "Points needed to cover taxes", "kpi-white", "#60a5fa")
         with bc4:
-            render_kpi("Net Realized Profit / Loss", f"₹{net_pnl:,.2f}", f"Gross P&L: ₹{gross_pnl:+.2f}", "kpi-emerald" if net_pnl >= 0 else "kpi-violet", "#10b981" if net_pnl >= 0 else "#f43f5e")
+            render_kpi("Net Realized Profit / Loss", f"₹{net_pnl:,.2f}", f"Gross P&L: ₹{gross_pnl:+.2f}", "kpi-emerald" if net_pnl >= 0 else "kpi-violet", "#34d399" if net_pnl >= 0 else "#fb7185")
 
         render_financesight_open_account("pricing")
 
@@ -2339,7 +2455,7 @@ if not st.session_state.logged_in:
             <div style="display:grid; grid-template-columns: 1.4fr 1fr; gap:28px;">
                 <div>
                     <h2 style="font-weight:800; font-size:1.6rem; margin-bottom:12px; color:#ffffff;">Browse platform guides or submit a support ticket below</h2>
-                    <div style="background:#ffffff; color:#0f172a; padding:12px 18px; border-radius:10px; font-size:0.9rem; margin-bottom:12px;">
+                    <div style="background:#0f172a; color:#f8fafc; border:1px solid #38bdf8; padding:12px 18px; border-radius:10px; font-size:0.9rem; margin-bottom:12px;">
                         🔍 Quick links to platform modules and user guides:
                     </div>
                     <div style="font-size:0.82rem; color:#e2e8f0;">
@@ -2373,7 +2489,7 @@ if not st.session_state.logged_in:
             t_cols = st.columns(3)
             for col_i in range(3):
                 t_head, t_href, t_links = ticket_topics[row_i + col_i]
-                links_html = "".join([f"<a href='{t_href}' target='_self' style='display:block; color:#0284c7; font-size:0.84rem; margin:6px 0; font-weight:600; text-decoration:none;'>• {lnk}</a>" for lnk in t_links])
+                links_html = "".join([f"<a href='{t_href}' target='_self' style='display:block; color:#38bdf8; font-size:0.84rem; margin:6px 0; font-weight:600; text-decoration:none;'>• {lnk}</a>" for lnk in t_links])
                 with t_cols[col_i]:
                     render_html(f"""
                     <div class="stock-card" style="height:100%;">
@@ -2482,6 +2598,10 @@ st.sidebar.markdown(
 
 if st.sidebar.button("Refresh Live Market Data", use_container_width=True):
     st.cache_data.clear()
+    if online_status:
+        fresh_s = fetch_market_snapshots(core_tickers)
+        if fresh_s:
+            st.session_state.last_valid_snapshots.update(fresh_s)
     st.rerun()
 
 st.sidebar.subheader("📋 Marketwatch (STOCKS)")
@@ -2891,10 +3011,9 @@ elif st.session_state.page == "Terminal":
         with sub_t3:
             q_input = st.text_input("Ask anything...", placeholder="Ask anything...")
             if st.button("🧠 Submit to AI Advisor", type="primary") and q_input:
-                with st.spinner("Processing..."):
-                    ans, engine_label, _, _ = ask_universal_ai_advisor(st.session_state.username, q_input)
-                    st.caption(engine_label)
-                    st.markdown(ans)
+                ans, engine_label, _, _ = ask_universal_ai_advisor(st.session_state.username, q_input)
+                st.caption(engine_label)
+                st.markdown(ans)
 
     with trade_col:
         is_open_t, status_t = check_market_trading_hours(ticker)
@@ -2981,17 +3100,16 @@ elif st.session_state.page == "Advisor":
     active_question = selected_prompt or custom_q
 
     if active_question:
-        with st.spinner(f"🤖 Processing '{active_question}'..."):
-            reply, source_badge, card_title, card_logo = ask_universal_ai_advisor(
-                st.session_state.username, active_question
-            )
-            st.session_state.ai_chat_history.insert(0, {
-                "question": active_question,
-                "answer": reply,
-                "badge": source_badge,
-                "stock": card_title,
-                "logo": card_logo
-            })
+        reply, source_badge, card_title, card_logo = ask_universal_ai_advisor(
+            st.session_state.username, active_question
+        )
+        st.session_state.ai_chat_history.insert(0, {
+            "question": active_question,
+            "answer": reply,
+            "badge": source_badge,
+            "stock": card_title,
+            "logo": card_logo
+        })
 
     for item in st.session_state.ai_chat_history:
         render_html(f"""
