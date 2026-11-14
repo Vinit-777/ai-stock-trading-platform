@@ -18,7 +18,7 @@ import urllib.parse
 from datetime import datetime, timedelta
 from groq import Groq
 
-GROQ_API_KEY = "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"
+GROQ_API_KEY = "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"
 
 st.set_page_config(
     page_title="FinanceSight | Market Analytics, AI Forecasting & Paper Trading",
