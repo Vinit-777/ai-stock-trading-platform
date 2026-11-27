@@ -2701,6 +2701,59 @@ def parse_trade_command(user_text: str) -> dict | None:
     }
 
 
+def parse_auto_invest_command(user_text: str) -> dict | None:
+    q = user_text.strip().lower()
+    if "?" in q:
+        return None
+    advisory_blocks = [
+        "should i", "can i", "could i", "would you", "do you", "is it good",
+        "which stock", "what stock", "which is best", "which is the best",
+        "suggest", "recommend", "list ", "compare ", "tell me", "analyze ",
+    ]
+    if any(m in q for m in advisory_blocks):
+        return None
+
+    has_auto_verb = any(
+        k in q
+        for k in [
+            "auto buy", "auto-buy", "auto trade", "auto-trade", "auto invest", "auto-invest",
+            "automatically buy", "automatically trade", "automatically invest", "automatically place",
+            "find the best", "find best", "pick the best", "pick best", "top profitable",
+            "best stock and buy", "best stock and invest", "invest in best", "invest in top",
+            "buy the best", "buy top ",
+        ]
+    )
+    if not has_auto_verb or not any(w in q for w in ["buy", "invest", "trade", "place"]):
+        return None
+
+    market = "ALL"
+    if any(w in q for w in ["nse", "indian", "india", "nifty"]):
+        market = "NSE"
+    elif any(w in q for w in ["us ", "nasdaq", "nyse", "american", "usa"]):
+        market = "US"
+
+    sector_hint = ""
+    for sk in ["it", "tech", "bank", "finance", "defence", "defense", "auto", "pharma", "energy", "fmcg", "ai", "semiconductor", "chip", "cloud", "ev"]:
+        if re.search(rf"\b{re.escape(sk)}\b", q):
+            sector_hint = sk
+            break
+
+    budget_match = re.search(r"(?:₹|rs\.?|inr|budget|with|worth|for|invest)\s*[₹]?\s*(\d[\d,]*)", q)
+    budget_inr = float(budget_match.group(1).replace(",", "")) if budget_match else 0.0
+
+    qty_match = re.search(r"\b(\d[\d,]*)\s*(?:shares?|units?|qty)\b", q)
+    explicit_qty = int(qty_match.group(1).replace(",", "")) if qty_match else None
+    prod = "MIS (Intraday 5x)" if any(w in q for w in ["mis", "intraday", "5x"]) else "CNC (Delivery)"
+
+    return {
+        "market": market,
+        "sector_hint": sector_hint,
+        "budget_inr": budget_inr,
+        "qty": explicit_qty,
+        "product": prod,
+    }
+
+
 def resolve_secret(key_name: str, session_override: str = "") -> str:
     if session_override and session_override.strip():
         return session_override.strip()
@@ -2842,6 +2895,104 @@ def build_market_timings_report() -> str:
 """
 
 
+def _resolve_sector_keywords(query_text: str) -> list[str] | None:
+    q_low = (query_text or "").lower()
+    sector_keywords = {
+        "it": ["IT", "Tech", "Software", "Cloud", "SaaS", "Semiconductor", "AI"],
+        "tech": ["IT", "Tech", "Software", "Cloud", "AI", "Semiconductor", "Consumer Tech"],
+        "ai": ["AI", "Cloud", "Semiconductor", "Enterprise AI"],
+        "semiconductor": ["Semiconductor", "Chip", "AI & Semiconductors"],
+        "semiconductors": ["Semiconductor", "Chip", "AI & Semiconductors"],
+        "chip": ["Semiconductor", "Chip", "Foundry"],
+        "bank": ["Bank", "Financial", "Finance", "NBFC"],
+        "banking": ["Bank", "Financial", "Finance", "NBFC"],
+        "finance": ["Bank", "Financial", "Finance", "NBFC", "Payments"],
+        "defence": ["Defence", "Aerospace"],
+        "defense": ["Defence", "Aerospace"],
+        "auto": ["Auto", "EV", "SUV", "Vehicle"],
+        "automotive": ["Auto", "EV", "SUV", "Vehicle"],
+        "ev": ["EV", "Electric Vehicle", "Auto"],
+        "pharma": ["Pharma", "Biotech", "Health"],
+        "healthcare": ["Pharma", "Biotech", "Health"],
+        "energy": ["Energy", "Power", "Oil", "Coal", "Gas"],
+        "fmcg": ["FMCG", "Beverage", "Food", "Retail"],
+    }
+    for s_key, s_matches in sector_keywords.items():
+        if re.search(rf"\b{re.escape(s_key)}\b", q_low):
+            return s_matches
+    return None
+
+
+def rank_quant_screener_candidates(
+    market: str = "ALL",
+    sector_hint: str = "",
+    snapshots: dict | None = None,
+    usdinr_rate: float = DEFAULT_USDINR_RATE,
+    limit: int = 12,
+) -> list[dict]:
+    snaps = snapshots or {}
+    sector_filter = _resolve_sector_keywords(sector_hint)
+    mkt_u = (market or "ALL").upper()
+
+    pre_pool = []
+    for sym, meta in STOCK_CATALOG.items():
+        if mkt_u == "NSE" and meta["exchange"] != "NSE":
+            continue
+        if mkt_u == "US" and meta["exchange"] == "NSE":
+            continue
+        if sector_filter and not any(m.lower() in meta["sector"].lower() for m in sector_filter):
+            continue
+        pre_pool.append(sym)
+
+    if not pre_pool:
+        pre_pool = list(STOCK_CATALOG.keys())
+
+    # Score baseline across full pool, then refresh top slice live via Yahoo Finance
+    prelim = []
+    for sym in pre_pool:
+        sn = snaps.get(sym, DEFAULT_STOCKS_SNAPSHOTS.get(sym, {"price": 100.0, "pct": 0.0, "rsi": 50.0, "above_sma": True}))
+        rsi = float(sn.get("rsi", 50.0))
+        pct = float(sn.get("pct", 0.0))
+        above = bool(sn.get("above_sma", True))
+        rsi_bonus = 2.0 if 50.0 <= rsi <= 66.0 else (0.9 if 38.0 <= rsi < 50.0 else (-1.5 if rsi >= 72.0 else -0.6))
+        sma_bonus = 2.0 if above else -1.1
+        prelim.append((pct * 1.35 + sma_bonus + rsi_bonus, sym))
+    prelim.sort(key=lambda x: x[0], reverse=True)
+
+    live_shortlist = [s for _, s in prelim[:24]]
+    live_snaps = ensure_symbols_live(live_shortlist, snaps)
+
+    ranked = []
+    for sym in pre_pool:
+        meta = STOCK_CATALOG[sym]
+        sn = live_snaps.get(sym, DEFAULT_STOCKS_SNAPSHOTS.get(sym, {"price": 100.0, "pct": 0.0, "rsi": 50.0, "above_sma": True}))
+        rsi = float(sn.get("rsi", 50.0))
+        pct = float(sn.get("pct", 0.0))
+        above = bool(sn.get("above_sma", True))
+        price = float(sn.get("price", 100.0))
+        fx = get_fx_rate_for_ticker(sym, usdinr_rate)
+        inr_share_cost = price * fx
+
+        rsi_bonus = 2.0 if 50.0 <= rsi <= 66.0 else (0.9 if 38.0 <= rsi < 50.0 else (-1.5 if rsi >= 72.0 else -0.6))
+        sma_bonus = 2.0 if above else -1.1
+        vol_bonus = 0.7 if sn.get("volume", 0.0) > sn.get("avg_volume", 1.0) * 1.15 else 0.0
+        score = (pct * 1.35) + sma_bonus + rsi_bonus + vol_bonus
+        proj_5d = max(1.6, pct * 1.5 + (1.5 if above else 0.4))
+        ranked.append(
+            {
+                **meta,
+                "symbol": sym,
+                "score": round(score, 2),
+                "proj_5d": round(proj_5d, 2),
+                "inr_share_cost": inr_share_cost,
+                **sn,
+            }
+        )
+
+    ranked.sort(key=lambda x: x["score"], reverse=True)
+    return ranked[:limit]
+
+
 def build_universal_stocks_screener_report(
     user_question: str,
     acct_balance: float,
@@ -2849,35 +3000,11 @@ def build_universal_stocks_screener_report(
     usdinr_rate: float,
 ) -> str:
     q_low = user_question.lower()
-    sector_keywords = {
-        "it": ["IT", "Tech", "Software", "Cloud"],
-        "bank": ["Bank", "Financial", "Finance", "NBFC"],
-        "defence": ["Defence", "Aerospace"],
-        "auto": ["Auto", "EV", "SUV"],
-        "pharma": ["Pharma"],
-        "energy": ["Energy", "Power", "Oil", "Coal"],
-        "fmcg": ["FMCG", "Beverage", "Food", "Retail"],
-    }
-    sector_filter = None
-    for s_key, s_matches in sector_keywords.items():
-        if re.search(rf"\b{s_key}\b", q_low):
-            sector_filter = s_matches
-            break
+    mkt = "NSE" if any(w in q_low for w in ["nse", "indian", "india", "nifty"]) else ("US" if any(w in q_low for w in ["us ", "nasdaq", "nyse", "american"]) else "ALL")
+    ranked = rank_quant_screener_candidates(mkt, q_low, snapshots, usdinr_rate, limit=10)
 
-    ranked = []
-    for sym, meta in STOCK_CATALOG.items():
-        if sector_filter and not any(m.lower() in meta["sector"].lower() for m in sector_filter):
-            continue
-        sn = snapshots.get(sym, DEFAULT_STOCKS_SNAPSHOTS.get(sym, {"price": 100.0, "pct": 0.0, "rsi": 50.0, "above_sma": True}))
-        rsi_bonus = 1.6 if 50 <= sn["rsi"] <= 66 else (0.8 if 42 <= sn["rsi"] < 50 else -0.8)
-        sma_bonus = 1.8 if sn["above_sma"] else -1.2
-        score = (sn["pct"] * 1.4) + sma_bonus + rsi_bonus
-        proj_5d = max(1.8, sn["pct"] * 1.6 + (1.4 if sn["above_sma"] else 0.3))
-        ranked.append({**meta, "symbol": sym, "score": score, "proj_5d": proj_5d, **sn})
-
-    ranked.sort(key=lambda x: x["score"], reverse=True)
     rows_md = []
-    for i, item in enumerate(ranked[:10], 1):
+    for i, item in enumerate(ranked, 1):
         cur = item["currency"]
         pr = item["price"]
         tgt = pr * (1.0 + item["proj_5d"] / 100.0)
@@ -2889,13 +3016,432 @@ def build_universal_stocks_screener_report(
         )
 
     return f"""
-### Multi-Market Quantitative Screener (Top 10 Ranked)
-Ranked across **NSE & NASDAQ/NYSE** using live momentum, 20-SMA trend, and 14-day Wilder RSI (tailored to your **`₹{acct_balance:,.2f}`** margin at FX `₹{usdinr_rate:.2f}/$`):
+### Multi-Market Quantitative Screener (Top 10 Ranked across {len(STOCK_CATALOG)} Stocks)
+Ranked across **NSE & NASDAQ/NYSE** using live momentum, 20-SMA trend, volume breakout, and 14-day Wilder RSI (tailored to your **`₹{acct_balance:,.2f}`** margin at FX `₹{usdinr_rate:.2f}/$`):
 
 | Rank | Company (`Ticker`) | Exchange & Sector | Live Price | RSI (14) | Target | Stop-Loss | Signal |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 {chr(10).join(rows_md)}
+
+*Tip: Say **`Find the best stock and invest ₹15000`** or use **AI Auto-Pilot** above to let the advisor pick #1 and place the trade automatically.*
 """
+
+
+def execute_ai_auto_pick_trade(
+    username: str,
+    snapshots: dict,
+    usdinr_rate: float,
+    market: str = "ALL",
+    sector_hint: str = "",
+    budget_inr: float = 0.0,
+    explicit_qty: int | None = None,
+    product: str = "CNC (Delivery)",
+    allow_after_hours: bool = False,
+    db_path: str = DB_PATH,
+) -> tuple[bool, str, str, str, list[str]]:
+    acct = get_user_account_summary(username, snapshots, usdinr_rate, db_path=db_path)
+    avail = float(acct["balance"])
+    eff_mult = 0.20 if "MIS" in product else 1.0
+    target_budget = float(budget_inr) if budget_inr > 0 else min(avail, max(5000.0, round(avail * 0.20, 2)))
+    target_budget = min(target_budget, avail)
+
+    ranked = rank_quant_screener_candidates(market, sector_hint, snapshots, usdinr_rate, limit=18)
+    steps_log = [f"Scanned {len(STOCK_CATALOG)} NSE & US equities (Market: {market}, Budget: ₹{target_budget:,.2f})"]
+
+    chosen_item = None
+    for cand in ranked:
+        per_share_req = float(cand["inr_share_cost"]) * eff_mult
+        if float(cand.get("rsi", 50.0)) < 73.0 and per_share_req <= max(target_budget, 1.0):
+            chosen_item = cand
+            break
+    if chosen_item is None and ranked:
+        affordable = [c for c in ranked if float(c["inr_share_cost"]) * eff_mult <= avail]
+        chosen_item = affordable[0] if affordable else min(ranked, key=lambda c: float(c["inr_share_cost"]))
+
+    if not chosen_item:
+        return False, "No matching equities found in the catalog for that filter.", "FinanceSight Auto-Pilot", get_logo_url("RELIANCE.NS"), steps_log
+
+    sym = chosen_item["symbol"]
+    profile = build_stock_quant_profile(sym, snapshots, usdinr_rate, avail, include_news=False)
+    cur = profile["cur"]
+    price = float(profile["price"])
+    fx = float(profile["fx"])
+    per_share_margin = max(1.0, price * fx * eff_mult)
+
+    if explicit_qty is not None:
+        qty = max(1, int(explicit_qty))
+    else:
+        qty = max(1, int(target_budget // per_share_margin)) if avail >= per_share_margin else 1
+
+    steps_log.append(
+        f"Selected #{1}: {profile['meta']['name']} ({sym}) | Score {profile['score']}/6 | 7D ML {cur}{profile['ml_pred_7d']:,.2f} ({profile['ml_move_pct']:+.2f}%)"
+    )
+
+    ok_t, msg_t = execute_trade(
+        username,
+        sym,
+        "BUY",
+        qty,
+        price,
+        product,
+        order_type="MARKET",
+        usdinr_rate=usdinr_rate,
+        allow_after_hours=allow_after_hours,
+        db_path=db_path,
+    )
+    steps_log.append(f"Trade engine status: {'FILLED' if ok_t else 'BLOCKED'} — {msg_t}")
+
+    updated = get_user_account_summary(username, snapshots, usdinr_rate, db_path=db_path)
+    shortlist_rows = []
+    for i, c in enumerate(ranked[:5], 1):
+        flag = "**SELECTED**" if c["symbol"] == sym else "Candidate"
+        shortlist_rows.append(
+            f"| {i} | **{c['name']}** (`{c['symbol']}`) | {c['exchange']} | `{c['currency']}{c['price']:,.2f}` (`{c['pct']:+.2f}%`) | `{c['rsi']:.1f}` | `{c['score']}` | {flag} |"
+        )
+
+    sl_px = max(0.01, price - 1.5 * profile["atr"])
+    tp_px = price + 2.0 * profile["atr"]
+    status_hdr = "Executed Automatically" if ok_t else "Prepared Plan (Action Needed)"
+    report = f"""### AI Auto-Pilot Best-Stock Selection & Trade ({status_hdr})
+* **Execution Result:** **{msg_t}**
+* **Selected Asset:** **{profile['meta']['name']} (`{sym}`)** — `{qty} shares` ({product}) @ `{cur}{price:,.2f}` (`FX ₹{fx:.2f}`)
+* **Quant + ML Rationale (`{profile['score']}/6` — {profile['verdict']}):**
+  * **7-Day ML Forecast (`{profile['ml_model']}`):** `{cur}{profile['ml_pred_7d']:,.2f}` (`{profile['ml_move_pct']:+.2f}%` | Dir. Accuracy `{profile['ml_dir_acc']:.1f}%`)
+  * **Technical Levels:** 20-SMA `{cur}{profile['sma20']:,.2f}` | RSI-14 `{profile['rsi']:.1f}` | Support S1 `{cur}{profile['s1']:,.2f}` | Resistance R1 `{cur}{profile['r1']:,.2f}`
+  * **Risk Plan:** Stop-Loss (1.5× ATR) `{cur}{sl_px:,.2f}` | Target (2× ATR) `{cur}{tp_px:,.2f}`
+* **Updated Cash Margin:** **`₹{updated['balance']:,.2f}`**
+
+#### Top 5 Ranked Candidates Evaluated
+| Rank | Company (`Ticker`) | Exchange | Spot Price | RSI (14) | Quant Score | Decision |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+{chr(10).join(shortlist_rows)}"""
+
+    return ok_t, report, f"Auto-Pilot: {profile['meta']['name']} ({sym})", get_logo_url(sym), steps_log
+
+
+def build_portfolio_risk_audit(
+    username: str,
+    snapshots: dict,
+    usdinr_rate: float,
+    auto_rebalance: bool = False,
+    allow_after_hours: bool = False,
+    db_path: str = DB_PATH,
+) -> tuple[str, list[str]]:
+    acct = get_user_account_summary(username, snapshots, usdinr_rate, db_path=db_path)
+    port_df = acct["port_df"]
+    pos_df = acct["pos_df"]
+    steps_log = [f"Loaded SQLite holdings ({len(port_df)}) and open positions ({len(pos_df)})"]
+
+    held_syms = set(port_df["ticker"].tolist() if not port_df.empty else [])
+    held_syms.update(pos_df["ticker"].tolist() if not pos_df.empty else [])
+    live_snaps = ensure_symbols_live(list(held_syms), snapshots) if held_syms else snapshots
+    if held_syms:
+        acct = get_user_account_summary(username, live_snaps, usdinr_rate, db_path=db_path)
+        port_df = acct["port_df"]
+        pos_df = acct["pos_df"]
+
+    net_worth = float(acct["balance"]) + float(acct["tot_cur"])
+    cash_pct = (float(acct["balance"]) / net_worth * 100.0) if net_worth > 0 else 100.0
+
+    if port_df.empty and pos_df.empty:
+        top3 = rank_quant_screener_candidates("ALL", "", live_snaps, usdinr_rate, limit=3)
+        starter = "\n".join(
+            f"- **{c['name']} (`{c['symbol']}`)** ({c['exchange']}) @ `{c['currency']}{c['price']:,.2f}` (`{c['pct']:+.2f}%`, RSI `{c['rsi']:.1f}`)"
+            for c in top3
+        )
+        steps_log.append("Portfolio is 100% cash; prepared 3 starter allocations")
+        return (
+            f"""### Portfolio Health & Risk Audit (`@{username}`)
+* **Account Net Worth:** `₹{net_worth:,.2f}` (**`100.0%` Cash Reserve**, 0 holdings)
+* **Diversification Score:** `N/A — Uninvested`
+
+#### Suggested Starter Allocation (Balanced NSE + US Leaders)
+{starter}
+
+*Say **`Find the best stock and invest ₹15000`** or click **Find Best Stock & Auto-Trade** above to deploy capital automatically.*""",
+            steps_log,
+        )
+
+    rebalance_logs = []
+    audit_rows = []
+    tot_val = max(1.0, float(acct["tot_cur"]))
+    nse_val = 0.0
+    max_wt = 0.0
+    sector_weights: dict[str, float] = {}
+
+    for _, row in port_df.iterrows():
+        sym = LEGACY_TICKER_REMAP.get(row["ticker"], row["ticker"])
+        meta = get_ticker_meta(sym)
+        sn = live_snaps.get(sym, DEFAULT_STOCKS_SNAPSHOTS.get(sym, {"price": float(row["LTP"]), "pct": 0.0, "rsi": 50.0, "above_sma": True}))
+        val_inr = float(row["Live Value (₹)"])
+        wt = (val_inr / tot_val) * 100.0
+        max_wt = max(max_wt, wt)
+        if meta["exchange"] == "NSE":
+            nse_val += val_inr
+        sector_weights[meta["sector"]] = sector_weights.get(meta["sector"], 0.0) + wt
+
+        rsi = float(sn.get("rsi", 50.0))
+        ret_pct = float(row["Return (%)"])
+        above = bool(sn.get("above_sma", True))
+
+        if rsi >= 68.0 and ret_pct >= 3.0:
+            action_tag = "TAKE PROFIT (Overbought)"
+        elif (not above and ret_pct <= -3.0) or ret_pct <= -6.0:
+            action_tag = "STOP-LOSS ALERT (<20-SMA)"
+        elif wt >= 45.0:
+            action_tag = "TRIM CONCENTRATION (>45%)"
+        elif above and rsi < 62.0:
+            action_tag = "CORE HOLD / ACCUMULATE"
+        else:
+            action_tag = "HOLD & MONITOR"
+
+        audit_rows.append(
+            f"| **{meta['name']}** (`{sym}`) | `{int(row['shares'])}` | `{wt:.1f}%` | `{ret_pct:+.2f}%` | `{rsi:.1f}` | **{action_tag}** |"
+        )
+
+        if auto_rebalance and ("TAKE PROFIT" in action_tag or "STOP-LOSS ALERT" in action_tag):
+            sell_qty = int(row["shares"])
+            _, msg_s = execute_trade(
+                username, sym, "SELL", sell_qty, float(row["LTP"]), "CNC (Delivery)",
+                usdinr_rate=usdinr_rate, allow_after_hours=allow_after_hours, db_path=db_path,
+            )
+            rebalance_logs.append(f"- **CNC Exit ({sym}, {sell_qty} sh):** {msg_s}")
+
+    if auto_rebalance and not pos_df.empty:
+        for _, pr in pos_df.iterrows():
+            if float(pr["Return (%)"]) >= 3.0 or float(pr["Return (%)"]) <= -3.0:
+                sym = LEGACY_TICKER_REMAP.get(pr["ticker"], pr["ticker"])
+                prod = "MIS (Intraday 5x)" if pr["product_type"] == "MIS" else "CNC (Delivery)"
+                _, msg_p = execute_trade(
+                    username, sym, "SELL", int(pr["shares"]), float(pr["LTP"]), prod,
+                    usdinr_rate=usdinr_rate, allow_after_hours=allow_after_hours, db_path=db_path,
+                )
+                rebalance_logs.append(f"- **{pr['product_type']} Exit ({sym}, {int(pr['shares'])} sh):** {msg_p}")
+
+    nse_pct = (nse_val / tot_val) * 100.0
+    us_pct = 100.0 - nse_pct
+    n_holdings = len(port_df)
+    top_sec, top_sec_wt = max(sector_weights.items(), key=lambda kv: kv[1]) if sector_weights else ("N/A", 0.0)
+
+    div_score = min(10.0, max(1.5, round(
+        (min(5, n_holdings) * 1.4) + (2.0 if 10.0 <= nse_pct <= 90.0 else 0.5) + (1.5 if max_wt <= 40.0 else 0.2) + (0.5 if 10.0 <= cash_pct <= 50.0 else 0.2),
+        1,
+    )))
+
+    steps_log.append(f"Computed diversification score {div_score}/10 across {n_holdings} holdings & top sector {top_sec}")
+    reb_section = ""
+    if auto_rebalance:
+        updated = get_user_account_summary(username, live_snaps, usdinr_rate, db_path=db_path)
+        steps_log.append(f"Auto-rebalance ran {len(rebalance_logs)} order(s)")
+        reb_body = "\n".join(rebalance_logs) if rebalance_logs else "- All holdings passed technical hold checks (no overbought winners >=+3% or breached stops triggered)."
+        reb_section = f"\n\n#### Autonomous Rebalance Actions\n{reb_body}\n* **Updated Cash Margin:** **`₹{updated['balance']:,.2f}`**"
+
+    return (
+        f"""### Portfolio Health & Risk Audit (`@{username}`)
+* **Net Worth:** `₹{net_worth:,.2f}` | **Holdings:** `₹{acct['tot_cur']:,.2f}` (`Unrealized {acct['tot_pnl']:+,.2f}`) | **Cash Buffer:** `{cash_pct:.1f}%` (`₹{acct['balance']:,.2f}`)
+* **Diversification Score:** **`{div_score}/10`** | **NSE vs US Mix:** `{nse_pct:.0f}% NSE / {us_pct:.0f}% US` | **Top Sector:** `{top_sec} ({top_sec_wt:.1f}%)`
+
+| Holding | Shares | Weight % | ROI % | RSI (14) | AI Risk Action |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+{chr(10).join(audit_rows)}{reb_section}""",
+        steps_log,
+    )
+
+
+def call_groq_agentic_loop(
+    user_question: str,
+    username: str,
+    snapshots: dict,
+    usdinr_rate: float,
+    groq_api_key: str,
+    allow_after_hours: bool = False,
+    chat_history: list[dict] | None = None,
+) -> tuple[str | None, str | None, str | None, str | None, list[str], str | None]:
+    active_key = (groq_api_key or "").strip()
+    if not active_key.startswith("gsk_"):
+        return None, None, None, None, [], "missing_key"
+
+    try:
+        from groq import Groq
+    except ImportError:
+        return None, None, None, None, [], "missing_sdk"
+
+    client = Groq(api_key=active_key, timeout=18.0)
+    q_clean = user_question.strip().lower()
+    can_trade_via_llm = (
+        "?" not in q_clean
+        and any(v in q_clean for v in ["buy", "sell", "invest", "square off", "auto trade", "auto buy", "rebalance"])
+        and not any(blk in q_clean for blk in ["should i", "would you", "can i", "suggest", "recommend"])
+    )
+
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "get_stock_quant_report",
+                "description": "Fetch live price, multi-timeframe returns, SMA/EMA, Wilder RSI, MACD, Pivot supports/resistances, 7-day ML forecast, fundamentals, and optional news for a stock symbol or company name.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string", "description": "Ticker symbol (e.g. RELIANCE.NS, NVDA) or company name"},
+                        "include_news": {"type": "boolean", "description": "Set true to include latest news headlines"},
+                    },
+                    "required": ["query"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "scan_top_market_opportunities",
+                "description": "Scan and rank the top live NSE and/or US equities by momentum, 20-SMA trend, RSI-14, and volume breakout.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "market": {"type": "string", "enum": ["ALL", "NSE", "US"]},
+                        "sector": {"type": "string", "description": "Optional sector keyword such as it, bank, defence, auto, pharma, energy, ai"},
+                    },
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "inspect_my_portfolio",
+                "description": "Inspect the user's current cash balance, CNC holdings, M2M open positions, risk diversification, and recent orders.",
+                "parameters": {"type": "object", "properties": {}},
+            },
+        },
+    ]
+    if can_trade_via_llm:
+        tools.append(
+            {
+                "type": "function",
+                "function": {
+                    "name": "place_paper_trade",
+                    "description": "Execute a CNC or MIS paper trade in the user's portfolio when explicitly instructed.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "ticker": {"type": "string", "description": "Catalog stock symbol e.g. RELIANCE.NS or AAPL"},
+                            "action": {"type": "string", "enum": ["BUY", "SELL"]},
+                            "qty": {"type": "integer", "minimum": 1},
+                            "product": {"type": "string", "enum": ["CNC (Delivery)", "MIS (Intraday 5x)"]},
+                        },
+                        "required": ["ticker", "action", "qty"],
+                    },
+                },
+            }
+        )
+
+    sys_prompt = (
+        f"You are FinanceSight AI, an institutional quantitative financial analyst & portfolio co-pilot for user @{username}.\n"
+        f"Current IST Time: {get_ist_now().strftime('%A, %d %B %Y %I:%M %p IST')} | Live FX: ₹{usdinr_rate:.2f}/$.\n"
+        "Always call the Python quant tools before stating stock prices, RSI, ML targets, or portfolio holdings. "
+        "Cite exact numbers returned by the tools, include clear Entry/Stop-Loss/Target levels when advising on trades, and stay concise."
+    )
+    messages = _build_llm_messages(sys_prompt, user_question, chat_history)
+    tool_steps: list[str] = []
+    focus_sym: str | None = None
+
+    try:
+        for _round in range(3):
+            resp = client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=messages,
+                tools=tools,
+                tool_choice="auto",
+                temperature=0.25,
+                max_tokens=950,
+            )
+            msg = resp.choices[0].message
+            t_calls = getattr(msg, "tool_calls", None) or []
+            if not t_calls:
+                content = (msg.content or "").strip()
+                if content:
+                    title = f"{get_ticker_meta(focus_sym)['name']} ({focus_sym})" if focus_sym else "FinanceSight Agentic AI"
+                    logo = get_logo_url(focus_sym) if focus_sym else get_logo_url("GOOGL")
+                    return content, "Groq LLaMA 3.3 Agentic Tool-Use", title, logo, tool_steps, None
+                break
+
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": msg.content or "",
+                    "tool_calls": [
+                        {
+                            "id": tc.id,
+                            "type": "function",
+                            "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+                        }
+                        for tc in t_calls
+                    ],
+                }
+            )
+
+            acct_now = get_user_account_summary(username, snapshots, usdinr_rate)
+            for tc in t_calls:
+                fn_name = tc.function.name
+                try:
+                    fn_args = json.loads(tc.function.arguments or "{}")
+                except Exception:
+                    fn_args = {}
+
+                if fn_name == "get_stock_quant_report":
+                    sym_q = fn_args.get("query", "")
+                    sym, found = detect_stock_from_text(sym_q, sym_q.upper() if sym_q.upper() in STOCK_CATALOG else None)
+                    if sym and sym in STOCK_CATALOG:
+                        focus_sym = focus_sym or sym
+                        prof = build_stock_quant_profile(sym, snapshots, usdinr_rate, acct_now["balance"], include_news=bool(fn_args.get("include_news")))
+                        out_txt = _format_stock_context_for_llm(prof)
+                        tool_steps.append(f"Tool get_stock_quant_report({sym})")
+                    else:
+                        out_txt = f"Ticker '{sym_q}' not found in 345-stock catalog."
+                elif fn_name == "scan_top_market_opportunities":
+                    mkt = fn_args.get("market", "ALL")
+                    sec = fn_args.get("sector", "")
+                    cands = rank_quant_screener_candidates(mkt, sec, snapshots, usdinr_rate, limit=8)
+                    if cands:
+                        focus_sym = focus_sym or cands[0]["symbol"]
+                    out_txt = "\n".join(
+                        f"{i}. {c['symbol']} ({c['name']}, {c['exchange']}): {c['currency']}{c['price']:,.2f} ({c['pct']:+.2f}%), RSI {c['rsi']:.1f}, Score {c['score']}"
+                        for i, c in enumerate(cands, 1)
+                    )
+                    tool_steps.append(f"Tool scan_top_market_opportunities(market={mkt}, sector={sec or 'ALL'})")
+                elif fn_name == "inspect_my_portfolio":
+                    out_txt = (
+                        f"Cash Margin: ₹{acct_now['balance']:,.2f} | Holdings Value: ₹{acct_now['tot_cur']:,.2f} | "
+                        f"Unrealized P&L: ₹{acct_now['tot_pnl']:+,.2f}\nHoldings:\n{acct_now['holdings_md']}\nPositions:\n{acct_now['positions_md']}"
+                    )
+                    tool_steps.append("Tool inspect_my_portfolio()")
+                elif fn_name == "place_paper_trade" and can_trade_via_llm:
+                    sym, ok_s = detect_stock_from_text(fn_args.get("ticker", ""), None)
+                    act = str(fn_args.get("action", "BUY")).upper()
+                    qty_v = max(1, int(fn_args.get("qty", 1)))
+                    prod_v = fn_args.get("product", "CNC (Delivery)")
+                    if sym:
+                        focus_sym = focus_sym or sym
+                        live_s = ensure_symbols_live([sym], snapshots)
+                        px = float(live_s.get(sym, DEFAULT_STOCKS_SNAPSHOTS.get(sym, {"price": 100.0}))["price"])
+                        _, msg_exec = execute_trade(
+                            username, sym, act, qty_v, px, prod_v,
+                            usdinr_rate=usdinr_rate, allow_after_hours=allow_after_hours,
+                        )
+                        out_txt = msg_exec
+                        tool_steps.append(f"Tool place_paper_trade({act} {qty_v} {sym})")
+                    else:
+                        out_txt = "Could not resolve stock symbol."
+                else:
+                    out_txt = "Tool call ignored."
+
+                messages.append({"role": "tool", "tool_call_id": tc.id, "content": out_txt})
+    except Exception as exc:
+        err_s = str(exc).lower()
+        if "401" in err_s or "invalid_api_key" in err_s or "authentication" in err_s:
+            return None, None, None, None, tool_steps, "invalid_key"
+        return None, None, None, None, tool_steps, "unavailable"
+
+    return None, None, None, None, tool_steps, "unavailable"
 
 
 def build_stock_quant_profile(
@@ -3142,7 +3688,33 @@ def ask_universal_ai_advisor(
             "FinanceSight Autonomous Order Engine", f"{meta['name']} ({sym})", get_logo_url(sym), steps_log,
         )
 
-    if any(p in q_clean for p in ["my fund", "my balance", "my margin", "my wallet", "how much money", "my portfolio", "my holding", "my position", "my order", "account summary", "show portfolio"]):
+    auto_cmd = parse_auto_invest_command(user_question)
+    if auto_cmd is not None:
+        _, report_md, title_auto, logo_auto, auto_steps = execute_ai_auto_pick_trade(
+            username,
+            snapshots,
+            usdinr_rate,
+            market=auto_cmd["market"],
+            sector_hint=auto_cmd["sector_hint"],
+            budget_inr=auto_cmd["budget_inr"],
+            explicit_qty=auto_cmd["qty"],
+            product=auto_cmd["product"],
+            allow_after_hours=allow_after_hours,
+        )
+        return report_md, "FinanceSight AI Auto-Pilot", title_auto, logo_auto, steps_log + auto_steps
+
+    if any(k in q_clean for k in ["audit portfolio", "audit my portfolio", "portfolio risk", "portfolio health", "diversification", "rebalance", "book profit", "auto profit", "what to sell"]):
+        do_reb = any(w in q_clean for w in ["rebalance", "book profit", "take profit automatically", "auto profit", "exit overbought"]) and "?" not in q_clean
+        audit_md, audit_steps = build_portfolio_risk_audit(
+            username, snapshots, usdinr_rate, auto_rebalance=do_reb, allow_after_hours=allow_after_hours
+        )
+        return audit_md, "FinanceSight Portfolio Risk Engine", "Portfolio Risk & Diversification Audit", card_logo, steps_log + audit_steps
+
+    is_simple_portfolio_lookup = any(
+        p in q_clean
+        for p in ["my fund", "my balance", "my margin", "my wallet", "how much money", "my portfolio", "my holding", "my position", "my order", "account summary", "show portfolio"]
+    ) and not any(w in q_clean for w in ["compare", "suggest", "recommend", "diversif", "better", "against", "optimize"])
+    if is_simple_portfolio_lookup:
         steps_log.append("Compiled SQLite holdings, positions, and order book")
         return (
             f"""### Live Account & Portfolio Summary (`@{username}`)
@@ -3261,6 +3833,16 @@ def ask_universal_ai_advisor(
         steps_log.append("Evaluated expression with safe AST solver")
         fmt = f"{math_ans:,.4f}".rstrip("0").rstrip(".") if isinstance(math_ans, float) else f"{math_ans:,}"
         return f"### Calculation Result\n`{math_expr}` = **`{fmt}`**", "FinanceSight Math Engine", card_title, card_logo, steps_log
+
+    if groq_api_key.startswith("gsk_"):
+        ag_reply, ag_badge, ag_title, ag_logo, ag_steps, err_code = call_groq_agentic_loop(
+            user_question, username, snapshots, usdinr_rate, groq_api_key,
+            allow_after_hours=allow_after_hours, chat_history=chat_history,
+        )
+        if ag_reply:
+            return ag_reply, ag_badge, ag_title, ag_logo, steps_log + ag_steps
+    else:
+        err_code = "missing_key"
 
     sys_gen = "You are FinanceSight AI, an accurate financial and general assistant. Answer clearly and concisely."
     usr_gen = f"Current Time: {get_ist_now().strftime('%A, %d %B %Y %I:%M %p IST')}\nUser Cash: ₹{acct['balance']:,.2f}\nQuestion: {user_question}"
@@ -3926,6 +4508,14 @@ def _clear_chat_cb() -> None:
     st.session_state.ai_chat_history = []
 
 
+def _sync_after_hours_cb(src_key: str) -> None:
+    val = bool(st.session_state.get(src_key, False))
+    st.session_state.allow_after_hours = val
+    for k in ("sb_after_hrs", "term_after_hrs", "ap_after_hrs"):
+        if k in st.session_state and k != src_key:
+            st.session_state[k] = val
+
+
 @st.fragment
 def _dashboard_marketwatch_fragment() -> None:
     snaps, _, usdinr, is_live, _ = get_market_context()
@@ -4378,10 +4968,12 @@ def page_superchart() -> None:
                     },
                     border="horizontal",
                 )
-                st.session_state.allow_after_hours = st.toggle(
+                st.toggle(
                     "Allow Demo Orders Outside Market Hours",
                     value=st.session_state.allow_after_hours,
                     key="term_after_hrs",
+                    on_change=_sync_after_hours_cb,
+                    args=("term_after_hrs",),
                 )
 
                 ob1, ob2 = st.columns(2)
@@ -4662,14 +5254,67 @@ def _ai_advisor_chat_fragment() -> None:
     gemini_key = resolve_secret("GEMINI_API_KEY", st.session_state.get("user_gemini_api_key", ""))
 
     if groq_key.startswith("gsk_"):
-        status_txt = ":green-badge[Groq LLaMA 3.3 + Quant RAG Active]"
+        status_txt = ":green-badge[Groq LLaMA 3.3 Agentic Tools Active]"
     elif gemini_key:
         status_txt = ":green-badge[Gemini 2.5 Flash + Quant RAG Active]"
     else:
-        status_txt = ":blue-badge[Local Quant RAG Engine Active]"
+        status_txt = ":blue-badge[Local Quant + Auto-Pilot Engine Active]"
+
+    with st.expander("AI Auto-Pilot: 1-Click Best-Stock Trader & Portfolio Risk Auditor", icon=":material/auto_awesome:"):
+        ap1, ap2, ap3, ap4 = st.columns([1.0, 1.1, 1.2, 1.0])
+        ap_mkt = ap1.selectbox("Market Focus", ["ALL", "NSE", "US"], key="ap_mkt")
+        ap_sec = ap2.selectbox("Sector Focus", ["Any Sector", "IT & AI", "Banking & Finance", "Defence", "Auto & EV", "Pharma", "Energy"], key="ap_sec")
+        ap_budget = ap3.number_input("Trade Budget (₹)", min_value=1000.0, max_value=500000.0, value=15000.0, step=1000.0, key="ap_budget")
+        ap_prod = ap4.selectbox("Product", ["CNC (Delivery)", "MIS (Intraday 5x)"], key="ap_prod")
+
+        ap_b1, ap_b2, ap_b3 = st.columns([1.4, 1.3, 1.3], vertical_alignment="center")
+        ap_b3.toggle(
+            "Allow Demo Orders Outside Hours",
+            value=st.session_state.allow_after_hours,
+            key="ap_after_hrs",
+            on_change=_sync_after_hours_cb,
+            args=("ap_after_hrs",),
+        )
+        if ap_b1.button("Find Best Stock & Auto-Trade", type="primary", icon=":material/auto_awesome:", width="stretch", key="ap_exec_btn"):
+            sec_arg = "" if ap_sec == "Any Sector" else ap_sec
+            _, rep_md, tit_a, logo_a, _ = execute_ai_auto_pick_trade(
+                st.session_state.username,
+                snaps,
+                usdinr,
+                market=ap_mkt,
+                sector_hint=sec_arg,
+                budget_inr=float(ap_budget),
+                product=ap_prod,
+                allow_after_hours=st.session_state.allow_after_hours,
+            )
+            st.session_state.ai_chat_history.append(
+                {
+                    "question": f"[AI Auto-Pilot] Find best {ap_mkt} ({ap_sec}) stock and invest ₹{ap_budget:,.0f} ({ap_prod})",
+                    "answer": rep_md,
+                    "badge": "FinanceSight AI Auto-Pilot",
+                    "stock": tit_a,
+                    "logo": logo_a,
+                }
+            )
+        if ap_b2.button("Audit Portfolio Risk", icon=":material/health_and_safety:", width="stretch", key="ap_audit_btn"):
+            aud_md, _ = build_portfolio_risk_audit(
+                st.session_state.username,
+                snaps,
+                usdinr,
+                auto_rebalance=False,
+                allow_after_hours=st.session_state.allow_after_hours,
+            )
+            st.session_state.ai_chat_history.append(
+                {
+                    "question": "[AI Auto-Pilot] Run full portfolio risk & diversification audit",
+                    "answer": aud_md,
+                    "badge": "FinanceSight Risk Engine",
+                    "stock": "Portfolio Risk & Diversification Audit",
+                    "logo": get_logo_url("RELIANCE.NS"),
+                }
+            )
 
     acct = get_user_account_summary(st.session_state.username, snaps, usdinr)
-
     top_l, top_r = st.columns([3.0, 1.0], vertical_alignment="center")
     top_l.markdown(f"{status_txt} &nbsp; Available Margin: **`₹{acct['balance']:,.2f}`** &nbsp; Holdings: **`₹{acct['tot_cur']:,.2f}`**")
     top_r.button("Clear Chat", icon=":material/delete_sweep:", width="stretch", on_click=_clear_chat_cb, key="clear_ai_chat")
@@ -4677,12 +5322,12 @@ def _ai_advisor_chat_fragment() -> None:
     SUGGESTIONS = {
         ":material/leaderboard: Top benefitting stocks": "List top benefitting stocks to invest in across Indian NSE and US markets.",
         ":material/compare_arrows: Compare TCS vs Infosys": "Compare TCS and Infosys on returns, RSI, pivots, and ML target.",
-        ":material/newspaper: Latest news & analysis": f"Latest news and full technical analysis for {st.session_state.selected_ticker}.",
-        ":material/account_balance_wallet: Check my portfolio": "Check my funds, portfolio holdings, and open positions.",
+        ":material/health_and_safety: Audit my portfolio risk": "Audit my portfolio risk, diversification, and tell me what to hold or sell.",
+        ":material/newspaper: Latest news & ML forecast": f"Latest news and full technical analysis for {st.session_state.selected_ticker}.",
     }
 
     prompt = st.chat_input(
-        "Ask about any stock, compare two stocks, request news, or command e.g. 'Buy 5 Reliance'...",
+        "Ask about any stock, compare two stocks, audit portfolio, or say 'Find best stock and invest ₹15000'...",
         submit_mode="disable",
     )
     if not st.session_state.ai_chat_history:
@@ -4989,10 +5634,12 @@ def render_sidebar() -> None:
 
         sb_prod = st.segmented_control("Product", ["CNC (Delivery)", "MIS (Intraday 5x)"], default="CNC (Delivery)", key="sb_prod") or "CNC (Delivery)"
         sb_qty = st.number_input("Qty", min_value=1, max_value=100000, value=5, step=1, key="sb_qty")
-        st.session_state.allow_after_hours = st.toggle(
+        st.toggle(
             "Allow Demo Orders Outside Hours",
             value=st.session_state.allow_after_hours,
             key="sb_after_hrs",
+            on_change=_sync_after_hours_cb,
+            args=("sb_after_hrs",),
         )
 
         b1, b2 = st.columns(2)
