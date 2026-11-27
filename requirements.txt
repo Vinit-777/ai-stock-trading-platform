@@ -1,7 +1,8 @@
-streamlit
-yfinance
-pandas
-numpy
-plotly
-scikit-learn
-groq
+streamlit>=1.57.0
+yfinance>=1.0.0
+pandas>=2.2.0,<3.0.0
+numpy>=1.26.0
+plotly>=5.24.0
+altair>=5.4.0
+scikit-learn>=1.5.0
+groq>=0.11.0
