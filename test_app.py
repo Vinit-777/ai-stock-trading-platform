@@ -4,6 +4,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
@@ -173,6 +174,46 @@ class FinanceSightCoreTests(unittest.TestCase):
         self.assertIn("COST", fs.detect_all_stocks_from_text("Should I analyze Costco stock?"))
         self.assertIn("DIXON.NS", fs.detect_all_stocks_from_text("Analyze Dixon Technologies"))
         self.assertIn("CRWD", fs.detect_all_stocks_from_text("CrowdStrike technical analysis"))
+
+    def test_autonomous_ai_autopilot_and_portfolio_audit(self):
+        self.assertIsNone(fs.parse_auto_invest_command("Which is the best stock to buy right now?"))
+        self.assertIsNone(fs.parse_auto_invest_command("Should I auto invest 10000 in NSE?"))
+
+        cmd = fs.parse_auto_invest_command("Find the best NSE IT stock and invest ₹15000")
+        self.assertIsNotNone(cmd)
+        self.assertEqual(cmd["market"], "NSE")
+        self.assertEqual(cmd["sector_hint"], "it")
+        self.assertEqual(cmd["budget_inr"], 15000.0)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = str(Path(tmp) / "test_autopilot.db")
+            fs.init_db(db_file)
+            synth_df = _make_synthetic_ohlcv(160, start_price=1500.0)
+            with (
+                patch.object(fs, "fetch_ticker_batch", return_value={}),
+                patch.object(fs, "fetch_stock_history", return_value=synth_df),
+                patch.object(fs, "fetch_stock_fundamentals", return_value={"marketCap": 1e12, "trailingPE": 25.0}),
+            ):
+                ok, report, title, logo, steps = fs.execute_ai_auto_pick_trade(
+                    "Trader_XYZ",
+                    fs.DEFAULT_STOCKS_SNAPSHOTS,
+                    90.0,
+                    market="NSE",
+                    sector_hint="it",
+                    budget_inr=15000.0,
+                    allow_after_hours=True,
+                    db_path=db_file,
+                )
+                self.assertTrue(ok, report)
+                self.assertIn("Selected Asset:", report)
+                self.assertTrue(logo.startswith("https://") or logo.startswith("data:image/svg+xml;base64,"))
+                self.assertLess(fs.get_user_balance("Trader_XYZ", db_path=db_file), 100000.0)
+
+                audit_md, _ = fs.build_portfolio_risk_audit(
+                    "Trader_XYZ", fs.DEFAULT_STOCKS_SNAPSHOTS, 90.0, db_path=db_file
+                )
+                self.assertIn("Diversification Score:", audit_md)
+                self.assertIn("AI Risk Action", audit_md)
 
 
 if __name__ == "__main__":
