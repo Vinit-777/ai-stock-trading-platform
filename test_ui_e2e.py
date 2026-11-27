@@ -94,12 +94,16 @@ def main() -> None:
         assert_clean(at, f"Auth {auth_url}")
 
         if auth_url == "advisor":
+            audit_btn = [b for b in at.button if b.key == "ap_audit_btn"]
+            assert audit_btn, "AI Auto-Pilot Audit Portfolio Risk button missing"
+            audit_btn[0].click().run(timeout=45)
+            assert_clean(at, "AI Auto-Pilot Portfolio Audit")
             at.chat_input[0].set_value("Should I buy Reliance?").run(timeout=45)
             assert_clean(at, "AI Advisor advisory query")
             at.chat_input[0].set_value("Compare TCS vs Infosys").run(timeout=45)
             assert_clean(at, "AI Advisor multi-stock comparison")
-            assert len(at.chat_message) >= 4
-            print("   AI Advisor advisory & multi-stock comparison passed cleanly!", flush=True)
+            assert len(at.chat_message) >= 6
+            print("   AI Advisor Auto-Pilot audit, advisory & multi-stock comparison passed cleanly!", flush=True)
 
         if auth_url == "scanner":
             at.segmented_control(key="apps_view").set_value("Live Multi-Market Scanner").run(timeout=45)
