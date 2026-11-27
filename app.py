@@ -34,13 +34,13 @@ _pandas4_warn = getattr(pd.errors, "Pandas4Warning", None)
 if _pandas4_warn is not None:
     warnings.filterwarnings("ignore", category=_pandas4_warn)
 
-FINANCESIGHT_LOGO_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="160" height="36" viewBox="0 0 180 40" fill="none">
+FINANCESIGHT_LOGO_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="196" height="36" viewBox="0 0 212 40" fill="none">
   <rect width="38" height="38" x="1" y="1" rx="10" fill="url(#fs_grad)"/>
   <path d="M9 26L16 19L21.5 23L30 12" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
   <path d="M23.5 12H30V18.5" stroke="#38BDF8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
   <circle cx="16" cy="19" r="2.4" fill="#34D399"/>
   <text x="48" y="26" font-family="Plus Jakarta Sans, Inter, sans-serif" font-size="18" font-weight="800" fill="#38BDF8">FINANCE</text>
-  <text x="129" y="26" font-family="Plus Jakarta Sans, Inter, sans-serif" font-size="18" font-weight="800" fill="#64748B">SIGHT</text>
+  <text x="131" y="26" font-family="Plus Jakarta Sans, Inter, sans-serif" font-size="18" font-weight="800" fill="#64748B">SIGHT</text>
   <defs>
     <linearGradient id="fs_grad" x1="0" y1="0" x2="40" y2="40" gradientUnits="userSpaceOnUse">
       <stop stop-color="#2563EB"/>
@@ -1502,18 +1502,19 @@ def compute_traffic_light_health(
     model_used = "Quant Baseline Fallback"
 
     if df is not None and len(df) >= 30:
-        close = df["Close"].astype(float)
-        price = float(close.iloc[-1])
-        prev_c = float(close.iloc[-2]) if len(close) >= 2 else price
-        pct = ((price - prev_c) / prev_c * 100.0) if prev_c else 0.0
+        close = df["Close"].dropna().astype(float)
+        if not close.empty and np.isfinite(close.iloc[-1]):
+            price = float(close.iloc[-1])
+            prev_c = float(close.iloc[-2]) if len(close) >= 2 and np.isfinite(close.iloc[-2]) else price
+            pct = ((price - prev_c) / prev_c * 100.0) if prev_c else 0.0
         feat_df = build_health_feature_frame(df, include_targets=False)
         if not feat_df.empty:
             last_row = feat_df.iloc[-1]
-            ret_20d = float(last_row["ret_20d"])
-            sma20_dist = float(last_row["sma20_dist"])
-            rsi_14 = float(last_row["rsi_14"])
-            ann_vol = float(last_row["ann_vol_20"])
-            drawdown_60d = float(last_row["drawdown_60d"])
+            ret_20d = float(np.nan_to_num(last_row["ret_20d"], nan=ret_20d))
+            sma20_dist = float(np.nan_to_num(last_row["sma20_dist"], nan=sma20_dist))
+            rsi_14 = float(np.nan_to_num(last_row["rsi_14"], nan=rsi_14))
+            ann_vol = float(np.clip(np.nan_to_num(last_row["ann_vol_20"], nan=ann_vol), 0.08, 1.2))
+            drawdown_60d = float(np.nan_to_num(last_row["drawdown_60d"], nan=drawdown_60d))
 
             if artifacts.get("loaded") and artifacts["health"] and artifacts["basket"]:
                 try:
@@ -1593,27 +1594,67 @@ def compute_traffic_light_health(
     }
 
 
+def score_quick_health_baseline(sym: str, snaps: dict) -> dict:
+    resolved = LEGACY_TICKER_REMAP.get(sym, sym)
+    meta = get_ticker_meta(resolved)
+    sn = snaps.get(resolved, DEFAULT_STOCKS_SNAPSHOTS.get(resolved, {"price": 100.0, "pct": 0.0, "rsi": 50.0, "above_sma": True}))
+    pct = float(sn.get("pct", 0.0))
+    rsi = float(sn.get("rsi", 50.0))
+    above = bool(sn.get("above_sma", True))
+    vol_est = min(55.0, max(14.0, 22.0 + abs(pct) * 3.8 + (4.0 if not above else 0.0)))
+
+    s = 50.0
+    s += 14.0 if above else -11.0
+    s += 10.0 if 44.0 <= rsi <= 64.0 else (-10.0 if rsi >= 72.0 else (-4.0 if rsi <= 32.0 else 3.0))
+    s += max(-10.0, min(12.0, pct * 2.5))
+    s += max(-12.0, min(10.0, (28.0 - vol_est) * 0.5))
+    score = int(round(max(12.0, min(95.0, s))))
+    if score >= 66:
+        label, pill, clr = "Healthy", "🟢 Healthy · Beginner Friendly", "#10b981"
+    elif score >= 45:
+        label, pill, clr = "Moderate", "🟡 Moderate · Watch & Hold", "#f59e0b"
+    else:
+        label, pill, clr = "High Risk", "🔴 High Risk · Volatile / Caution", "#ef4444"
+    return {
+        "sym": resolved,
+        "meta": meta,
+        "score": score,
+        "label": label,
+        "pill": pill,
+        "color": clr,
+        "price": float(sn.get("price", 100.0)),
+        "pct": pct,
+        "rsi": rsi,
+        "vol_est": round(vol_est, 1),
+    }
+
+
 def build_beginner_smart_basket(
-    budget_inr: float = 20000.0,
+    budget_inr: float = 25000.0,
     risk_profile: str = "Balanced Mix",
     market_pref: str = "Global Mix (India + US)",
     snapshots: dict | None = None,
     usdinr_rate: float = DEFAULT_USDINR_RATE,
-    basket_size: int = 4,
+    basket_size: int = 5,
+    weight_mode: str = "Risk-Parity (Inverse Volatility)",
+    preferred_sectors: list[str] | None = None,
 ) -> dict:
     base_snaps = snapshots or {}
     budget = max(2000.0, float(budget_inr))
     pref_u = market_pref.upper()
     wants_nse = "INDIA" in pref_u or "NSE" in pref_u or "GLOBAL" in pref_u
     wants_us = "US" in pref_u or "NASDAQ" in pref_u or "GLOBAL" in pref_u
+    sec_set = set(preferred_sectors or [])
 
     eligible: list[str] = []
-    max_single_share_inr = budget * 0.48
+    max_single_share_inr = budget * (0.42 if basket_size >= 5 else 0.48)
     for sym, meta in STOCK_CATALOG.items():
         is_in = meta["exchange"] == "NSE"
         if is_in and not wants_nse:
             continue
         if (not is_in) and not wants_us:
+            continue
+        if sec_set and meta["sector"] not in sec_set:
             continue
         sn = base_snaps.get(sym, DEFAULT_STOCKS_SNAPSHOTS.get(sym, {"price": 500.0}))
         px_inr = float(sn.get("price", 500.0)) * get_fx_rate_for_ticker(sym, usdinr_rate)
@@ -1624,31 +1665,30 @@ def build_beginner_smart_basket(
         eligible = [
             s for s, m in STOCK_CATALOG.items()
             if ((m["exchange"] == "NSE" and wants_nse) or (m["exchange"] != "NSE" and wants_us))
-        ][:24]
+        ][:30]
 
-    # Pick up to 14 diverse-sector affordable leaders (balanced NSE/US when Global Mix selected)
     seen_sectors: set[str] = set()
     nse_short, us_short = [], []
     for sym in eligible:
         sec = STOCK_CATALOG[sym]["sector"]
-        if sec in seen_sectors and len(nse_short) + len(us_short) < 10:
+        if not sec_set and sec in seen_sectors and len(nse_short) + len(us_short) < 12:
             continue
         seen_sectors.add(sec)
         if STOCK_CATALOG[sym]["exchange"] == "NSE":
-            if len(nse_short) < 7:
+            if len(nse_short) < 8:
                 nse_short.append(sym)
         else:
-            if len(us_short) < 7:
+            if len(us_short) < 8:
                 us_short.append(sym)
-        if len(nse_short) + len(us_short) >= 14:
+        if len(nse_short) + len(us_short) >= 16:
             break
 
     shortlist = (nse_short + us_short) if (wants_nse and wants_us) else (nse_short or us_short)
-    if len(shortlist) < basket_size:
+    if len(shortlist) < max(basket_size + 4, 12):
         for s in eligible:
             if s not in shortlist:
                 shortlist.append(s)
-            if len(shortlist) >= 12:
+            if len(shortlist) >= 16:
                 break
 
     live_snaps = ensure_symbols_live(shortlist, base_snaps)
@@ -1660,7 +1700,7 @@ def build_beginner_smart_basket(
         h = compute_traffic_light_health(sym, hist_map.get(sym), sn)
         fx = get_fx_rate_for_ticker(sym, usdinr_rate)
         share_inr = float(h["price"]) * fx
-        if share_inr > budget:
+        if not np.isfinite(share_inr) or share_inr <= 0 or share_inr > budget:
             continue
 
         p_healthy = h["probs"]["Healthy"] / 100.0
@@ -1682,10 +1722,10 @@ def build_beginner_smart_basket(
     chosen: list[dict] = []
     used_sectors: set[str] = set()
     if wants_nse and wants_us and basket_size >= 4:
-        for target_in in (True, False):
+        for target_in in (True, True, False):
             ex_picks = [c for c in scored if (c["meta"]["exchange"] == "NSE") == target_in]
             for c in ex_picks:
-                if c["meta"]["sector"] not in used_sectors:
+                if c["sym"] not in {x["sym"] for x in chosen} and c["meta"]["sector"] not in used_sectors:
                     chosen.append(c)
                     used_sectors.add(c["meta"]["sector"])
                     break
@@ -1693,11 +1733,11 @@ def build_beginner_smart_basket(
                 break
 
     for c in scored:
+        if len(chosen) >= basket_size:
+            break
         if c["sym"] not in {x["sym"] for x in chosen} and c["meta"]["sector"] not in used_sectors:
             chosen.append(c)
             used_sectors.add(c["meta"]["sector"])
-        if len(chosen) >= basket_size:
-            break
     for c in scored:
         if len(chosen) >= basket_size:
             break
@@ -1708,7 +1748,6 @@ def build_beginner_smart_basket(
         return {"items": [], "total_cost_inr": 0.0, "leftover_inr": budget, "budget_inr": budget}
 
     chosen_syms = [c["sym"] for c in chosen]
-    # 6-month return covariance & inverse-volatility risk-parity weights
     close_cols = {}
     for sym in chosen_syms:
         df_h = hist_map.get(sym)
@@ -1726,18 +1765,28 @@ def build_beginner_smart_basket(
             mask = ~np.eye(vals.shape[0], dtype=bool)
             avg_corr = float(vals[mask].mean()) if mask.any() else 0.25
 
-    sens_pow = 1.35 if risk_profile == "Safe & Steady" else (0.65 if risk_profile == "High Growth" else 1.0)
-    raw_w = np.array([
-        max(0.08, (1.0 / max(12.0, c["ann_vol_pct"])) ** sens_pow) * (1.0 + max(0.0, c["score"] - 40.0) / 150.0)
-        for c in chosen
-    ])
+    if "Equal" in weight_mode:
+        raw_w = np.ones(len(chosen), dtype=float)
+    elif "ML Score" in weight_mode:
+        raw_w = np.array([
+            max(0.10, (c["score"] / 100.0) + max(0.0, c["suitability"] * 0.25)) ** 1.5
+            for c in chosen
+        ])
+    else:
+        sens_pow = 1.35 if risk_profile == "Safe & Steady" else (0.65 if risk_profile == "High Growth" else 1.0)
+        raw_w = np.array([
+            max(0.08, (1.0 / max(12.0, c["ann_vol_pct"])) ** sens_pow) * (1.0 + max(0.0, c["score"] - 40.0) / 150.0)
+            for c in chosen
+        ])
+    raw_w = np.nan_to_num(raw_w, nan=1.0, posinf=1.0, neginf=0.1)
+    if raw_w.sum() <= 0 or not np.isfinite(raw_w.sum()):
+        raw_w = np.ones(len(chosen), dtype=float)
     target_weights = raw_w / raw_w.sum()
 
-    # Portfolio variance math: w^T * Cov * w
-    vols = np.array([c["ann_vol_pct"] / 100.0 for c in chosen])
+    vols = np.nan_to_num(np.array([c["ann_vol_pct"] / 100.0 for c in chosen]), nan=0.25)
     avg_indiv_vol_pct = float(np.sum(target_weights * vols) * 100.0)
     if not corr_df.empty and set(chosen_syms).issubset(corr_df.columns):
-        corr_sub = corr_df.loc[chosen_syms, chosen_syms].values
+        corr_sub = np.nan_to_num(corr_df.loc[chosen_syms, chosen_syms].values, nan=0.25)
         cov_mat = np.outer(vols, vols) * corr_sub
         port_var = float(target_weights @ cov_mat @ target_weights)
         port_vol_pct = float(np.sqrt(max(1e-6, port_var)) * 100.0)
@@ -1745,14 +1794,15 @@ def build_beginner_smart_basket(
         port_vol_pct = avg_indiv_vol_pct * float(np.sqrt(max(0.35, 1.0 / len(chosen) + avg_corr * (1.0 - 1.0 / len(chosen)))))
     div_reduction_pct = max(0.0, ((avg_indiv_vol_pct - port_vol_pct) / max(1e-6, avg_indiv_vol_pct)) * 100.0)
 
-    # Convert continuous risk-parity weights into integer share quantities inside budget
     qtys = [0] * len(chosen)
     remaining = budget
     order_by_weight = sorted(range(len(chosen)), key=lambda i: target_weights[i], reverse=True)
     for i in order_by_weight:
-        cost1 = chosen[i]["share_inr"]
+        cost1 = float(chosen[i]["share_inr"])
+        if not np.isfinite(cost1) or cost1 <= 0:
+            continue
         desired_inr = budget * float(target_weights[i])
-        q_init = int(desired_inr // cost1)
+        q_init = int(desired_inr // cost1) if np.isfinite(desired_inr) else 0
         if q_init == 0 and cost1 <= remaining:
             q_init = 1
         while q_init * cost1 > remaining and q_init > 0:
@@ -1760,8 +1810,7 @@ def build_beginner_smart_basket(
         qtys[i] = q_init
         remaining -= q_init * cost1
 
-    # Top up remaining cash toward under-weighted picks cleanly
-    for _ in range(25):
+    for _ in range(30):
         progressed = False
         total_now = max(1.0, budget - remaining)
         deficits = sorted(
@@ -1802,10 +1851,17 @@ def build_beginner_smart_basket(
         )
 
     avg_health = float(np.mean([it["score"] for it in items])) if items else 0.0
+    exp_drift = 0.08 if risk_profile == "Safe & Steady" else (0.14 if risk_profile == "High Growth" else 0.11)
+    p_vol_dec = port_vol_pct / 100.0
+    proj_1y_expected = tot_cost * (1.0 + exp_drift)
+    proj_1y_floor = max(0.0, tot_cost * (1.0 + exp_drift - 0.85 * p_vol_dec))
+    proj_1y_upside = tot_cost * (1.0 + exp_drift + 1.15 * p_vol_dec)
+
     return {
         "items": items,
         "risk_profile": risk_profile,
         "market_pref": market_pref,
+        "weight_mode": weight_mode,
         "budget_inr": round(budget, 2),
         "total_cost_inr": round(tot_cost, 2),
         "leftover_inr": round(max(0.0, budget - tot_cost), 2),
@@ -1815,6 +1871,9 @@ def build_beginner_smart_basket(
         "diversification_reduction_pct": round(div_reduction_pct, 1),
         "avg_corr": round(avg_corr, 2),
         "corr_df": corr_df,
+        "proj_1y_floor": round(proj_1y_floor, 0),
+        "proj_1y_expected": round(proj_1y_expected, 0),
+        "proj_1y_upside": round(proj_1y_upside, 0),
     }
 
 
@@ -3451,7 +3510,6 @@ def rank_quant_screener_candidates(
     if not pre_pool:
         pre_pool = list(STOCK_CATALOG.keys())
 
-    # Score baseline across full pool, then refresh top slice live via Yahoo Finance
     prelim = []
     for sym in pre_pool:
         sn = snaps.get(sym, DEFAULT_STOCKS_SNAPSHOTS.get(sym, {"price": 100.0, "pct": 0.0, "rsi": 50.0, "above_sma": True}))
@@ -6145,142 +6203,345 @@ def _render_traffic_light_hero_html(h: dict) -> str:
     """
 
 
-def page_guided_investing() -> None:
+def page_smart_basket() -> None:
     snaps, _, usdinr, _, _ = get_market_context()
     artifacts = load_trained_ml_artifacts()
     metrics = artifacts.get("metrics") or {}
+    all_sectors = sorted({v["sector"] for v in STOCK_CATALOG.values()})
 
-    st.title("Smart Basket & Traffic-Light Stock Health", icon=":material/health_and_safety:")
+    st.title("Smart Basket Builder", icon=":material/auto_awesome:")
     trained_info = (
-        f":green-badge[Trained ML Active · {metrics.get('tickers_trained', 345)} Stocks · "
-        f"{metrics.get('total_rows', 0):,} Historical Samples (3Y Yahoo Data)]"
+        f":green-badge[3Y Trained ML Active · {metrics.get('tickers_trained', 345)} Stocks]"
         if artifacts.get("loaded")
         else ":orange-badge[Baseline Risk Engine Active]"
     )
-    st.markdown(f"Beginner-friendly investing powered by offline-trained scikit-learn models & covariance risk parity. &nbsp; {trained_info}")
+    st.markdown(f"Automated multi-stock portfolio allocation using ML health scoring & covariance risk parity. &nbsp; {trained_info}")
 
-    tab_basket, tab_health, tab_proof = st.tabs([
-        "Smart Basket (4-Stock Auto Builder)",
-        "Traffic-Light Stock Health",
-        "Trained Model Metrics & Proof",
+    acct = get_user_account_summary(st.session_state.username, snaps, usdinr)
+
+    with st.container(border=True):
+        b1, b2, b3, b4 = st.columns([1.15, 1.15, 1.25, 0.85], vertical_alignment="bottom")
+        sb_budget = b1.number_input("Investment Budget (₹)", min_value=2000.0, max_value=500000.0, value=25000.0, step=2500.0, key="g_budget")
+        sb_risk = b2.selectbox("Comfort Level", ["Safe & Steady", "Balanced Mix", "High Growth"], index=1, key="g_risk")
+        sb_mkt = b3.selectbox("Market Region", ["Global Mix (India + US)", "India (NSE)", "US (NASDAQ/NYSE)"], key="g_mkt")
+        sb_count = b4.selectbox("Stocks in Basket", [4, 5, 6, 7], index=1, key="g_count")
+
+        o1, o2, o3 = st.columns([1.3, 1.8, 0.9], vertical_alignment="bottom")
+        sb_weight_mode = o1.selectbox(
+            "Allocation Strategy",
+            ["Risk-Parity (Inverse Volatility)", "ML Score Weighted", "Equal Weight"],
+            key="g_weight_mode",
+        )
+        sb_sectors = o2.multiselect(
+            "Focus Sectors (Optional — leave empty for auto sector spread)",
+            options=all_sectors,
+            key="g_sectors",
+        )
+        build_clicked = o3.button("Build Basket", type="primary", icon=":material/auto_awesome:", width="stretch", key="build_basket_btn")
+
+    basket_sig = f"{sb_budget}|{sb_risk}|{sb_mkt}|{sb_count}|{sb_weight_mode}|{','.join(sorted(sb_sectors))}"
+    if build_clicked or st.session_state.get("_smart_basket_sig") != basket_sig or "_smart_basket_res" not in st.session_state:
+        with st.spinner("Running 3Y-trained ML scoring & 6M return covariance optimizer..."):
+            st.session_state["_smart_basket_res"] = build_beginner_smart_basket(
+                budget_inr=float(sb_budget),
+                risk_profile=sb_risk,
+                market_pref=sb_mkt,
+                snapshots=snaps,
+                usdinr_rate=usdinr,
+                basket_size=int(sb_count),
+                weight_mode=sb_weight_mode,
+                preferred_sectors=sb_sectors,
+            )
+            st.session_state["_smart_basket_sig"] = basket_sig
+
+    b_res = st.session_state.get("_smart_basket_res") or {}
+    items = b_res.get("items", [])
+    if not items:
+        st.warning("Unable to construct an affordable basket for that filter and budget. Increase budget or clear sector filters.")
+        return
+
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("Basket Cost (INR)", f"₹{b_res['total_cost_inr']:,.2f}", f"Cash Left: ₹{b_res['leftover_inr']:,.2f}", delta_color="off", border=True, height="stretch")
+    k2.metric("Diversified Picks", f"{len(items)} Stocks", f"{len({it['meta']['sector'] for it in items})} Sectors · {b_res['market_pref'].split(' ')[0]}", delta_color="off", border=True, height="stretch")
+    k3.metric("Risk Reduction", f"-{b_res['diversification_reduction_pct']:.1f}% Vol", f"Port {b_res['portfolio_vol_pct']:.1f}% vs {b_res['avg_indiv_vol_pct']:.1f}%", delta_color="off", border=True, height="stretch")
+    k4.metric("Avg Health Score", f"{b_res['avg_health']:.0f} / 100", f"Margin: ₹{acct['balance']:,.0f}", delta_color="off", border=True, height="stretch")
+
+    c_donut, c_cards = st.columns([1.05, 1.55], gap="medium")
+    with c_donut.container(border=True, height="stretch"):
+        st.subheader("Portfolio Weight Distribution", icon=":material/pie_chart:")
+        fig_d = go.Figure(
+            data=[
+                go.Pie(
+                    labels=[f"{it['sym'].replace('.NS', '')} ({it['actual_wt_pct']:.0f}%)" for it in items],
+                    values=[it["cost_inr"] for it in items],
+                    hole=0.55,
+                )
+            ]
+        )
+        fig_d.update_layout(height=280, paper_bgcolor="rgba(0,0,0,0)", margin=dict(l=8, r=8, t=12, b=8))
+        st.plotly_chart(fig_d, theme="streamlit", alt="Donut chart of allocated smart basket portfolio weights")
+
+        st.markdown("**Estimated 1-Year Outcome Range**")
+        p1, p2, p3 = st.columns(3)
+        p1.metric("Safe Floor", f"₹{b_res['proj_1y_floor']:,.0f}", border=True)
+        p2.metric("Projected", f"₹{b_res['proj_1y_expected']:,.0f}", border=True)
+        p3.metric("Upside", f"₹{b_res['proj_1y_upside']:,.0f}", border=True)
+
+    with c_cards.container(border=True, height="stretch"):
+        st.subheader(f"Your {len(items)}-Stock Smart Basket ({sb_weight_mode.split(' ')[0]})", icon=":material/layers:")
+        for it in items:
+            st.html(
+                f'<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;'
+                f'padding:9px 12px;margin-bottom:7px;border-radius:11px;border:1px solid rgba(128,128,128,0.22);">'
+                f'<div style="display:flex;align-items:center;gap:10px;min-width:0;">'
+                f'{stock_icon_html(it["sym"], size=34, radius=9)}'
+                f'<div style="min-width:0;">'
+                f'<div style="font-weight:700;font-size:0.93rem;">{html.escape(it["meta"]["name"])} '
+                f'<span style="font-size:0.78rem;font-family:JetBrains Mono,monospace;opacity:0.72;">({html.escape(it["sym"])}) · {it["actual_wt_pct"]:.1f}%</span></div>'
+                f'<div style="font-size:0.75rem;opacity:0.78;">{html.escape(it["why_picked"])}</div>'
+                f'</div></div>'
+                f'<div style="text-align:right;white-space:nowrap;">'
+                f'<div style="font-weight:800;font-family:JetBrains Mono,monospace;">{it["qty"]} sh · ₹{it["cost_inr"]:,.0f}</div>'
+                f'<div style="font-size:0.74rem;font-weight:700;color:{it["color"]};">{html.escape(it["pill"])}</div>'
+                f'</div></div>'
+            )
+
+        ex_l, ex_wl, ex_csv = st.columns([1.3, 1.0, 0.9])
+        if ex_l.button(f"Invest All {len(items)} Stocks (1-Click)", type="primary", icon=":material/rocket_launch:", width="stretch", key="exec_basket_btn"):
+            ok_any, msgs, spent = execute_smart_basket(
+                st.session_state.username,
+                b_res,
+                usdinr,
+                allow_after_hours=st.session_state.allow_after_hours,
+            )
+            if ok_any:
+                st.success(f"Deployed **₹{spent:,.2f}** across your {len(items)}-stock Smart Basket!")
+                st.toast("Smart Basket orders executed!", icon=":material/check_circle:")
+            else:
+                st.warning("Market is currently closed for one or more exchanges. Enable 'Allow Demo Orders Outside Hours' below to simulate outside hours.")
+            st.markdown("\n".join(msgs))
+
+        if ex_wl.button("Save All to Watchlist", icon=":material/star:", width="stretch", key="basket_save_wl"):
+            cur_wl = set(get_user_watchlist(st.session_state.username))
+            added_cnt = 0
+            for it in items:
+                if it["sym"] not in cur_wl:
+                    toggle_watchlist(st.session_state.username, it["sym"])
+                    added_cnt += 1
+            st.toast(f"Added {added_cnt} new stock(s) to Watchlist!")
+
+        basket_csv_df = pd.DataFrame([
+            {
+                "Symbol": it["sym"],
+                "Company": it["meta"]["name"],
+                "Exchange": it["meta"]["exchange"],
+                "Sector": it["meta"]["sector"],
+                "Shares": it["qty"],
+                "Cost_INR": it["cost_inr"],
+                "Weight_Pct": it["actual_wt_pct"],
+                "Health_Score": it["score"],
+                "Health_Rating": it["label"],
+            }
+            for it in items
+        ])
+        ex_csv.download_button(
+            "Export CSV",
+            data=basket_csv_df.to_csv(index=False).encode("utf-8"),
+            file_name="financesight_smart_basket.csv",
+            mime="text/csv",
+            icon=":material/download:",
+            width="stretch",
+        )
+
+        st.toggle(
+            "Allow Demo Orders Outside Market Hours",
+            value=st.session_state.allow_after_hours,
+            key="basket_after_hrs",
+            on_change=_sync_after_hours_cb,
+            args=("basket_after_hrs",),
+        )
+
+    corr_df = b_res.get("corr_df")
+    with st.expander("Portfolio Covariance & 6-Month Correlation Analysis"):
+        st.markdown(
+            f"- **Weighting Method ({sb_weight_mode}):** Balances position sizing across distinct sectors and risk profiles.\n"
+            f"- **Portfolio Variance Reduction:** Weighted standalone volatility is **`{b_res['avg_indiv_vol_pct']:.1f}%`**, reduced to **`{b_res['portfolio_vol_pct']:.1f}%`** (`-{b_res['diversification_reduction_pct']:.1f}%` risk reduction) with average pairwise correlation **`{b_res['avg_corr']:.2f}`**."
+        )
+        if corr_df is not None and not corr_df.empty:
+            hm = go.Figure(
+                data=go.Heatmap(
+                    z=corr_df.values,
+                    x=list(corr_df.columns),
+                    y=list(corr_df.index),
+                    zmin=-1,
+                    zmax=1,
+                    colorscale="RdBu",
+                    reversescale=True,
+                    text=corr_df.values,
+                    texttemplate="%{text:.2f}",
+                )
+            )
+            hm.update_layout(height=320, title="6-Month Daily Return Correlation Matrix", paper_bgcolor="rgba(0,0,0,0)", margin=dict(l=10, r=10, t=40, b=10))
+            st.plotly_chart(hm, theme="streamlit", alt="6-month daily return correlation heatmap across smart basket equities")
+
+
+def page_stock_health() -> None:
+    snaps, _, usdinr, _, _ = get_market_context()
+    artifacts = load_trained_ml_artifacts()
+    metrics = artifacts.get("metrics") or {}
+    all_sectors = ["All Sectors"] + sorted({v["sector"] for v in STOCK_CATALOG.values()})
+
+    st.title("Traffic-Light Stock Health", icon=":material/health_and_safety:")
+    trained_info = (
+        f":green-badge[Trained ML Active · {metrics.get('tickers_trained', 345)} Stocks · "
+        f"{metrics.get('total_rows', 0):,} Samples]"
+        if artifacts.get("loaded")
+        else ":orange-badge[Baseline Risk Engine Active]"
+    )
+    st.markdown(f"Plain-English 20-day stock health scores powered by 3-year trained classification models. &nbsp; {trained_info}")
+
+    tab_screener, tab_inspect, tab_model = st.tabs([
+        "Stock Health Explorer (10 Per Page)",
+        "Single-Stock Deep Dive",
+        "Model Benchmarks & Dataset",
     ])
 
-    with tab_basket:
-        st.caption("Answer 3 simple questions — our ML models pick 4 diversified stocks from distinct sectors and balance risk automatically.")
-        acct = get_user_account_summary(st.session_state.username, snaps, usdinr)
+    with tab_screener:
+        f1, f2, f3, f4, f5 = st.columns([1.4, 0.85, 1.05, 0.95, 1.25], vertical_alignment="bottom")
+        h_q = f1.text_input("Search Stocks", type="search", placeholder="Name, ticker, sector...", key="hl_search")
+        h_ex = f2.selectbox("Exchange", ["All", "NSE", "US"], key="hl_ex")
+        h_sec = f3.selectbox("Sector", all_sectors, key="hl_sec")
+        h_light = f4.selectbox("Health Light", ["All Lights", "Healthy", "Moderate", "High Risk"], key="hl_light")
+        h_sort = f5.selectbox(
+            "Sort By",
+            [
+                "Health Score (High to Low)",
+                "Health Score (Low to High)",
+                "Day Move (% High to Low)",
+                "Lowest Volatility",
+                "Name (A–Z)",
+            ],
+            key="hl_sort",
+        )
 
-        with st.container(border=True):
-            b1, b2, b3, b4 = st.columns([1.2, 1.2, 1.3, 1.0], vertical_alignment="bottom")
-            sb_budget = b1.number_input("Investment Budget (₹)", min_value=2000.0, max_value=200000.0, value=20000.0, step=2000.0, key="g_budget")
-            sb_risk = b2.selectbox("Comfort Level", ["Safe & Steady", "Balanced Mix", "High Growth"], index=1, key="g_risk")
-            sb_mkt = b3.selectbox("Market Region", ["Global Mix (India + US)", "India (NSE)", "US (NASDAQ/NYSE)"], key="g_mkt")
-            build_clicked = b4.button("Build Smart Basket", type="primary", icon=":material/auto_awesome:", width="stretch", key="build_basket_btn")
+        quick_rows = []
+        ql = h_q.strip().lower()
+        for sym, meta in STOCK_CATALOG.items():
+            if h_ex == "NSE" and meta["exchange"] != "NSE":
+                continue
+            if h_ex == "US" and meta["exchange"] == "NSE":
+                continue
+            if h_sec != "All Sectors" and meta["sector"] != h_sec:
+                continue
+            if ql and (ql not in sym.lower() and ql not in meta["name"].lower() and ql not in meta["sector"].lower()):
+                continue
+            q_item = score_quick_health_baseline(sym, snaps)
+            if h_light != "All Lights" and q_item["label"] != h_light:
+                continue
+            quick_rows.append(q_item)
 
-        basket_sig = f"{sb_budget}|{sb_risk}|{sb_mkt}"
-        if build_clicked or st.session_state.get("_smart_basket_sig") != basket_sig or "_smart_basket_res" not in st.session_state:
-            with st.spinner("Running 3Y-trained ML suitability models & 6M return covariance risk-parity..."):
-                st.session_state["_smart_basket_res"] = build_beginner_smart_basket(
-                    budget_inr=float(sb_budget),
-                    risk_profile=sb_risk,
-                    market_pref=sb_mkt,
-                    snapshots=snaps,
-                    usdinr_rate=usdinr,
-                    basket_size=4,
-                )
-                st.session_state["_smart_basket_sig"] = basket_sig
-
-        b_res = st.session_state.get("_smart_basket_res") or {}
-        items = b_res.get("items", [])
-        if not items:
-            st.warning("Unable to construct an affordable basket for that budget. Increase budget slightly and try again.")
+        if h_sort == "Health Score (High to Low)":
+            quick_rows.sort(key=lambda r: (r["score"], r["pct"]), reverse=True)
+        elif h_sort == "Health Score (Low to High)":
+            quick_rows.sort(key=lambda r: (r["score"], r["pct"]), reverse=False)
+        elif h_sort == "Day Move (% High to Low)":
+            quick_rows.sort(key=lambda r: r["pct"], reverse=True)
+        elif h_sort == "Lowest Volatility":
+            quick_rows.sort(key=lambda r: r["vol_est"], reverse=False)
         else:
-            k1, k2, k3, k4 = st.columns(4)
-            k1.metric("Basket Cost (INR)", f"₹{b_res['total_cost_inr']:,.2f}", f"Cash Left: ₹{b_res['leftover_inr']:,.2f}", delta_color="off", border=True, height="stretch")
-            k2.metric("Sector Diversity", f"{len(items)} Distinct Sectors", f"{b_res['market_pref']}", delta_color="off", border=True, height="stretch")
-            k3.metric("Diversification Shield", f"-{b_res['diversification_reduction_pct']:.1f}% Risk", f"Port Vol {b_res['portfolio_vol_pct']:.1f}% vs {b_res['avg_indiv_vol_pct']:.1f}%", delta_color="off", border=True, height="stretch")
-            k4.metric("Avg Health Score", f"{b_res['avg_health']:.0f} / 100", f"Margin: ₹{acct['balance']:,.0f}", delta_color="off", border=True, height="stretch")
+            quick_rows.sort(key=lambda r: r["meta"]["name"])
 
-            c_donut, c_cards = st.columns([1.05, 1.55], gap="medium")
-            with c_donut.container(border=True, height="stretch"):
-                st.subheader("Smart Weight Split", icon=":material/pie_chart:")
-                fig_d = go.Figure(
-                    data=[
-                        go.Pie(
-                            labels=[f"{it['sym'].replace('.NS', '')} ({it['actual_wt_pct']:.0f}%)" for it in items],
-                            values=[it["cost_inr"] for it in items],
-                            hole=0.55,
+        if not quick_rows:
+            st.info("No stocks matched those search and health filters.")
+        else:
+            page_size = 10
+            total_rows = len(quick_rows)
+            max_pages = max(1, (total_rows + page_size - 1) // page_size)
+            hl_sig = f"{h_q.strip().lower()}|{h_ex}|{h_sec}|{h_light}|{h_sort}"
+            if st.session_state.get("_hl_sig") != hl_sig:
+                st.session_state["_hl_sig"] = hl_sig
+                st.session_state["hl_page"] = 0
+            cur_p = min(max(0, int(st.session_state.get("hl_page", 0))), max_pages - 1)
+            start_i = cur_p * page_size
+            page_items = quick_rows[start_i : start_i + page_size]
+            page_syms = [r["sym"] for r in page_items]
+
+            p_top_l, p_top_p, p_top_n = st.columns([2.2, 0.9, 0.9], vertical_alignment="center")
+            p_top_l.caption(f"Showing **{start_i + 1}–{min(start_i + page_size, total_rows)}** of **{total_rows}** equities (`10` per page · Live 3Y ML Evaluation)")
+            if max_pages > 1:
+                p_top_p.button("Previous 10", icon=":material/chevron_left:", disabled=cur_p == 0, width="stretch", key="hl_prev_top", on_click=_shift_page_cb, args=("hl_page", -1))
+                p_top_n.button(f"Next 10 ({cur_p + 1}/{max_pages})", icon=":material/chevron_right:", disabled=cur_p >= max_pages - 1, width="stretch", key="hl_next_top", on_click=_shift_page_cb, args=("hl_page", 1))
+
+            live_page_snaps = ensure_symbols_live(page_syms, snaps)
+            hist_page_map = fetch_basket_candidate_histories(tuple(page_syms))
+
+            eval_cards = [
+                compute_traffic_light_health(sym, hist_page_map.get(sym), live_page_snaps.get(sym))
+                for sym in page_syms
+            ]
+            if h_sort == "Health Score (High to Low)":
+                eval_cards.sort(key=lambda r: r["score"], reverse=True)
+            elif h_sort == "Health Score (Low to High)":
+                eval_cards.sort(key=lambda r: r["score"])
+            elif h_sort == "Day Move (% High to Low)":
+                eval_cards.sort(key=lambda r: r["pct"], reverse=True)
+            elif h_sort == "Lowest Volatility":
+                eval_cards.sort(key=lambda r: r["ann_vol_pct"])
+            else:
+                eval_cards.sort(key=lambda r: r["meta"]["name"])
+
+            for row_i in range(0, len(eval_cards), 2):
+                cols = st.columns(2, gap="medium")
+                for col_i in range(2):
+                    idx = row_i + col_i
+                    if idx >= len(eval_cards):
+                        continue
+                    hc = eval_cards[idx]
+                    m = hc["meta"]
+                    clr = hc["color"]
+                    with cols[col_i].container(border=True, height="stretch"):
+                        st.html(
+                            f'<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px;">'
+                            f'<div style="display:flex;align-items:center;gap:10px;min-width:0;">'
+                            f'{stock_icon_html(hc["sym"], size=36, radius=9)}'
+                            f'<div style="min-width:0;">'
+                            f'<div style="font-weight:800;font-size:0.98rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{html.escape(m["name"])}</div>'
+                            f'<div style="font-size:0.76rem;opacity:0.75;font-family:JetBrains Mono,monospace;">{html.escape(hc["sym"])} · {m["exchange"]} · {m["currency"]}{hc["price"]:,.2f} ({hc["pct"]:+.2f}%)</div>'
+                            f'</div></div>'
+                            f'<div style="text-align:right;white-space:nowrap;">'
+                            f'<span style="padding:3px 9px;border-radius:999px;font-weight:700;font-size:0.76rem;color:{clr};background:{clr}1F;border:1px solid {clr}55;">{html.escape(hc["pill"])}</span>'
+                            f'<div style="font-weight:800;font-size:1.05rem;font-family:JetBrains Mono,monospace;margin-top:3px;">{hc["score"]}/100</div>'
+                            f'</div></div>'
+                            f'<div style="width:100%;height:7px;background:rgba(128,128,128,0.20);border-radius:999px;overflow:hidden;margin-bottom:8px;">'
+                            f'<div style="width:{hc["score"]}%;height:100%;background:{clr};border-radius:999px;"></div></div>'
+                            f'<div style="font-size:0.76rem;opacity:0.86;line-height:1.45;">'
+                            f'<div><b>Trend:</b> {html.escape(hc["trend_plain"])}</div>'
+                            f'<div><b>Timing:</b> {html.escape(hc["timing_plain"])}</div>'
+                            f'<div><b>Risk:</b> {html.escape(hc["risk_plain"])}</div>'
+                            f'</div>'
                         )
-                    ]
-                )
-                fig_d.update_layout(height=310, paper_bgcolor="rgba(0,0,0,0)", margin=dict(l=8, r=8, t=12, b=8))
-                st.plotly_chart(fig_d, theme="streamlit", alt="Donut chart of inverse-volatility smart basket weights")
+                        st.caption(f"Healthy: `{hc['probs']['Healthy']:.0f}%` · Moderate: `{hc['probs']['Moderate']:.0f}%` · High Risk: `{hc['probs']['High Risk']:.0f}%`")
+                        cb1, cb2 = st.columns(2)
+                        if cb1.button("Buy 1 Share", icon=":material/shopping_bag:", width="stretch", key=f"hl_buy_{hc['sym']}"):
+                            ok_b, msg_b = execute_trade(
+                                st.session_state.username, hc["sym"], "BUY", 1, float(hc["price"]), "CNC (Delivery)",
+                                usdinr_rate=usdinr, allow_after_hours=st.session_state.allow_after_hours,
+                            )
+                            if ok_b:
+                                st.toast(msg_b, icon=":material/check_circle:")
+                            else:
+                                st.warning(msg_b)
+                        if cb2.button("SuperChart", icon=":material/candlestick_chart:", width="stretch", key=f"hl_sc_{hc['sym']}"):
+                            _jump_to_page("Terminal", hc["sym"])
 
-            with c_cards.container(border=True, height="stretch"):
-                st.subheader(f"Your {len(items)}-Stock ML Starter Basket", icon=":material/layers:")
-                for it in items:
-                    st.html(
-                        f'<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;'
-                        f'padding:10px 12px;margin-bottom:8px;border-radius:11px;border:1px solid rgba(128,128,128,0.22);">'
-                        f'<div style="display:flex;align-items:center;gap:10px;min-width:0;">'
-                        f'{stock_icon_html(it["sym"], size=34, radius=9)}'
-                        f'<div style="min-width:0;">'
-                        f'<div style="font-weight:700;font-size:0.93rem;">{html.escape(it["meta"]["name"])} '
-                        f'<span style="font-size:0.78rem;font-family:JetBrains Mono,monospace;opacity:0.72;">({html.escape(it["sym"])})</span></div>'
-                        f'<div style="font-size:0.76rem;opacity:0.78;">{html.escape(it["why_picked"])}</div>'
-                        f'</div></div>'
-                        f'<div style="text-align:right;white-space:nowrap;">'
-                        f'<div style="font-weight:800;font-family:JetBrains Mono,monospace;">{it["qty"]} sh · ₹{it["cost_inr"]:,.0f}</div>'
-                        f'<div style="font-size:0.74rem;font-weight:700;color:{it["color"]};">{html.escape(it["pill"])}</div>'
-                        f'</div></div>'
-                    )
+            if max_pages > 1:
+                p_b_l, p_b_p, p_b_n = st.columns([2.2, 0.9, 0.9], vertical_alignment="center")
+                p_b_l.caption(f"Page **{cur_p + 1}** of **{max_pages}**")
+                p_b_p.button("Previous 10", icon=":material/chevron_left:", disabled=cur_p == 0, width="stretch", key="hl_prev_btm", on_click=_shift_page_cb, args=("hl_page", -1))
+                p_b_n.button("Next 10", icon=":material/chevron_right:", disabled=cur_p >= max_pages - 1, width="stretch", key="hl_next_btm", on_click=_shift_page_cb, args=("hl_page", 1))
 
-                ex_l, ex_r = st.columns([1.3, 1.0], vertical_alignment="center")
-                ex_r.toggle(
-                    "Allow Demo Orders Outside Hours",
-                    value=st.session_state.allow_after_hours,
-                    key="basket_after_hrs",
-                    on_change=_sync_after_hours_cb,
-                    args=("basket_after_hrs",),
-                )
-                if ex_l.button("Invest Entire Smart Basket (1-Click)", type="primary", icon=":material/rocket_launch:", width="stretch", key="exec_basket_btn"):
-                    ok_any, msgs, spent = execute_smart_basket(
-                        st.session_state.username,
-                        b_res,
-                        usdinr,
-                        allow_after_hours=st.session_state.allow_after_hours,
-                    )
-                    if ok_any:
-                        st.success(f"Deployed **₹{spent:,.2f}** across your {len(items)}-stock Smart Basket!")
-                        st.toast("Smart Basket orders executed cleanly!", icon=":material/check_circle:")
-                    else:
-                        st.warning("Market is currently closed for one or more exchanges. Enable 'Allow Demo Orders Outside Hours' to test live demo execution.")
-                    st.markdown("\n".join(msgs))
-
-            corr_df = b_res.get("corr_df")
-            with st.expander("How the Math Works (6-Month Covariance & Correlation Heatmap for Viva)"):
-                st.markdown(
-                    f"- **Inverse-Volatility Risk Parity ($w_i \\propto 1/\\sigma_i$):** Calmer companies automatically receive higher portfolio weight so no single volatile stock dominates.\n"
-                    f"- **Portfolio Variance Reduction:** Individual stock weighted volatility is **`{b_res['avg_indiv_vol_pct']:.1f}%`**, reduced to **`{b_res['portfolio_vol_pct']:.1f}%`** (`-{b_res['diversification_reduction_pct']:.1f}%` risk shield) thanks to average pairwise correlation **`{b_res['avg_corr']:.2f}`**."
-                )
-                if corr_df is not None and not corr_df.empty:
-                    hm = go.Figure(
-                        data=go.Heatmap(
-                            z=corr_df.values,
-                            x=list(corr_df.columns),
-                            y=list(corr_df.index),
-                            zmin=-1,
-                            zmax=1,
-                            colorscale="RdBu",
-                            reversescale=True,
-                            text=corr_df.values,
-                            texttemplate="%{text:.2f}",
-                        )
-                    )
-                    hm.update_layout(height=320, title="6-Month Daily Return Correlation Matrix", paper_bgcolor="rgba(0,0,0,0)", margin=dict(l=10, r=10, t=40, b=10))
-                    st.plotly_chart(hm, theme="streamlit", alt="6-month daily return correlation heatmap across smart basket equities")
-
-    with tab_health:
-        st.caption("Pick any stock to check its ML-predicted 20-day health light and plain-English breakdown — zero technical jargon needed.")
+    with tab_inspect:
+        st.caption("Select any stock for a full single-asset health scorecard and probability breakdown.")
         all_syms = list(STOCK_CATALOG.keys())
         cur_i = all_syms.index(st.session_state.selected_ticker) if st.session_state.selected_ticker in all_syms else 0
         h_sym = st.selectbox(
@@ -6321,9 +6582,9 @@ def page_guided_investing() -> None:
         if qa2.button("Inspect Candlestick & Forecast in SuperChart", icon=":material/candlestick_chart:", width="stretch", key="health_go_sc"):
             _jump_to_page("Terminal", h_sym)
 
-    with tab_proof:
+    with tab_model:
         if not metrics:
-            st.info("Run `python train_models.py` to generate offline model benchmarks and dataset metrics.")
+            st.info("Run `python train_models.py` to generate model benchmarks and dataset metrics.")
         else:
             mk1, mk2, mk3, mk4 = st.columns(4)
             mk1.metric("Stocks in Dataset", f"{metrics.get('tickers_trained', 0)}", f"{metrics.get('period', '3y')} Daily Yahoo OHLCV", delta_color="off", border=True, height="stretch")
@@ -6336,7 +6597,7 @@ def page_guided_investing() -> None:
             st.space("small")
             b_l, b_r = st.columns(2, gap="medium")
             with b_l.container(border=True, height="stretch"):
-                st.subheader("3-Class Traffic-Light Benchmarks (Unseen 20% Test)", icon=":material/fact_check:")
+                st.subheader("3-Class Health Benchmarks (Unseen 20% Test)", icon=":material/fact_check:")
                 st.dataframe(pd.DataFrame(metrics.get("classifier_benchmarks", [])), hide_index=True, alt="Out-of-sample classification benchmarks across Logistic Regression, Random Forest, and HistGradientBoosting")
                 st.caption("Labels: `Healthy` (20D Vol <=27%, Drawdown >-5.5%, Return >=-1%), `Moderate`, `High Risk` (Vol >=37% or Drawdown <=-9.5%).")
             with b_r.container(border=True, height="stretch"):
@@ -6536,7 +6797,8 @@ def run_app() -> None:
         nav.run()
     else:
         p_dash = st.Page(page_dashboard, title="Dashboard", icon=":material/dashboard:", url_path="dashboard", default=True)
-        p_guided = st.Page(page_guided_investing, title="Smart Basket & Health", icon=":material/health_and_safety:", url_path="guided")
+        p_basket = st.Page(page_smart_basket, title="Smart Basket", icon=":material/auto_awesome:", url_path="basket")
+        p_health = st.Page(page_stock_health, title="Traffic-Light Health", icon=":material/health_and_safety:", url_path="health")
         p_term = st.Page(page_superchart, title="SuperChart", icon=":material/candlestick_chart:", url_path="superchart")
         p_adv = st.Page(page_ai_advisor, title="AI Advisor", icon=":material/smart_toy:", url_path="advisor")
         p_ord = st.Page(page_orders, title="Orders", icon=":material/receipt:", url_path="orders")
@@ -6548,7 +6810,8 @@ def run_app() -> None:
 
         st.session_state["_page_map"] = {
             "Dashboard": p_dash,
-            "Guided": p_guided,
+            "Basket": p_basket,
+            "Health": p_health,
             "Terminal": p_term,
             "Advisor": p_adv,
             "Orders": p_ord,
@@ -6562,7 +6825,7 @@ def run_app() -> None:
         render_sidebar()
         nav = st.navigation(
             {
-                "": [p_dash, p_guided, p_term, p_adv],
+                "": [p_dash, p_basket, p_health, p_term, p_adv],
                 "Trading": [p_ord, p_hold, p_pos, p_fund],
                 "Analytics": [p_apps, p_calc],
             },

@@ -1,10 +1,3 @@
-"""Offline ML training pipeline for FinanceSight Traffic-Light Health and Smart Basket models.
-
-Fetches 3 years of daily historical OHLCV data from Yahoo Finance across NSE & US equities,
-engineers leak-free stationary technical features, evaluates multiple scikit-learn models on
-a strict chronological train/test split, and saves compressed artifacts to models/.
-"""
-
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -261,7 +254,6 @@ def train_and_save() -> None:
     metrics_path = MODELS_DIR / "training_metrics.json"
     metrics_path.write_text(json.dumps(metrics_payload, indent=2), encoding="utf-8")
 
-    # Save a compact representative dataset sample for GitHub inspection
     sample_df = (
         panel.groupby("symbol", group_keys=False)
         .tail(2)[["date", "symbol"] + HEALTH_FEATURE_COLS + ["fwd_ret_20d", "fwd_vol_20d", "fwd_mdd_20d", "fwd_suitability", "health_class"]]
