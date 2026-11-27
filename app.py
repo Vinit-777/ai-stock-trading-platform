@@ -2783,6 +2783,36 @@ def _build_llm_messages(system_prompt: str, user_prompt: str, chat_history: list
     return messages
 
 
+GROQ_CHAT_MODELS = [
+    "openai/gpt-oss-120b",
+    "qwen/qwen3.8-27b",
+    "openai/gpt-oss-20b",
+    "llama-3.3-70b-versatile",
+]
+
+GEMINI_CHAT_MODELS = [
+    "gemini-3-flash-preview",
+    "gemini-flash-latest",
+    "gemini-2.5-flash",
+]
+
+
+def _select_groq_models(client) -> list[str]:
+    candidates = list(GROQ_CHAT_MODELS)
+    try:
+        live_ids = [m.id for m in client.models.list().data]
+        live_set = set(live_ids)
+        prioritized = [m for m in candidates if m in live_set]
+        extras = [
+            mid for mid in live_ids
+            if mid not in prioritized
+            and not any(bad in mid.lower() for bad in ["whisper", "guard", "orpheus", "safeguard", "tts", "vision"])
+        ]
+        return (prioritized + extras) or candidates
+    except Exception:
+        return candidates
+
+
 def call_groq_llm_live(
     system_prompt: str,
     user_prompt: str,
@@ -2799,19 +2829,19 @@ def call_groq_llm_live(
         return None, None, "missing_sdk"
 
     messages = _build_llm_messages(system_prompt, user_prompt, chat_history)
-    client = Groq(api_key=active_key, timeout=15.0)
+    client = Groq(api_key=active_key, timeout=18.0)
 
-    for model_name in ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]:
+    for model_name in _select_groq_models(client)[:4]:
         try:
             resp = client.chat.completions.create(
                 model=model_name,
                 messages=messages,
                 temperature=0.35,
-                max_tokens=950,
+                max_tokens=2048,
             )
             txt = resp.choices[0].message.content
             if txt and len(txt.strip()) > 1:
-                return txt.strip(), f"Live Groq LLaMA ({model_name})", None
+                return txt.strip(), f"Live Groq AI ({model_name})", None
         except Exception as exc:
             err_s = str(exc).lower()
             if "401" in err_s or "invalid_api_key" in err_s or "authentication" in err_s:
@@ -2839,21 +2869,22 @@ def call_gemini_llm_live(
     payload = json.dumps({
         "system_instruction": {"parts": [{"text": system_prompt}]},
         "contents": [{"role": "user", "parts": [{"text": user_prompt + history_ctx}]}],
-        "generationConfig": {"temperature": 0.35, "maxOutputTokens": 950},
+        "generationConfig": {"temperature": 0.35, "maxOutputTokens": 2048},
     }).encode("utf-8")
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={urllib.parse.quote(active_key)}"
-    try:
-        req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=12) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-        cands = data.get("candidates", [])
-        if cands:
-            txt = cands[0]["content"]["parts"][0]["text"]
-            if txt and txt.strip():
-                return txt.strip(), "Live Gemini 2.5 Flash"
-    except Exception:
-        pass
+    for g_model in GEMINI_CHAT_MODELS:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{g_model}:generateContent?key={urllib.parse.quote(active_key)}"
+        try:
+            req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=14) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+            cands = data.get("candidates", [])
+            if cands:
+                txt = cands[0]["content"]["parts"][0]["text"]
+                if txt and txt.strip():
+                    return txt.strip(), f"Live Gemini ({g_model})"
+        except Exception:
+            continue
     return None, None
 
 
@@ -3344,102 +3375,106 @@ def call_groq_agentic_loop(
     tool_steps: list[str] = []
     focus_sym: str | None = None
 
-    try:
-        for _round in range(3):
-            resp = client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                messages=messages,
-                tools=tools,
-                tool_choice="auto",
-                temperature=0.25,
-                max_tokens=950,
-            )
-            msg = resp.choices[0].message
-            t_calls = getattr(msg, "tool_calls", None) or []
-            if not t_calls:
-                content = (msg.content or "").strip()
-                if content:
-                    title = f"{get_ticker_meta(focus_sym)['name']} ({focus_sym})" if focus_sym else "FinanceSight Agentic AI"
-                    logo = get_logo_url(focus_sym) if focus_sym else get_logo_url("GOOGL")
-                    return content, "Groq LLaMA 3.3 Agentic Tool-Use", title, logo, tool_steps, None
-                break
+    for active_model in _select_groq_models(client)[:3]:
+        model_messages = list(messages)
+        tool_steps = []
+        focus_sym = None
+        try:
+            for _round in range(3):
+                resp = client.chat.completions.create(
+                    model=active_model,
+                    messages=model_messages,
+                    tools=tools,
+                    tool_choice="auto",
+                    temperature=0.25,
+                    max_tokens=2048,
+                )
+                msg = resp.choices[0].message
+                t_calls = getattr(msg, "tool_calls", None) or []
+                if not t_calls:
+                    content = (msg.content or "").strip()
+                    if content:
+                        title = f"{get_ticker_meta(focus_sym)['name']} ({focus_sym})" if focus_sym else "FinanceSight Agentic AI"
+                        logo = get_logo_url(focus_sym) if focus_sym else get_logo_url("GOOGL")
+                        return content, f"Groq Agentic AI ({active_model})", title, logo, tool_steps, None
+                    break
 
-            messages.append(
-                {
-                    "role": "assistant",
-                    "content": msg.content or "",
-                    "tool_calls": [
-                        {
-                            "id": tc.id,
-                            "type": "function",
-                            "function": {"name": tc.function.name, "arguments": tc.function.arguments},
-                        }
-                        for tc in t_calls
-                    ],
-                }
-            )
+                model_messages.append(
+                    {
+                        "role": "assistant",
+                        "content": msg.content or "",
+                        "tool_calls": [
+                            {
+                                "id": tc.id,
+                                "type": "function",
+                                "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+                            }
+                            for tc in t_calls
+                        ],
+                    }
+                )
 
-            acct_now = get_user_account_summary(username, snapshots, usdinr_rate)
-            for tc in t_calls:
-                fn_name = tc.function.name
-                try:
-                    fn_args = json.loads(tc.function.arguments or "{}")
-                except Exception:
-                    fn_args = {}
+                acct_now = get_user_account_summary(username, snapshots, usdinr_rate)
+                for tc in t_calls:
+                    fn_name = tc.function.name
+                    try:
+                        fn_args = json.loads(tc.function.arguments or "{}")
+                    except Exception:
+                        fn_args = {}
 
-                if fn_name == "get_stock_quant_report":
-                    sym_q = fn_args.get("query", "")
-                    sym, found = detect_stock_from_text(sym_q, sym_q.upper() if sym_q.upper() in STOCK_CATALOG else None)
-                    if sym and sym in STOCK_CATALOG:
-                        focus_sym = focus_sym or sym
-                        prof = build_stock_quant_profile(sym, snapshots, usdinr_rate, acct_now["balance"], include_news=bool(fn_args.get("include_news")))
-                        out_txt = _format_stock_context_for_llm(prof)
-                        tool_steps.append(f"Tool get_stock_quant_report({sym})")
-                    else:
-                        out_txt = f"Ticker '{sym_q}' not found in 345-stock catalog."
-                elif fn_name == "scan_top_market_opportunities":
-                    mkt = fn_args.get("market", "ALL")
-                    sec = fn_args.get("sector", "")
-                    cands = rank_quant_screener_candidates(mkt, sec, snapshots, usdinr_rate, limit=8)
-                    if cands:
-                        focus_sym = focus_sym or cands[0]["symbol"]
-                    out_txt = "\n".join(
-                        f"{i}. {c['symbol']} ({c['name']}, {c['exchange']}): {c['currency']}{c['price']:,.2f} ({c['pct']:+.2f}%), RSI {c['rsi']:.1f}, Score {c['score']}"
-                        for i, c in enumerate(cands, 1)
-                    )
-                    tool_steps.append(f"Tool scan_top_market_opportunities(market={mkt}, sector={sec or 'ALL'})")
-                elif fn_name == "inspect_my_portfolio":
-                    out_txt = (
-                        f"Cash Margin: ₹{acct_now['balance']:,.2f} | Holdings Value: ₹{acct_now['tot_cur']:,.2f} | "
-                        f"Unrealized P&L: ₹{acct_now['tot_pnl']:+,.2f}\nHoldings:\n{acct_now['holdings_md']}\nPositions:\n{acct_now['positions_md']}"
-                    )
-                    tool_steps.append("Tool inspect_my_portfolio()")
-                elif fn_name == "place_paper_trade" and can_trade_via_llm:
-                    sym, ok_s = detect_stock_from_text(fn_args.get("ticker", ""), None)
-                    act = str(fn_args.get("action", "BUY")).upper()
-                    qty_v = max(1, int(fn_args.get("qty", 1)))
-                    prod_v = fn_args.get("product", "CNC (Delivery)")
-                    if sym:
-                        focus_sym = focus_sym or sym
-                        live_s = ensure_symbols_live([sym], snapshots)
-                        px = float(live_s.get(sym, DEFAULT_STOCKS_SNAPSHOTS.get(sym, {"price": 100.0}))["price"])
-                        _, msg_exec = execute_trade(
-                            username, sym, act, qty_v, px, prod_v,
-                            usdinr_rate=usdinr_rate, allow_after_hours=allow_after_hours,
+                    if fn_name == "get_stock_quant_report":
+                        sym_q = fn_args.get("query", "")
+                        sym, _ = detect_stock_from_text(sym_q, sym_q.upper() if sym_q.upper() in STOCK_CATALOG else None)
+                        if sym and sym in STOCK_CATALOG:
+                            focus_sym = focus_sym or sym
+                            prof = build_stock_quant_profile(sym, snapshots, usdinr_rate, acct_now["balance"], include_news=bool(fn_args.get("include_news")))
+                            out_txt = _format_stock_context_for_llm(prof)
+                            tool_steps.append(f"Tool get_stock_quant_report({sym})")
+                        else:
+                            out_txt = f"Ticker '{sym_q}' not found in 345-stock catalog."
+                    elif fn_name == "scan_top_market_opportunities":
+                        mkt = fn_args.get("market", "ALL")
+                        sec = fn_args.get("sector", "")
+                        cands = rank_quant_screener_candidates(mkt, sec, snapshots, usdinr_rate, limit=8)
+                        if cands:
+                            focus_sym = focus_sym or cands[0]["symbol"]
+                        out_txt = "\n".join(
+                            f"{i}. {c['symbol']} ({c['name']}, {c['exchange']}): {c['currency']}{c['price']:,.2f} ({c['pct']:+.2f}%), RSI {c['rsi']:.1f}, Score {c['score']}"
+                            for i, c in enumerate(cands, 1)
                         )
-                        out_txt = msg_exec
-                        tool_steps.append(f"Tool place_paper_trade({act} {qty_v} {sym})")
+                        tool_steps.append(f"Tool scan_top_market_opportunities(market={mkt}, sector={sec or 'ALL'})")
+                    elif fn_name == "inspect_my_portfolio":
+                        out_txt = (
+                            f"Cash Margin: ₹{acct_now['balance']:,.2f} | Holdings Value: ₹{acct_now['tot_cur']:,.2f} | "
+                            f"Unrealized P&L: ₹{acct_now['tot_pnl']:+,.2f}\nHoldings:\n{acct_now['holdings_md']}\nPositions:\n{acct_now['positions_md']}"
+                        )
+                        tool_steps.append("Tool inspect_my_portfolio()")
+                    elif fn_name == "place_paper_trade" and can_trade_via_llm:
+                        sym, _ = detect_stock_from_text(fn_args.get("ticker", ""), None)
+                        act = str(fn_args.get("action", "BUY")).upper()
+                        qty_v = max(1, int(fn_args.get("qty", 1)))
+                        prod_v = fn_args.get("product", "CNC (Delivery)")
+                        if sym:
+                            focus_sym = focus_sym or sym
+                            live_s = ensure_symbols_live([sym], snapshots)
+                            px = float(live_s.get(sym, DEFAULT_STOCKS_SNAPSHOTS.get(sym, {"price": 100.0}))["price"])
+                            _, msg_exec = execute_trade(
+                                username, sym, act, qty_v, px, prod_v,
+                                usdinr_rate=usdinr_rate, allow_after_hours=allow_after_hours,
+                            )
+                            out_txt = msg_exec
+                            tool_steps.append(f"Tool place_paper_trade({act} {qty_v} {sym})")
+                        else:
+                            out_txt = "Could not resolve stock symbol."
                     else:
-                        out_txt = "Could not resolve stock symbol."
-                else:
-                    out_txt = "Tool call ignored."
+                        out_txt = "Tool call ignored."
 
-                messages.append({"role": "tool", "tool_call_id": tc.id, "content": out_txt})
-    except Exception as exc:
-        err_s = str(exc).lower()
-        if "401" in err_s or "invalid_api_key" in err_s or "authentication" in err_s:
-            return None, None, None, None, tool_steps, "invalid_key"
-        return None, None, None, None, tool_steps, "unavailable"
+                    model_messages.append({"role": "tool", "tool_call_id": tc.id, "content": out_txt})
+        except Exception as exc:
+            err_s = str(exc).lower()
+            if "401" in err_s or "invalid_api_key" in err_s or "authentication" in err_s:
+                return None, None, None, None, tool_steps, "invalid_key"
+            continue
 
     return None, None, None, None, tool_steps, "unavailable"
 
@@ -5254,9 +5289,9 @@ def _ai_advisor_chat_fragment() -> None:
     gemini_key = resolve_secret("GEMINI_API_KEY", st.session_state.get("user_gemini_api_key", ""))
 
     if groq_key.startswith("gsk_"):
-        status_txt = ":green-badge[Groq LLaMA 3.3 Agentic Tools Active]"
+        status_txt = ":green-badge[Groq Agentic AI Tools Active]"
     elif gemini_key:
-        status_txt = ":green-badge[Gemini 2.5 Flash + Quant RAG Active]"
+        status_txt = ":green-badge[Gemini 3 Flash + Quant RAG Active]"
     else:
         status_txt = ":blue-badge[Local Quant + Auto-Pilot Engine Active]"
 
