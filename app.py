@@ -1,861 +1,2578 @@
+from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
+import ast
+import base64
+import copy
+import html
+import hashlib
+import hmac
+import json
+import operator
 import os
 import re
-import ast
-import operator
-import streamlit as st
-import yfinance as yf
-import pandas as pd
+import sqlite3
+import urllib.parse
+import urllib.request
+import warnings
+import xml.etree.ElementTree as ET
+from zoneinfo import ZoneInfo
+
+import altair as alt
 import numpy as np
+import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from sklearn.ensemble import RandomForestRegressor
-import sqlite3
-import hashlib
-import json
-import socket
-import urllib.request
-import urllib.parse
-from datetime import datetime, timedelta
-from groq import Groq
+import streamlit as st
+from streamlit.runtime.scriptrunner import get_script_run_ctx
+import yfinance as yf
 
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "".join([
-    "gsk_", "mlkzhx3dBaYM8Mfvo8ND", "WGdyb3FYlWOE6tGQyrcT", "U5iMpfylDnBt"
-]))
+_pandas4_warn = getattr(pd.errors, "Pandas4Warning", None)
+if _pandas4_warn is not None:
+    warnings.filterwarnings("ignore", category=_pandas4_warn)
 
-st.set_page_config(
-    page_title="FinanceSight | Market Analytics, AI Forecasting & Paper Trading",
-    page_icon="⚡",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+FINANCESIGHT_LOGO_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="160" height="36" viewBox="0 0 180 40" fill="none">
+  <rect width="38" height="38" x="1" y="1" rx="10" fill="url(#fs_grad)"/>
+  <path d="M9 26L16 19L21.5 23L30 12" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M23.5 12H30V18.5" stroke="#38BDF8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="16" cy="19" r="2.4" fill="#34D399"/>
+  <text x="48" y="26" font-family="Plus Jakarta Sans, Inter, sans-serif" font-size="18" font-weight="800" fill="#38BDF8">FINANCE</text>
+  <text x="129" y="26" font-family="Plus Jakarta Sans, Inter, sans-serif" font-size="18" font-weight="800" fill="#64748B">SIGHT</text>
+  <defs>
+    <linearGradient id="fs_grad" x1="0" y1="0" x2="40" y2="40" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2563EB"/>
+      <stop offset="0.55" stop-color="#1E3A8A"/>
+      <stop offset="1" stop-color="#0F172A"/>
+    </linearGradient>
+  </defs>
+</svg>"""
 
-FINANCESIGHT_LOGO_SVG = '<svg width="30" height="30" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" style="vertical-align:middle; flex-shrink:0;"><rect width="40" height="40" rx="10" fill="url(#fs_grad)"/><path d="M9 26L16 19L22 23L31 12" stroke="white" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M24 12H31V19" stroke="#38bdf8" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="16" cy="19" r="2.5" fill="#34d399"/><defs><linearGradient id="fs_grad" x1="0" y1="0" x2="40" y2="40" gradientUnits="userSpaceOnUse"><stop stop-color="#387ed1"/><stop offset="0.5" stop-color="#1e3a8a"/><stop offset="1" stop-color="#0f172a"/></linearGradient></defs></svg>'
+FINANCESIGHT_ICON_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 40 40" fill="none">
+  <rect width="40" height="40" rx="10" fill="url(#fs_i_grad)"/>
+  <path d="M9 26L16 19L22 23L31 12" stroke="#FFFFFF" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M24 12H31V19" stroke="#38BDF8" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="16" cy="19" r="2.5" fill="#34D399"/>
+  <defs>
+    <linearGradient id="fs_i_grad" x1="0" y1="0" x2="40" y2="40" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2563EB"/>
+      <stop offset="0.55" stop-color="#1E3A8A"/>
+      <stop offset="1" stop-color="#0F172A"/>
+    </linearGradient>
+  </defs>
+</svg>"""
 
-NAV_SVGS = {
-    "Home": '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>',
-    "Signup": '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>',
-    "About": '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>',
-    "Products": '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>',
-    "Pricing": '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>',
-    "Support": '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>',
-    "Dashboard": '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>',
-    "Orders": '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>',
-    "Holdings": '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>',
-    "Positions": '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>',
-    "Funds": '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>',
-    "Terminal": '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>',
-    "Advisor": '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a4 4 0 0 1 4 4v2a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/><path d="M16 14H8a4 4 0 0 0-4 4v2h16v-2a4 4 0 0 0-4-4z"/></svg>',
-    "Apps": '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>',
-    "Logout": '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>'
+IST_TZ = ZoneInfo("Asia/Kolkata")
+US_ET_TZ = ZoneInfo("America/New_York")
+DEFAULT_USDINR_RATE = 92.98
+
+MARKET_INDICES = {
+    "^NSEI": {"name": "NIFTY 50", "exchange": "NSE", "currency": ""},
+    "^BSESN": {"name": "SENSEX", "exchange": "BSE", "currency": ""},
+    "^IXIC": {"name": "NASDAQ Composite", "exchange": "US", "currency": ""},
+    "^GSPC": {"name": "S&P 500", "exchange": "US", "currency": ""},
 }
 
-def render_html(raw_html: str):
-    cleaned = "\n".join(line.lstrip() for line in raw_html.splitlines() if line.strip())
-    st.markdown(cleaned, unsafe_allow_html=True)
-
-def is_internet_connected() -> bool:
-    try:
-        socket.create_connection(("8.8.8.8", 53), timeout=2)
-        return True
-    except OSError:
-        return False
-
-def check_market_trading_hours(ticker: str):
-    now_ist = datetime.utcnow() + timedelta(hours=5, minutes=30)
-    day_name = now_ist.strftime("%A")
-    time_str = now_ist.strftime("%I:%M %p IST")
-
-    if now_ist.weekday() >= 5:
-        return False, f"Today is {day_name} ({time_str}) — Markets are closed on Saturday and Sunday."
-
-    is_indian = ticker.endswith(".NS") or ticker.endswith(".BO")
-    if is_indian:
-        market_open = now_ist.replace(hour=9, minute=15, second=0, microsecond=0)
-        market_close = now_ist.replace(hour=15, minute=30, second=0, microsecond=0)
-        if market_open <= now_ist <= market_close:
-            return True, f"NSE Market Open ({time_str})"
-        return False, f"NSE trading hours are Monday – Friday, 9:15 AM – 3:30 PM IST (Current time: {time_str})."
-    else:
-        now_est = datetime.utcnow() - timedelta(hours=5)
-        if now_est.weekday() >= 5:
-            return False, f"US Market is closed on weekends (Current time: {time_str})."
-        us_open = now_est.replace(hour=9, minute=30, second=0, microsecond=0)
-        us_close = now_est.replace(hour=16, minute=0, second=0, microsecond=0)
-        if us_open <= now_est <= us_close:
-            return True, f"US Market Open ({time_str})"
-        return False, f"US NASDAQ/NYSE trading hours are Monday – Friday, 9:30 AM – 4:00 PM EST / 7:00 PM – 1:30 AM IST (Current time: {time_str})."
-
-st.markdown("""
-<style>
-    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700;800&display=swap');
-
-    html, body, [class*="css"], .stApp {
-        font-family: 'Plus Jakarta Sans', sans-serif !important;
-    }
-
-    [data-stale="true"],
-    .stApp [data-stale="true"],
-    div[data-stale="true"],
-    .element-container[data-stale="true"],
-    [data-testid="stAppViewBlockContainer"] * {
-        opacity: 1 !important;
-        filter: none !important;
-        transition: none !important;
-    }
-
-    [data-testid="stStatusWidget"] {
-        display: none !important;
-    }
-
-    .block-container {
-        padding-top: 3.2rem !important;
-        padding-bottom: 3rem !important;
-        max-width: 96% !important;
-    }
-
-    [data-testid="stMetricValue"] {
-        font-family: 'JetBrains Mono', monospace !important;
-        font-size: clamp(1.15rem, 1.5vw, 1.55rem) !important;
-        white-space: normal !important;
-        overflow: visible !important;
-        text-overflow: unset !important;
-        word-break: break-word !important;
-    }
-
-    .fs-title {
-        color: var(--text-color) !important;
-        font-weight: 800;
-    }
-    .fs-muted {
-        color: var(--text-color) !important;
-        opacity: 0.78;
-    }
-    .fs-panel {
-        background: var(--background-color);
-        border: 1px solid rgba(128, 128, 128, 0.25);
-        border-radius: 16px;
-        padding: 16px;
-        color: var(--text-color);
-    }
-
-    .fs-topbar-wrap {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 10px;
-        padding: 6px 0 12px 0;
-        border-bottom: 1px solid rgba(128, 128, 128, 0.22);
-        margin-bottom: 18px;
-        flex-wrap: nowrap;
-        overflow-x: auto;
-    }
-    .fs-brand-box {
-        display: flex;
-        align-items: center;
-        padding-right: 12px;
-        border-right: 1px solid rgba(128, 128, 128, 0.25);
-        flex-shrink: 0;
-    }
-    .fs-nav-links-wrap {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        flex: 1;
-        justify-content: flex-end;
-        flex-wrap: nowrap;
-    }
-
-    .fs-logo-link {
-        text-decoration: none !important;
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        font-weight: 800;
-        font-size: 1.15rem;
-        color: var(--text-color) !important;
-        letter-spacing: -0.02em;
-        cursor: pointer;
-        white-space: nowrap;
-        flex-shrink: 0;
-        transition: opacity 0.2s ease;
-    }
-    .fs-logo-link:hover {
-        opacity: 0.85;
-    }
-
-    .fs-nav-btn {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 5px;
-        padding: 7px 9px;
-        border-radius: 9px;
-        background: var(--background-color);
-        border: 1px solid rgba(128, 128, 128, 0.28);
-        color: var(--text-color) !important;
-        text-decoration: none !important;
-        font-weight: 700;
-        font-size: 0.72rem;
-        letter-spacing: 0.02em;
-        text-transform: uppercase;
-        transition: all 0.2s ease;
-        box-sizing: border-box;
-        white-space: nowrap;
-        flex: 1;
-        min-width: fit-content;
-    }
-    .fs-nav-btn:hover {
-        border-color: #387ed1;
-        color: #387ed1 !important;
-        transform: translateY(-1px);
-        box-shadow: 0 4px 12px rgba(56, 126, 209, 0.14);
-    }
-    .fs-nav-btn.active {
-        background: #ff4b4b !important;
-        color: #ffffff !important;
-        border-color: #ff4b4b !important;
-        box-shadow: 0 4px 14px rgba(255, 75, 75, 0.28);
-    }
-    .fs-nav-btn.active svg {
-        stroke: #ffffff !important;
-    }
-
-    .fs-footer-link {
-        color: var(--text-color) !important;
-        opacity: 0.78;
-        text-decoration: none !important;
-        font-size: 0.85rem;
-        display: block;
-        margin-bottom: 8px;
-        transition: all 0.2s ease;
-    }
-    .fs-footer-link:hover {
-        color: #38bdf8 !important;
-        opacity: 1.0;
-        transform: translateX(3px);
-    }
-    .fs-social-wrap {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        margin-top: 14px;
-    }
-    .fs-social-link {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 5px 11px;
-        border-radius: 999px;
-        background: var(--background-color);
-        border: 1px solid rgba(128, 128, 128, 0.25);
-        color: var(--text-color) !important;
-        text-decoration: none !important;
-        font-size: 0.78rem;
-        font-weight: 600;
-        transition: all 0.2s ease;
-    }
-    .fs-social-link:hover {
-        border-color: #38bdf8;
-        color: #38bdf8 !important;
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(56, 189, 248, 0.2);
-    }
-    .social-logo {
-        width: 16px;
-        height: 16px;
-        border-radius: 4px;
-        object-fit: contain;
-        background: #ffffff;
-        padding: 1px;
-    }
-    .fs-bottom-link {
-        color: var(--text-color) !important;
-        opacity: 0.78;
-        text-decoration: none !important;
-        margin: 0 6px;
-        font-weight: 600;
-        transition: color 0.2s ease;
-    }
-    .fs-bottom-link:hover {
-        color: #38bdf8 !important;
-        opacity: 1.0;
-        text-decoration: underline !important;
-    }
-
-    @keyframes tickerMove {
-        0% { transform: translateX(0); }
-        100% { transform: translateX(-50%); }
-    }
-    .ticker-wrap {
-        width: 100%;
-        overflow: hidden;
-        background: var(--secondary-background-color);
-        border: 1px solid rgba(56, 189, 248, 0.35);
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
-        padding: 11px 0;
-        margin-top: 6px;
-        margin-bottom: 14px;
-        white-space: nowrap;
-        border-radius: 12px;
-    }
-    .ticker-move {
-        display: inline-block;
-        animation: tickerMove 28s linear infinite;
-    }
-    .ticker-item {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        margin: 0 24px;
-        font-family: 'JetBrains Mono', monospace;
-        font-size: 0.88rem;
-        color: var(--text-color);
-    }
-    .ticker-logo {
-        width: 20px;
-        height: 20px;
-        border-radius: 50%;
-        background: #ffffff;
-        padding: 2px;
-        object-fit: contain;
-        border: 1px solid rgba(128,128,128,0.25);
-    }
-
-    .kpi-box {
-        background: var(--secondary-background-color);
-        color: var(--text-color);
-        border-radius: 16px;
-        padding: 18px 20px;
-        border: 1px solid rgba(128, 128, 128, 0.22);
-        box-shadow: 0 4px 16px rgba(0,0,0,0.08);
-        margin-bottom: 12px;
-    }
-    .kpi-cyan { border-left: 5px solid #06b6d4; }
-    .kpi-violet { border-left: 5px solid #8b5cf6; }
-    .kpi-emerald { border-left: 5px solid #10b981; }
-    .kpi-white { border-left: 5px solid #387ed1; }
-
-    .kpi-title {
-        font-size: 0.8rem;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        opacity: 0.75;
-        margin-bottom: 6px;
-    }
-    .kpi-val {
-        font-family: 'JetBrains Mono', monospace;
-        font-size: clamp(1.2rem, 1.55vw, 1.65rem);
-        font-weight: 800;
-        line-height: 1.2;
-    }
-    .kpi-sub {
-        font-family: 'JetBrains Mono', monospace;
-        font-size: 0.8rem;
-        margin-top: 6px;
-        font-weight: 600;
-    }
-
-    .stock-card {
-        background: var(--secondary-background-color);
-        color: var(--text-color);
-        border: 1px solid rgba(128, 128, 128, 0.22);
-        border-radius: 18px;
-        padding: 18px;
-        transition: all 0.25s ease;
-        box-shadow: 0 6px 20px rgba(0,0,0,0.08);
-        margin-bottom: 12px;
-    }
-    .stock-card:hover {
-        border-color: #387ed1;
-        transform: translateY(-3px);
-        box-shadow: 0 10px 24px rgba(56, 126, 209, 0.18);
-    }
-    .company-header {
-        display: flex;
-        align-items: center;
-        gap: 14px;
-        margin-bottom: 12px;
-    }
-    .company-logo {
-        width: 46px;
-        height: 46px;
-        border-radius: 12px;
-        object-fit: contain;
-        background: #ffffff;
-        padding: 5px;
-        border: 1px solid rgba(128,128,128,0.3);
-    }
-    .company-logo-lg {
-        width: 64px;
-        height: 64px;
-        border-radius: 16px;
-        object-fit: contain;
-        background: #ffffff;
-        padding: 6px;
-        border: 2px solid #06b6d4;
-        box-shadow: 0 4px 16px rgba(6, 182, 212, 0.25);
-    }
-    .mono-price {
-        font-family: 'JetBrains Mono', monospace;
-        font-size: 1.4rem;
-        font-weight: 800;
-        color: var(--text-color);
-    }
-    .badge-up {
-        background: rgba(16, 185, 129, 0.16);
-        color: #10b981;
-        padding: 5px 12px;
-        border-radius: 999px;
-        font-family: 'JetBrains Mono', monospace;
-        font-size: 0.82rem;
-        font-weight: 800;
-        border: 1px solid rgba(16, 185, 129, 0.35);
-    }
-    .badge-down {
-        background: rgba(244, 63, 94, 0.16);
-        color: #f43f5e;
-        padding: 5px 12px;
-        border-radius: 999px;
-        font-family: 'JetBrains Mono', monospace;
-        font-size: 0.82rem;
-        font-weight: 800;
-        border: 1px solid rgba(244, 63, 94, 0.35);
-    }
-
-    .z-section-card {
-        background: var(--secondary-background-color);
-        color: var(--text-color);
-        border: 1px solid rgba(128, 128, 128, 0.22);
-        border-radius: 20px;
-        padding: 28px 32px;
-        margin: 22px 0;
-        box-shadow: 0 8px 24px rgba(0,0,0,0.08);
-    }
-    .z-support-hero {
-        background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 65%, #1e3a8a 100%);
-        border: 1px solid #60a5fa;
-        border-radius: 20px;
-        padding: 32px 36px;
-        color: #ffffff !important;
-        margin-bottom: 24px;
-    }
-    .z-universe-card {
-        background: var(--secondary-background-color);
-        color: var(--text-color);
-        border: 1px solid rgba(128, 128, 128, 0.22);
-        border-radius: 16px;
-        padding: 22px;
-        text-align: center;
-        height: 100%;
-        transition: all 0.25s ease;
-    }
-    .z-universe-card:hover {
-        border-color: #38bdf8;
-        transform: translateY(-4px);
-    }
-    .z-footer {
-        background: var(--secondary-background-color);
-        color: var(--text-color);
-        border-top: 1px solid rgba(128, 128, 128, 0.25);
-        padding: 36px 28px 20px 28px;
-        margin-top: 42px;
-        border-radius: 18px;
-    }
-    .watch-row {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 8px 10px;
-        border-radius: 8px;
-        margin-bottom: 6px;
-        border-bottom: 1px solid rgba(128, 128, 128, 0.15);
-        font-family: 'JetBrains Mono', monospace;
-        font-size: 0.82rem;
-    }
-    .logo-sm {
-        width: 24px;
-        height: 24px;
-        border-radius: 6px;
-        background: #ffffff;
-        padding: 2px;
-        object-fit: contain;
-        vertical-align: middle;
-        border: 1px solid rgba(128,128,128,0.25);
-    }
-</style>
-""", unsafe_allow_html=True)
-
-def render_kpi(title, value, subtext="", theme="kpi-cyan", sub_color="#0284c7"):
-    render_html(f"""
-    <div class="kpi-box {theme}">
-        <div class="kpi-title">{title}</div>
-        <div class="kpi-val">{value}</div>
-        <div class="kpi-sub" style="color:{sub_color};">{subtext}</div>
-    </div>
-    """)
+DEFAULT_INDEX_SNAPSHOTS = {
+    "^NSEI": {"price": 25607.20, "change": 112.40, "pct": 0.44, "sparkline": [25210, 25340, 25410, 25495, 25607]},
+    "^BSESN": {"price": 83339.26, "change": 345.10, "pct": 0.42, "sparkline": [82150, 82540, 82880, 82994, 83339]},
+    "^IXIC": {"price": 23585.80, "change": 168.90, "pct": 0.72, "sparkline": [23010, 23180, 23290, 23417, 23585]},
+    "^GSPC": {"price": 7182.78, "change": 34.60, "pct": 0.48, "sparkline": [7040, 7085, 7112, 7148, 7182]},
+    "USDINR=X": {"price": DEFAULT_USDINR_RATE, "change": 0.14, "pct": 0.15, "sparkline": [92.35, 92.48, 92.62, 92.84, 92.98]},
+}
 
 STOCK_CATALOG = {
     "RELIANCE.NS": {"name": "Reliance Industries", "sector": "Energy & Telecom", "domain": "ril.com", "exchange": "NSE", "currency": "₹"},
-    "JIOFIN.NS": {"name": "Jio Financial Services", "sector": "FinTech & NBFC", "domain": "jio.com", "exchange": "NSE", "currency": "₹"},
     "TCS.NS": {"name": "Tata Consultancy Services", "sector": "IT Services", "domain": "tcs.com", "exchange": "NSE", "currency": "₹"},
-    "HDFCBANK.NS": {"name": "HDFC Bank Ltd.", "sector": "Private Banking", "domain": "hdfcbank.com", "exchange": "NSE", "currency": "₹"},
-    "INFY.NS": {"name": "Infosys Limited", "sector": "IT Consulting", "domain": "infosys.com", "exchange": "NSE", "currency": "₹"},
-    "SBIN.NS": {"name": "State Bank of India", "sector": "PSU Banking", "domain": "sbi.co.in", "exchange": "NSE", "currency": "₹"},
-    "ICICIBANK.NS": {"name": "ICICI Bank Ltd.", "sector": "Financial Services", "domain": "icicibank.com", "exchange": "NSE", "currency": "₹"},
-    "TATAMOTORS.NS": {"name": "Tata Motors Ltd.", "sector": "Automotive & EV", "domain": "tatamotors.com", "exchange": "NSE", "currency": "₹"},
-    "WIPRO.NS": {"name": "Wipro Limited", "sector": "Information Tech", "domain": "wipro.com", "exchange": "NSE", "currency": "₹"},
-    "ITC.NS": {"name": "ITC Limited", "sector": "FMCG & Conglomerate", "domain": "itcportal.com", "exchange": "NSE", "currency": "₹"},
-    "BHARTIARTL.NS": {"name": "Bharti Airtel Ltd.", "sector": "Telecom", "domain": "airtel.in", "exchange": "NSE", "currency": "₹"},
-    "ZOMATO.NS": {"name": "Zomato Limited", "sector": "FoodTech & Quick Commerce", "domain": "zomato.com", "exchange": "NSE", "currency": "₹"},
-    "ADANIENT.NS": {"name": "Adani Enterprises", "sector": "Infrastructure & Energy", "domain": "adani.com", "exchange": "NSE", "currency": "₹"},
-    "ADANIPORTS.NS": {"name": "Adani Ports & SEZ", "sector": "Ports & Logistics", "domain": "adaniports.com", "exchange": "NSE", "currency": "₹"},
-    "BAJFINANCE.NS": {"name": "Bajaj Finance Ltd.", "sector": "Consumer Finance", "domain": "bajajfinserv.in", "exchange": "NSE", "currency": "₹"},
-    "LT.NS": {"name": "Larsen & Toubro", "sector": "Engineering & Construction", "domain": "larsentoubro.com", "exchange": "NSE", "currency": "₹"},
-    "MARUTI.NS": {"name": "Maruti Suzuki India", "sector": "Automobiles", "domain": "marutisuzuki.com", "exchange": "NSE", "currency": "₹"},
-    "M&M.NS": {"name": "Mahindra & Mahindra", "sector": "SUVs & Farm Equipment", "domain": "mahindra.com", "exchange": "NSE", "currency": "₹"},
-    "SUNPHARMA.NS": {"name": "Sun Pharmaceutical", "sector": "Pharmaceuticals", "domain": "sunpharma.com", "exchange": "NSE", "currency": "₹"},
-    "TITAN.NS": {"name": "Titan Company Ltd.", "sector": "Luxury & Jewellery", "domain": "titancompany.in", "exchange": "NSE", "currency": "₹"},
-    "AXISBANK.NS": {"name": "Axis Bank Ltd.", "sector": "Private Banking", "domain": "axisbank.com", "exchange": "NSE", "currency": "₹"},
-    "KOTAKBANK.NS": {"name": "Kotak Mahindra Bank", "sector": "Private Banking", "domain": "kotak.com", "exchange": "NSE", "currency": "₹"},
+    "HDFCBANK.NS": {"name": "HDFC Bank", "sector": "Private Banking", "domain": "hdfcbank.com", "exchange": "NSE", "currency": "₹"},
+    "INFY.NS": {"name": "Infosys", "sector": "IT Consulting", "domain": "infosys.com", "exchange": "NSE", "currency": "₹"},
+    "ICICIBANK.NS": {"name": "ICICI Bank", "sector": "Private Banking", "domain": "icicibank.com", "exchange": "NSE", "currency": "₹"},
+    "SBIN.NS": {"name": "State Bank of India", "sector": "PSU Banking", "domain": "onlinesbi.sbi", "exchange": "NSE", "currency": "₹"},
+    "BHARTIARTL.NS": {"name": "Bharti Airtel", "sector": "Telecom", "domain": "airtel.in", "exchange": "NSE", "currency": "₹"},
+    "ETERNAL.NS": {"name": "Eternal Ltd. (Zomato)", "sector": "FoodTech & Commerce", "domain": "zomato.com", "exchange": "NSE", "currency": "₹"},
+    "JIOFIN.NS": {"name": "Jio Financial Services", "sector": "FinTech & NBFC", "domain": "jio.com", "exchange": "NSE", "currency": "₹"},
+    "TMPV.NS": {"name": "Tata Motors (PV)", "sector": "Automotive & EV", "domain": "tatamotors.com", "exchange": "NSE", "currency": "₹"},
+    "TMCV.NS": {"name": "Tata Motors (CV)", "sector": "Commercial Vehicles", "domain": "tatamotors.com", "exchange": "NSE", "currency": "₹"},
     "HAL.NS": {"name": "Hindustan Aeronautics", "sector": "Aerospace & Defence", "domain": "hal-india.co.in", "exchange": "NSE", "currency": "₹"},
-    "TATASTEEL.NS": {"name": "Tata Steel Ltd.", "sector": "Metals & Mining", "domain": "tatasteel.com", "exchange": "NSE", "currency": "₹"},
-    "NTPC.NS": {"name": "NTPC Limited", "sector": "Power Generation", "domain": "ntpc.co.in", "exchange": "NSE", "currency": "₹"},
-    "ONGC.NS": {"name": "Oil & Natural Gas Corp", "sector": "Oil & Gas Exploration", "domain": "ongcindia.com", "exchange": "NSE", "currency": "₹"},
-    "COALINDIA.NS": {"name": "Coal India Ltd.", "sector": "Mining & Minerals", "domain": "coalindia.in", "exchange": "NSE", "currency": "₹"},
-    "POWERGRID.NS": {"name": "Power Grid Corp", "sector": "Power Transmission", "domain": "powergrid.in", "exchange": "NSE", "currency": "₹"},
-    "ASIANPAINT.NS": {"name": "Asian Paints Ltd.", "sector": "Paints & Home Decor", "domain": "asianpaints.com", "exchange": "NSE", "currency": "₹"},
-    "ULTRACEMCO.NS": {"name": "UltraTech Cement", "sector": "Cement & Materials", "domain": "ultratechcement.com", "exchange": "NSE", "currency": "₹"},
-    "HCLTECH.NS": {"name": "HCL Technologies", "sector": "IT Services", "domain": "hcltech.com", "exchange": "NSE", "currency": "₹"},
-    "TECHM.NS": {"name": "Tech Mahindra", "sector": "IT & Telecom Services", "domain": "techmahindra.com", "exchange": "NSE", "currency": "₹"},
-    "TRENT.NS": {"name": "Trent Limited", "sector": "Retail & Apparel", "domain": "trentlimited.com", "exchange": "NSE", "currency": "₹"},
-    "BEL.NS": {"name": "Bharat Electronics", "sector": "Defence Electronics", "domain": "bel-india.in", "exchange": "NSE", "currency": "₹"},
-    "IRCTC.NS": {"name": "IRCTC Limited", "sector": "Railways & Tourism", "domain": "irctc.co.in", "exchange": "NSE", "currency": "₹"},
+    "ITC.NS": {"name": "ITC Limited", "sector": "FMCG & Conglomerate", "domain": "itcportal.com", "exchange": "NSE", "currency": "₹"},
+    "LT.NS": {"name": "Larsen & Toubro", "sector": "Engineering & Infra", "domain": "larsentoubro.com", "exchange": "NSE", "currency": "₹"},
+    "BAJFINANCE.NS": {"name": "Bajaj Finance", "sector": "Consumer Finance", "domain": "bajajfinserv.in", "exchange": "NSE", "currency": "₹"},
+    "SUNPHARMA.NS": {"name": "Sun Pharma", "sector": "Pharmaceuticals", "domain": "sunpharma.com", "exchange": "NSE", "currency": "₹"},
+    "MARUTI.NS": {"name": "Maruti Suzuki", "sector": "Automobiles", "domain": "marutisuzuki.com", "exchange": "NSE", "currency": "₹"},
+    "M&M.NS": {"name": "Mahindra & Mahindra", "sector": "Automobiles & SUVs", "domain": "mahindra.com", "exchange": "NSE", "currency": "₹"},
+    "TITAN.NS": {"name": "Titan Company", "sector": "Luxury & Jewellery", "domain": "titan.co.in", "exchange": "NSE", "currency": "₹"},
+    "AXISBANK.NS": {"name": "Axis Bank", "sector": "Private Banking", "domain": "axisbank.com", "exchange": "NSE", "currency": "₹"},
+    "KOTAKBANK.NS": {"name": "Kotak Mahindra Bank", "sector": "Private Banking", "domain": "kotak.com", "exchange": "NSE", "currency": "₹"},
+    "ADANIENT.NS": {"name": "Adani Enterprises", "sector": "Conglomerate & Infra", "domain": "adani.com", "exchange": "NSE", "currency": "₹"},
+    "TATASTEEL.NS": {"name": "Tata Steel", "sector": "Metals & Mining", "domain": "tatasteel.com", "exchange": "NSE", "currency": "₹"},
+    "WIPRO.NS": {"name": "Wipro Limited", "sector": "IT Services", "domain": "wipro.com", "exchange": "NSE", "currency": "₹"},
     "AAPL": {"name": "Apple Inc.", "sector": "Consumer Tech", "domain": "apple.com", "exchange": "NASDAQ", "currency": "$"},
     "NVDA": {"name": "NVIDIA Corp.", "sector": "AI & Semiconductors", "domain": "nvidia.com", "exchange": "NASDAQ", "currency": "$"},
     "MSFT": {"name": "Microsoft Corp.", "sector": "Cloud & AI", "domain": "microsoft.com", "exchange": "NASDAQ", "currency": "$"},
     "TSLA": {"name": "Tesla Inc.", "sector": "EV & Robotics", "domain": "tesla.com", "exchange": "NASDAQ", "currency": "$"},
-    "GOOGL": {"name": "Alphabet Inc. (Google)", "sector": "Search & Cloud AI", "domain": "google.com", "exchange": "NASDAQ", "currency": "$"},
+    "GOOGL": {"name": "Alphabet Inc.", "sector": "Search & Cloud AI", "domain": "google.com", "exchange": "NASDAQ", "currency": "$"},
     "AMZN": {"name": "Amazon.com Inc.", "sector": "E-Commerce & Cloud", "domain": "amazon.com", "exchange": "NASDAQ", "currency": "$"},
-    "META": {"name": "Meta Platforms Inc.", "sector": "Social & AI", "domain": "meta.com", "exchange": "NASDAQ", "currency": "$"},
+    "META": {"name": "Meta Platforms", "sector": "Social & AI", "domain": "meta.com", "exchange": "NASDAQ", "currency": "$"},
     "NFLX": {"name": "Netflix Inc.", "sector": "Streaming & Media", "domain": "netflix.com", "exchange": "NASDAQ", "currency": "$"},
-    "AMD": {"name": "Advanced Micro Devices", "sector": "Semiconductors", "domain": "amd.com", "exchange": "NASDAQ", "currency": "$"},
-    "INTC": {"name": "Intel Corporation", "sector": "Semiconductors", "domain": "intel.com", "exchange": "NASDAQ", "currency": "$"},
-    "AVGO": {"name": "Broadcom Inc.", "sector": "Networking & Chips", "domain": "broadcom.com", "exchange": "NASDAQ", "currency": "$"},
+    "AMD": {"name": "AMD Inc.", "sector": "Semiconductors", "domain": "amd.com", "exchange": "NASDAQ", "currency": "$"},
+    "AVGO": {"name": "Broadcom Inc.", "sector": "Semiconductors", "domain": "broadcom.com", "exchange": "NASDAQ", "currency": "$"},
     "PLTR": {"name": "Palantir Technologies", "sector": "Enterprise AI", "domain": "palantir.com", "exchange": "NASDAQ", "currency": "$"},
+    "INTC": {"name": "Intel Corp.", "sector": "Semiconductors", "domain": "intel.com", "exchange": "NASDAQ", "currency": "$"},
     "COIN": {"name": "Coinbase Global", "sector": "Crypto Exchange", "domain": "coinbase.com", "exchange": "NASDAQ", "currency": "$"},
     "UBER": {"name": "Uber Technologies", "sector": "Mobility & Delivery", "domain": "uber.com", "exchange": "NYSE", "currency": "$"},
     "ADBE": {"name": "Adobe Inc.", "sector": "Creative Software", "domain": "adobe.com", "exchange": "NASDAQ", "currency": "$"},
     "CRM": {"name": "Salesforce Inc.", "sector": "Enterprise Cloud", "domain": "salesforce.com", "exchange": "NYSE", "currency": "$"},
-    "ORCL": {"name": "Oracle Corporation", "sector": "Cloud Infrastructure", "domain": "oracle.com", "exchange": "NYSE", "currency": "$"},
-    "WMT": {"name": "Walmart Inc.", "sector": "Global Retail", "domain": "walmart.com", "exchange": "NYSE", "currency": "$"},
-    "JPM": {"name": "JPMorgan Chase & Co.", "sector": "Investment Banking", "domain": "jpmorganchase.com", "exchange": "NYSE", "currency": "$"},
+    "ORCL": {"name": "Oracle Corp.", "sector": "Cloud Infrastructure", "domain": "oracle.com", "exchange": "NYSE", "currency": "$"},
+    "JPM": {"name": "JPMorgan Chase", "sector": "Investment Banking", "domain": "jpmorganchase.com", "exchange": "NYSE", "currency": "$"},
     "V": {"name": "Visa Inc.", "sector": "Global Payments", "domain": "visa.com", "exchange": "NYSE", "currency": "$"},
     "MA": {"name": "Mastercard Inc.", "sector": "Payment Networks", "domain": "mastercard.com", "exchange": "NYSE", "currency": "$"},
-    "DIS": {"name": "The Walt Disney Co.", "sector": "Entertainment", "domain": "thewaltdisneycompany.com", "exchange": "NYSE", "currency": "$"},
+    "WMT": {"name": "Walmart Inc.", "sector": "Global Retail", "domain": "walmart.com", "exchange": "NYSE", "currency": "$"},
+    "DIS": {"name": "Walt Disney Co.", "sector": "Entertainment", "domain": "thewaltdisneycompany.com", "exchange": "NYSE", "currency": "$"},
     "NKE": {"name": "Nike Inc.", "sector": "Athletic Apparel", "domain": "nike.com", "exchange": "NYSE", "currency": "$"},
-    "KO": {"name": "The Coca-Cola Co.", "sector": "Beverages", "domain": "coca-colacompany.com", "exchange": "NYSE", "currency": "$"},
-    "PEP": {"name": "PepsiCo Inc.", "sector": "Food & Beverages", "domain": "pepsico.com", "exchange": "NASDAQ", "currency": "$"}
+    "KO": {"name": "Coca-Cola Co.", "sector": "Beverages", "domain": "coca-colacompany.com", "exchange": "NYSE", "currency": "$"},
+    "HINDUNILVR.NS": {"name": "Hindustan Unilever", "sector": "FMCG", "domain": "hul.co.in", "exchange": "NSE", "currency": "₹"},
+    "HCLTECH.NS": {"name": "HCL Technologies", "sector": "IT Services", "domain": "hcltech.com", "exchange": "NSE", "currency": "₹"},
+    "ULTRACEMCO.NS": {"name": "UltraTech Cement", "sector": "Cement & Materials", "domain": "ultratechcement.com", "exchange": "NSE", "currency": "₹"},
+    "NTPC.NS": {"name": "NTPC Limited", "sector": "Power Generation", "domain": "ntpc.co.in", "exchange": "NSE", "currency": "₹"},
+    "ONGC.NS": {"name": "ONGC", "sector": "Oil & Gas", "domain": "ongcindia.com", "exchange": "NSE", "currency": "₹"},
+    "ADANIPORTS.NS": {"name": "Adani Ports & SEZ", "sector": "Ports & Logistics", "domain": "adaniports.com", "exchange": "NSE", "currency": "₹"},
+    "POWERGRID.NS": {"name": "Power Grid Corp", "sector": "Power Transmission", "domain": "powergrid.in", "exchange": "NSE", "currency": "₹"},
+    "COALINDIA.NS": {"name": "Coal India", "sector": "Mining & Minerals", "domain": "coalindia.in", "exchange": "NSE", "currency": "₹"},
+    "ASIANPAINT.NS": {"name": "Asian Paints", "sector": "Paints & Home Decor", "domain": "asianpaints.com", "exchange": "NSE", "currency": "₹"},
+    "BAJAJFINSV.NS": {"name": "Bajaj Finserv", "sector": "Financial Services", "domain": "bajajfinserv.in", "exchange": "NSE", "currency": "₹"},
+    "JSWSTEEL.NS": {"name": "JSW Steel", "sector": "Metals & Mining", "domain": "jsw.in", "exchange": "NSE", "currency": "₹"},
+    "NESTLEIND.NS": {"name": "Nestle India", "sector": "FMCG & Foods", "domain": "nestle.in", "exchange": "NSE", "currency": "₹"},
+    "TECHM.NS": {"name": "Tech Mahindra", "sector": "IT Services", "domain": "techmahindra.com", "exchange": "NSE", "currency": "₹"},
+    "GRASIM.NS": {"name": "Grasim Industries", "sector": "Diversified Materials", "domain": "adityabirla.com", "exchange": "NSE", "currency": "₹"},
+    "HINDALCO.NS": {"name": "Hindalco Industries", "sector": "Metals & Aluminium", "domain": "hindalco.com", "exchange": "NSE", "currency": "₹"},
+    "CIPLA.NS": {"name": "Cipla Limited", "sector": "Pharmaceuticals", "domain": "cipla.com", "exchange": "NSE", "currency": "₹"},
+    "DRREDDY.NS": {"name": "Dr. Reddy's Labs", "sector": "Pharmaceuticals", "domain": "drreddys.com", "exchange": "NSE", "currency": "₹"},
+    "BRITANNIA.NS": {"name": "Britannia Industries", "sector": "FMCG & Foods", "domain": "britannia.co.in", "exchange": "NSE", "currency": "₹"},
+    "APOLLOHOSP.NS": {"name": "Apollo Hospitals", "sector": "Healthcare", "domain": "apollohospitals.com", "exchange": "NSE", "currency": "₹"},
+    "EICHERMOT.NS": {"name": "Eicher Motors", "sector": "Automobiles", "domain": "eichermotors.com", "exchange": "NSE", "currency": "₹"},
+    "BAJAJ-AUTO.NS": {"name": "Bajaj Auto", "sector": "Two-Wheelers & EV", "domain": "bajajauto.com", "exchange": "NSE", "currency": "₹"},
+    "HEROMOTOCO.NS": {"name": "Hero MotoCorp", "sector": "Two-Wheelers", "domain": "heromotocorp.com", "exchange": "NSE", "currency": "₹"},
+    "INDUSINDBK.NS": {"name": "IndusInd Bank", "sector": "Private Banking", "domain": "indusind.com", "exchange": "NSE", "currency": "₹"},
+    "DIVISLAB.NS": {"name": "Divi's Laboratories", "sector": "Pharmaceuticals", "domain": "divislabs.com", "exchange": "NSE", "currency": "₹"},
+    "BPCL.NS": {"name": "Bharat Petroleum", "sector": "Oil & Refining", "domain": "bharatpetroleum.in", "exchange": "NSE", "currency": "₹"},
+    "TATACONSUM.NS": {"name": "Tata Consumer Products", "sector": "FMCG & Beverages", "domain": "tataconsumer.com", "exchange": "NSE", "currency": "₹"},
+    "HDFCLIFE.NS": {"name": "HDFC Life Insurance", "sector": "Insurance", "domain": "hdfclife.com", "exchange": "NSE", "currency": "₹"},
+    "SBILIFE.NS": {"name": "SBI Life Insurance", "sector": "Insurance", "domain": "sbilife.co.in", "exchange": "NSE", "currency": "₹"},
+    "SHRIRAMFIN.NS": {"name": "Shriram Finance", "sector": "NBFC & Lending", "domain": "shriramfinance.in", "exchange": "NSE", "currency": "₹"},
+    "TRENT.NS": {"name": "Trent Limited", "sector": "Retail & Apparel", "domain": "westside.com", "exchange": "NSE", "currency": "₹"},
+    "BEL.NS": {"name": "Bharat Electronics", "sector": "Defence Electronics", "domain": "bel-india.in", "exchange": "NSE", "currency": "₹"},
+    "IRCTC.NS": {"name": "IRCTC Limited", "sector": "Railways & Tourism", "domain": "irctc.co.in", "exchange": "NSE", "currency": "₹"},
+    "INDIGO.NS": {"name": "InterGlobe Aviation", "sector": "Aviation", "domain": "goindigo.in", "exchange": "NSE", "currency": "₹"},
+    "DLF.NS": {"name": "DLF Limited", "sector": "Real Estate", "domain": "dlf.in", "exchange": "NSE", "currency": "₹"},
+    "PIDILITIND.NS": {"name": "Pidilite Industries", "sector": "Specialty Chemicals", "domain": "pidilite.com", "exchange": "NSE", "currency": "₹"},
+    "SIEMENS.NS": {"name": "Siemens India", "sector": "Industrial Automation", "domain": "siemens.com", "exchange": "NSE", "currency": "₹"},
+    "ABB.NS": {"name": "ABB India", "sector": "Industrial Tech", "domain": "abb.com", "exchange": "NSE", "currency": "₹"},
+    "AMBUJACEM.NS": {"name": "Ambuja Cements", "sector": "Cement & Materials", "domain": "ambujacement.com", "exchange": "NSE", "currency": "₹"},
+    "VEDL.NS": {"name": "Vedanta Limited", "sector": "Metals & Mining", "domain": "vedantalimited.com", "exchange": "NSE", "currency": "₹"},
+    "IOC.NS": {"name": "Indian Oil Corp", "sector": "Oil & Refining", "domain": "iocl.com", "exchange": "NSE", "currency": "₹"},
+    "GAIL.NS": {"name": "GAIL India", "sector": "Gas Utilities", "domain": "gailonline.com", "exchange": "NSE", "currency": "₹"},
+    "BANKBARODA.NS": {"name": "Bank of Baroda", "sector": "PSU Banking", "domain": "bankofbaroda.in", "exchange": "NSE", "currency": "₹"},
+    "PNB.NS": {"name": "Punjab National Bank", "sector": "PSU Banking", "domain": "pnbindia.in", "exchange": "NSE", "currency": "₹"},
+    "CANBK.NS": {"name": "Canara Bank", "sector": "PSU Banking", "domain": "canarabank.com", "exchange": "NSE", "currency": "₹"},
+    "UNIONBANK.NS": {"name": "Union Bank of India", "sector": "PSU Banking", "domain": "unionbankofindia.co.in", "exchange": "NSE", "currency": "₹"},
+    "PFC.NS": {"name": "Power Finance Corp", "sector": "Power Finance", "domain": "pfcindia.com", "exchange": "NSE", "currency": "₹"},
+    "RECLTD.NS": {"name": "REC Limited", "sector": "Power Finance", "domain": "recindia.nic.in", "exchange": "NSE", "currency": "₹"},
+    "IRFC.NS": {"name": "Indian Railway Finance", "sector": "Railways Finance", "domain": "irfc.co.in", "exchange": "NSE", "currency": "₹"},
+    "RVNL.NS": {"name": "Rail Vikas Nigam", "sector": "Railways Infra", "domain": "rvnl.org", "exchange": "NSE", "currency": "₹"},
+    "MAZDOCK.NS": {"name": "Mazagon Dock Shipbuilders", "sector": "Defence Shipbuilding", "domain": "mazagondock.in", "exchange": "NSE", "currency": "₹"},
+    "COCHINSHIP.NS": {"name": "Cochin Shipyard", "sector": "Defence Shipbuilding", "domain": "cochinshipyard.in", "exchange": "NSE", "currency": "₹"},
+    "BHEL.NS": {"name": "Bharat Heavy Electricals", "sector": "Heavy Engineering", "domain": "bhel.com", "exchange": "NSE", "currency": "₹"},
+    "SUZLON.NS": {"name": "Suzlon Energy", "sector": "Renewable Energy", "domain": "suzlon.com", "exchange": "NSE", "currency": "₹"},
+    "TATAPOWER.NS": {"name": "Tata Power", "sector": "Power & Renewables", "domain": "tatapower.com", "exchange": "NSE", "currency": "₹"},
+    "ADANIPOWER.NS": {"name": "Adani Power", "sector": "Power Generation", "domain": "adanipower.com", "exchange": "NSE", "currency": "₹"},
+    "ADANIGREEN.NS": {"name": "Adani Green Energy", "sector": "Renewable Energy", "domain": "adanigreenenergy.com", "exchange": "NSE", "currency": "₹"},
+    "ADANIENSOL.NS": {"name": "Adani Energy Solutions", "sector": "Power Transmission", "domain": "adanienergysolutions.com", "exchange": "NSE", "currency": "₹"},
+    "JSWENERGY.NS": {"name": "JSW Energy", "sector": "Power & Renewables", "domain": "jsw.in", "exchange": "NSE", "currency": "₹"},
+    "NHPC.NS": {"name": "NHPC Limited", "sector": "Hydro Power", "domain": "nhpcindia.com", "exchange": "NSE", "currency": "₹"},
+    "IREDA.NS": {"name": "IREDA", "sector": "Green Finance", "domain": "ireda.in", "exchange": "NSE", "currency": "₹"},
+    "YESBANK.NS": {"name": "Yes Bank", "sector": "Private Banking", "domain": "yesbank.in", "exchange": "NSE", "currency": "₹"},
+    "IDFCFIRSTB.NS": {"name": "IDFC First Bank", "sector": "Private Banking", "domain": "idfcfirstbank.com", "exchange": "NSE", "currency": "₹"},
+    "FEDERALBNK.NS": {"name": "Federal Bank", "sector": "Private Banking", "domain": "federalbank.co.in", "exchange": "NSE", "currency": "₹"},
+    "AUBANK.NS": {"name": "AU Small Finance Bank", "sector": "Banking", "domain": "aubank.in", "exchange": "NSE", "currency": "₹"},
+    "BANDHANBNK.NS": {"name": "Bandhan Bank", "sector": "Banking", "domain": "bandhanbank.com", "exchange": "NSE", "currency": "₹"},
+    "CHOLAFIN.NS": {"name": "Cholamandalam Inv.", "sector": "NBFC & Lending", "domain": "cholamandalam.com", "exchange": "NSE", "currency": "₹"},
+    "MUTHOOTFIN.NS": {"name": "Muthoot Finance", "sector": "Gold Finance", "domain": "muthootfinance.com", "exchange": "NSE", "currency": "₹"},
+    "SBICARD.NS": {"name": "SBI Cards", "sector": "Financial Services", "domain": "sbicard.com", "exchange": "NSE", "currency": "₹"},
+    "ICICIGI.NS": {"name": "ICICI Lombard", "sector": "Insurance", "domain": "icicilombard.com", "exchange": "NSE", "currency": "₹"},
+    "ICICIPRULI.NS": {"name": "ICICI Prudential Life", "sector": "Insurance", "domain": "iciciprulife.com", "exchange": "NSE", "currency": "₹"},
+    "HDFCAMC.NS": {"name": "HDFC AMC", "sector": "Asset Management", "domain": "hdfcfund.com", "exchange": "NSE", "currency": "₹"},
+    "BSE.NS": {"name": "BSE Limited", "sector": "Stock Exchange", "domain": "bseindia.com", "exchange": "NSE", "currency": "₹"},
+    "CDSL.NS": {"name": "CDSL", "sector": "Market Infrastructure", "domain": "cdslindia.com", "exchange": "NSE", "currency": "₹"},
+    "MCX.NS": {"name": "MCX India", "sector": "Commodity Exchange", "domain": "mcxindia.com", "exchange": "NSE", "currency": "₹"},
+    "ANGELONE.NS": {"name": "Angel One", "sector": "FinTech & Broking", "domain": "angelone.in", "exchange": "NSE", "currency": "₹"},
+    "PAYTM.NS": {"name": "One97 Comm. (Paytm)", "sector": "FinTech & Payments", "domain": "paytm.com", "exchange": "NSE", "currency": "₹"},
+    "POLICYBZR.NS": {"name": "PB Fintech (Policybazaar)", "sector": "InsurTech", "domain": "policybazaar.com", "exchange": "NSE", "currency": "₹"},
+    "NYKAA.NS": {"name": "FSN E-Commerce (Nykaa)", "sector": "Beauty & E-Commerce", "domain": "nykaa.com", "exchange": "NSE", "currency": "₹"},
+    "DELHIVERY.NS": {"name": "Delhivery Limited", "sector": "Logistics", "domain": "delhivery.com", "exchange": "NSE", "currency": "₹"},
+    "SWIGGY.NS": {"name": "Swiggy Limited", "sector": "FoodTech & Delivery", "domain": "swiggy.com", "exchange": "NSE", "currency": "₹"},
+    "DMART.NS": {"name": "Avenue Supermarts (DMart)", "sector": "Retail", "domain": "dmartindia.com", "exchange": "NSE", "currency": "₹"},
+    "DABUR.NS": {"name": "Dabur India", "sector": "FMCG", "domain": "dabur.com", "exchange": "NSE", "currency": "₹"},
+    "MARICO.NS": {"name": "Marico Limited", "sector": "FMCG", "domain": "marico.com", "exchange": "NSE", "currency": "₹"},
+    "GODREJCP.NS": {"name": "Godrej Consumer", "sector": "FMCG", "domain": "godrejcp.com", "exchange": "NSE", "currency": "₹"},
+    "COLPAL.NS": {"name": "Colgate-Palmolive India", "sector": "FMCG", "domain": "colgatepalmolive.co.in", "exchange": "NSE", "currency": "₹"},
+    "VBL.NS": {"name": "Varun Beverages", "sector": "Beverages", "domain": "varunbeverages.com", "exchange": "NSE", "currency": "₹"},
+    "UNITDSPR.NS": {"name": "United Spirits", "sector": "Beverages", "domain": "diageoindia.com", "exchange": "NSE", "currency": "₹"},
+    "UBL.NS": {"name": "United Breweries", "sector": "Beverages", "domain": "kingfisherworld.com", "exchange": "NSE", "currency": "₹"},
+    "HAVELLS.NS": {"name": "Havells India", "sector": "Electricals", "domain": "havells.com", "exchange": "NSE", "currency": "₹"},
+    "POLYCAB.NS": {"name": "Polycab India", "sector": "Cables & Wires", "domain": "polycab.com", "exchange": "NSE", "currency": "₹"},
+    "VOLTAS.NS": {"name": "Voltas Limited", "sector": "Consumer Durables", "domain": "voltas.com", "exchange": "NSE", "currency": "₹"},
+    "DIXON.NS": {"name": "Dixon Technologies", "sector": "Electronics Mfg.", "domain": "dixoninfo.com", "exchange": "NSE", "currency": "₹"},
+    "CROMPTON.NS": {"name": "Crompton Greaves", "sector": "Consumer Durables", "domain": "crompton.co.in", "exchange": "NSE", "currency": "₹"},
+    "PERSISTENT.NS": {"name": "Persistent Systems", "sector": "IT & Engineering", "domain": "persistent.com", "exchange": "NSE", "currency": "₹"},
+    "COFORGE.NS": {"name": "Coforge Limited", "sector": "IT Services", "domain": "coforge.com", "exchange": "NSE", "currency": "₹"},
+    "MPHASIS.NS": {"name": "Mphasis Limited", "sector": "IT Services", "domain": "mphasis.com", "exchange": "NSE", "currency": "₹"},
+    "LTTS.NS": {"name": "L&T Technology Services", "sector": "ER&D Services", "domain": "ltts.com", "exchange": "NSE", "currency": "₹"},
+    "TATAELXSI.NS": {"name": "Tata Elxsi", "sector": "Design & Tech", "domain": "tataelxsi.com", "exchange": "NSE", "currency": "₹"},
+    "KPITTECH.NS": {"name": "KPIT Technologies", "sector": "Auto Software", "domain": "kpit.com", "exchange": "NSE", "currency": "₹"},
+    "NAUKRI.NS": {"name": "Info Edge (Naukri)", "sector": "Internet & Tech", "domain": "naukri.com", "exchange": "NSE", "currency": "₹"},
+    "OFSS.NS": {"name": "Oracle Financial Services", "sector": "FinTech Software", "domain": "oracle.com", "exchange": "NSE", "currency": "₹"},
+    "LUPIN.NS": {"name": "Lupin Limited", "sector": "Pharmaceuticals", "domain": "lupin.com", "exchange": "NSE", "currency": "₹"},
+    "AUROPHARMA.NS": {"name": "Aurobindo Pharma", "sector": "Pharmaceuticals", "domain": "aurobindo.com", "exchange": "NSE", "currency": "₹"},
+    "TORNTPHARM.NS": {"name": "Torrent Pharmaceuticals", "sector": "Pharmaceuticals", "domain": "torrentpharma.com", "exchange": "NSE", "currency": "₹"},
+    "ALKEM.NS": {"name": "Alkem Laboratories", "sector": "Pharmaceuticals", "domain": "alkemlabs.com", "exchange": "NSE", "currency": "₹"},
+    "ZYDUSLIFE.NS": {"name": "Zydus Lifesciences", "sector": "Pharmaceuticals", "domain": "zyduslife.com", "exchange": "NSE", "currency": "₹"},
+    "BIOCON.NS": {"name": "Biocon Limited", "sector": "Biotechnology", "domain": "biocon.com", "exchange": "NSE", "currency": "₹"},
+    "MAXHEALTH.NS": {"name": "Max Healthcare", "sector": "Healthcare", "domain": "maxhealthcare.in", "exchange": "NSE", "currency": "₹"},
+    "FORTIS.NS": {"name": "Fortis Healthcare", "sector": "Healthcare", "domain": "fortishealthcare.com", "exchange": "NSE", "currency": "₹"},
+    "TVSMOTOR.NS": {"name": "TVS Motor Company", "sector": "Two-Wheelers & EV", "domain": "tvsmotor.com", "exchange": "NSE", "currency": "₹"},
+    "ASHOKLEY.NS": {"name": "Ashok Leyland", "sector": "Commercial Vehicles", "domain": "ashokleyland.com", "exchange": "NSE", "currency": "₹"},
+    "MOTHERSON.NS": {"name": "Samvardhana Motherson", "sector": "Auto Ancillaries", "domain": "motherson.com", "exchange": "NSE", "currency": "₹"},
+    "BOSCHLTD.NS": {"name": "Bosch Limited", "sector": "Auto Components", "domain": "bosch.in", "exchange": "NSE", "currency": "₹"},
+    "MRF.NS": {"name": "MRF Limited", "sector": "Tyres & Auto", "domain": "mrftyres.com", "exchange": "NSE", "currency": "₹"},
+    "BHARATFORG.NS": {"name": "Bharat Forge", "sector": "Forging & Defence", "domain": "bharatforge.com", "exchange": "NSE", "currency": "₹"},
+    "SONACOMS.NS": {"name": "Sona BLW Precision", "sector": "EV Components", "domain": "sonacomstar.com", "exchange": "NSE", "currency": "₹"},
+    "CGPOWER.NS": {"name": "CG Power & Industrial", "sector": "Power Equipment", "domain": "cgglobal.com", "exchange": "NSE", "currency": "₹"},
+    "CUMMINSIND.NS": {"name": "Cummins India", "sector": "Industrial Engines", "domain": "cummins.com", "exchange": "NSE", "currency": "₹"},
+    "SAIL.NS": {"name": "Steel Authority of India", "sector": "Metals & Mining", "domain": "sail.co.in", "exchange": "NSE", "currency": "₹"},
+    "NMDC.NS": {"name": "NMDC Limited", "sector": "Mining & Minerals", "domain": "nmdc.co.in", "exchange": "NSE", "currency": "₹"},
+    "NATIONALUM.NS": {"name": "NALCO", "sector": "Metals & Aluminium", "domain": "nalcoindia.com", "exchange": "NSE", "currency": "₹"},
+    "JINDALSTEL.NS": {"name": "Jindal Steel & Power", "sector": "Metals & Mining", "domain": "jindalsteelpower.com", "exchange": "NSE", "currency": "₹"},
+    "SHREECEM.NS": {"name": "Shree Cement", "sector": "Cement & Materials", "domain": "shreecement.com", "exchange": "NSE", "currency": "₹"},
+    "ACC.NS": {"name": "ACC Limited", "sector": "Cement & Materials", "domain": "acclimited.com", "exchange": "NSE", "currency": "₹"},
+    "LODHA.NS": {"name": "Macrotech Developers (Lodha)", "sector": "Real Estate", "domain": "lodhagroup.com", "exchange": "NSE", "currency": "₹"},
+    "GODREJPROP.NS": {"name": "Godrej Properties", "sector": "Real Estate", "domain": "godrejproperties.com", "exchange": "NSE", "currency": "₹"},
+    "OBEROIRLTY.NS": {"name": "Oberoi Realty", "sector": "Real Estate", "domain": "oberoirealty.com", "exchange": "NSE", "currency": "₹"},
+    "PRESTIGE.NS": {"name": "Prestige Estates", "sector": "Real Estate", "domain": "prestigeconstructions.com", "exchange": "NSE", "currency": "₹"},
+    "PHOENIXLTD.NS": {"name": "Phoenix Mills", "sector": "Retail Real Estate", "domain": "thephoenixmills.com", "exchange": "NSE", "currency": "₹"},
+    "INDHOTEL.NS": {"name": "Indian Hotels (Taj)", "sector": "Hospitality", "domain": "ihcltata.com", "exchange": "NSE", "currency": "₹"},
+    "CONCOR.NS": {"name": "Container Corp", "sector": "Logistics", "domain": "concorindia.co.in", "exchange": "NSE", "currency": "₹"},
+    "PIIND.NS": {"name": "PI Industries", "sector": "Agrochemicals", "domain": "piindustries.com", "exchange": "NSE", "currency": "₹"},
+    "SRF.NS": {"name": "SRF Limited", "sector": "Specialty Chemicals", "domain": "srf.com", "exchange": "NSE", "currency": "₹"},
+    "UPL.NS": {"name": "UPL Limited", "sector": "Agrochemicals", "domain": "upl-ltd.com", "exchange": "NSE", "currency": "₹"},
+    "ASTRAL.NS": {"name": "Astral Limited", "sector": "Building Materials", "domain": "astralpipes.com", "exchange": "NSE", "currency": "₹"},
+    "SUPREMEIND.NS": {"name": "Supreme Industries", "sector": "Plastics & Pipes", "domain": "supreme.co.in", "exchange": "NSE", "currency": "₹"},
+    "PAGEIND.NS": {"name": "Page Industries (Jockey)", "sector": "Apparel", "domain": "pageindustries.com", "exchange": "NSE", "currency": "₹"},
+    "JUBLFOOD.NS": {"name": "Jubilant FoodWorks", "sector": "QSR & Food", "domain": "dominos.co.in", "exchange": "NSE", "currency": "₹"},
+    "TATACOMM.NS": {"name": "Tata Communications", "sector": "Telecom & Cloud", "domain": "tatacommunications.com", "exchange": "NSE", "currency": "₹"},
+    "IDEA.NS": {"name": "Vodafone Idea", "sector": "Telecom", "domain": "myvi.in", "exchange": "NSE", "currency": "₹"},
+    "INDUSTOWER.NS": {"name": "Indus Towers", "sector": "Telecom Infra", "domain": "industowers.com", "exchange": "NSE", "currency": "₹"},
+    "GMRAIRPORT.NS": {"name": "GMR Airports", "sector": "Aviation Infra", "domain": "gmrgroup.in", "exchange": "NSE", "currency": "₹"},
+    "TIINDIA.NS": {"name": "Tube Investments", "sector": "Engineering & EV", "domain": "tiindia.com", "exchange": "NSE", "currency": "₹"},
+    "LICI.NS": {"name": "Life Insurance Corp", "sector": "Insurance", "domain": "licindia.in", "exchange": "NSE", "currency": "₹"},
+    "OIL.NS": {"name": "Oil India", "sector": "Oil & Gas", "domain": "oil-india.com", "exchange": "NSE", "currency": "₹"},
+    "HUDCO.NS": {"name": "HUDCO", "sector": "Housing Finance", "domain": "hudco.org.in", "exchange": "NSE", "currency": "₹"},
+    "NBCC.NS": {"name": "NBCC India", "sector": "Construction", "domain": "nbccindia.in", "exchange": "NSE", "currency": "₹"},
+    "SJVN.NS": {"name": "SJVN Limited", "sector": "Power & Hydro", "domain": "sjvn.nic.in", "exchange": "NSE", "currency": "₹"},
+    "BRK-B": {"name": "Berkshire Hathaway", "sector": "Conglomerate", "domain": "berkshirehathaway.com", "exchange": "NYSE", "currency": "$"},
+    "LLY": {"name": "Eli Lilly", "sector": "Pharmaceuticals", "domain": "lilly.com", "exchange": "NYSE", "currency": "$"},
+    "XOM": {"name": "Exxon Mobil", "sector": "Oil & Gas", "domain": "exxonmobil.com", "exchange": "NYSE", "currency": "$"},
+    "COST": {"name": "Costco Wholesale", "sector": "Retail", "domain": "costco.com", "exchange": "NASDAQ", "currency": "$"},
+    "JNJ": {"name": "Johnson & Johnson", "sector": "Healthcare", "domain": "jnj.com", "exchange": "NYSE", "currency": "$"},
+    "HD": {"name": "Home Depot", "sector": "Home Improvement", "domain": "homedepot.com", "exchange": "NYSE", "currency": "$"},
+    "PG": {"name": "Procter & Gamble", "sector": "Consumer Goods", "domain": "pg.com", "exchange": "NYSE", "currency": "$"},
+    "ABBV": {"name": "AbbVie Inc.", "sector": "Biopharma", "domain": "abbvie.com", "exchange": "NYSE", "currency": "$"},
+    "BAC": {"name": "Bank of America", "sector": "Banking", "domain": "bankofamerica.com", "exchange": "NYSE", "currency": "$"},
+    "UNH": {"name": "UnitedHealth Group", "sector": "Healthcare", "domain": "unitedhealthgroup.com", "exchange": "NYSE", "currency": "$"},
+    "CVX": {"name": "Chevron Corp.", "sector": "Oil & Gas", "domain": "chevron.com", "exchange": "NYSE", "currency": "$"},
+    "PEP": {"name": "PepsiCo Inc.", "sector": "Food & Beverages", "domain": "pepsico.com", "exchange": "NASDAQ", "currency": "$"},
+    "MRK": {"name": "Merck & Co.", "sector": "Pharmaceuticals", "domain": "merck.com", "exchange": "NYSE", "currency": "$"},
+    "CSCO": {"name": "Cisco Systems", "sector": "Networking", "domain": "cisco.com", "exchange": "NASDAQ", "currency": "$"},
+    "TMUS": {"name": "T-Mobile US", "sector": "Telecom", "domain": "t-mobile.com", "exchange": "NASDAQ", "currency": "$"},
+    "WFC": {"name": "Wells Fargo", "sector": "Banking", "domain": "wellsfargo.com", "exchange": "NYSE", "currency": "$"},
+    "ACN": {"name": "Accenture plc", "sector": "IT Consulting", "domain": "accenture.com", "exchange": "NYSE", "currency": "$"},
+    "MCD": {"name": "McDonald's Corp.", "sector": "Restaurants", "domain": "mcdonalds.com", "exchange": "NYSE", "currency": "$"},
+    "ABT": {"name": "Abbott Laboratories", "sector": "Medical Devices", "domain": "abbott.com", "exchange": "NYSE", "currency": "$"},
+    "PM": {"name": "Philip Morris Intl.", "sector": "Consumer Staples", "domain": "pmi.com", "exchange": "NYSE", "currency": "$"},
+    "TMO": {"name": "Thermo Fisher", "sector": "Life Sciences", "domain": "thermofisher.com", "exchange": "NYSE", "currency": "$"},
+    "IBM": {"name": "IBM Corp.", "sector": "Enterprise Tech & AI", "domain": "ibm.com", "exchange": "NYSE", "currency": "$"},
+    "LIN": {"name": "Linde plc", "sector": "Industrial Gases", "domain": "linde.com", "exchange": "NASDAQ", "currency": "$"},
+    "GE": {"name": "GE Aerospace", "sector": "Aerospace & Defence", "domain": "geaerospace.com", "exchange": "NYSE", "currency": "$"},
+    "CAT": {"name": "Caterpillar Inc.", "sector": "Heavy Machinery", "domain": "caterpillar.com", "exchange": "NYSE", "currency": "$"},
+    "GS": {"name": "Goldman Sachs", "sector": "Investment Banking", "domain": "goldmansachs.com", "exchange": "NYSE", "currency": "$"},
+    "MS": {"name": "Morgan Stanley", "sector": "Investment Banking", "domain": "morganstanley.com", "exchange": "NYSE", "currency": "$"},
+    "ISRG": {"name": "Intuitive Surgical", "sector": "Medical Robotics", "domain": "intuitive.com", "exchange": "NASDAQ", "currency": "$"},
+    "QCOM": {"name": "Qualcomm Inc.", "sector": "Semiconductors", "domain": "qualcomm.com", "exchange": "NASDAQ", "currency": "$"},
+    "TXN": {"name": "Texas Instruments", "sector": "Semiconductors", "domain": "ti.com", "exchange": "NASDAQ", "currency": "$"},
+    "INTU": {"name": "Intuit Inc.", "sector": "FinTech Software", "domain": "intuit.com", "exchange": "NASDAQ", "currency": "$"},
+    "NOW": {"name": "ServiceNow Inc.", "sector": "Enterprise SaaS", "domain": "servicenow.com", "exchange": "NYSE", "currency": "$"},
+    "AXP": {"name": "American Express", "sector": "Payments & Credit", "domain": "americanexpress.com", "exchange": "NYSE", "currency": "$"},
+    "AMGN": {"name": "Amgen Inc.", "sector": "Biotechnology", "domain": "amgen.com", "exchange": "NASDAQ", "currency": "$"},
+    "VZ": {"name": "Verizon", "sector": "Telecom", "domain": "verizon.com", "exchange": "NYSE", "currency": "$"},
+    "T": {"name": "AT&T Inc.", "sector": "Telecom", "domain": "att.com", "exchange": "NYSE", "currency": "$"},
+    "RTX": {"name": "RTX Corp.", "sector": "Aerospace & Defence", "domain": "rtx.com", "exchange": "NYSE", "currency": "$"},
+    "SPGI": {"name": "S&P Global", "sector": "Financial Data", "domain": "spglobal.com", "exchange": "NYSE", "currency": "$"},
+    "BLK": {"name": "BlackRock Inc.", "sector": "Asset Management", "domain": "blackrock.com", "exchange": "NYSE", "currency": "$"},
+    "PFE": {"name": "Pfizer Inc.", "sector": "Pharmaceuticals", "domain": "pfizer.com", "exchange": "NYSE", "currency": "$"},
+    "BKNG": {"name": "Booking Holdings", "sector": "Travel Tech", "domain": "bookingholdings.com", "exchange": "NASDAQ", "currency": "$"},
+    "LOW": {"name": "Lowe's Companies", "sector": "Retail", "domain": "lowes.com", "exchange": "NYSE", "currency": "$"},
+    "UNP": {"name": "Union Pacific", "sector": "Railroads", "domain": "up.com", "exchange": "NYSE", "currency": "$"},
+    "HON": {"name": "Honeywell Intl.", "sector": "Industrials", "domain": "honeywell.com", "exchange": "NASDAQ", "currency": "$"},
+    "SYK": {"name": "Stryker Corp.", "sector": "Medical Tech", "domain": "stryker.com", "exchange": "NYSE", "currency": "$"},
+    "C": {"name": "Citigroup Inc.", "sector": "Banking", "domain": "citigroup.com", "exchange": "NYSE", "currency": "$"},
+    "SCHW": {"name": "Charles Schwab", "sector": "Brokerage & Wealth", "domain": "schwab.com", "exchange": "NYSE", "currency": "$"},
+    "BA": {"name": "Boeing Co.", "sector": "Aerospace", "domain": "boeing.com", "exchange": "NYSE", "currency": "$"},
+    "LMT": {"name": "Lockheed Martin", "sector": "Aerospace & Defence", "domain": "lockheedmartin.com", "exchange": "NYSE", "currency": "$"},
+    "AMAT": {"name": "Applied Materials", "sector": "Chip Equipment", "domain": "appliedmaterials.com", "exchange": "NASDAQ", "currency": "$"},
+    "LRCX": {"name": "Lam Research", "sector": "Chip Equipment", "domain": "lamresearch.com", "exchange": "NASDAQ", "currency": "$"},
+    "KLAC": {"name": "KLA Corp.", "sector": "Chip Equipment", "domain": "kla.com", "exchange": "NASDAQ", "currency": "$"},
+    "MU": {"name": "Micron Technology", "sector": "Memory Chips", "domain": "micron.com", "exchange": "NASDAQ", "currency": "$"},
+    "ADI": {"name": "Analog Devices", "sector": "Semiconductors", "domain": "analog.com", "exchange": "NASDAQ", "currency": "$"},
+    "PANW": {"name": "Palo Alto Networks", "sector": "Cybersecurity", "domain": "paloaltonetworks.com", "exchange": "NASDAQ", "currency": "$"},
+    "CRWD": {"name": "CrowdStrike", "sector": "Cybersecurity", "domain": "crowdstrike.com", "exchange": "NASDAQ", "currency": "$"},
+    "FTNT": {"name": "Fortinet Inc.", "sector": "Cybersecurity", "domain": "fortinet.com", "exchange": "NASDAQ", "currency": "$"},
+    "ZS": {"name": "Zscaler Inc.", "sector": "Cloud Security", "domain": "zscaler.com", "exchange": "NASDAQ", "currency": "$"},
+    "SNPS": {"name": "Synopsys Inc.", "sector": "Chip Design EDA", "domain": "synopsys.com", "exchange": "NASDAQ", "currency": "$"},
+    "CDNS": {"name": "Cadence Design", "sector": "Chip Design EDA", "domain": "cadence.com", "exchange": "NASDAQ", "currency": "$"},
+    "MRVL": {"name": "Marvell Technology", "sector": "Semiconductors", "domain": "marvell.com", "exchange": "NASDAQ", "currency": "$"},
+    "ARM": {"name": "Arm Holdings", "sector": "CPU Architecture", "domain": "arm.com", "exchange": "NASDAQ", "currency": "$"},
+    "ASML": {"name": "ASML Holding", "sector": "Lithography Systems", "domain": "asml.com", "exchange": "NASDAQ", "currency": "$"},
+    "TSM": {"name": "TSMC", "sector": "Chip Foundry", "domain": "tsmc.com", "exchange": "NYSE", "currency": "$"},
+    "SHOP": {"name": "Shopify Inc.", "sector": "E-Commerce SaaS", "domain": "shopify.com", "exchange": "NYSE", "currency": "$"},
+    "PYPL": {"name": "PayPal Holdings", "sector": "Digital Payments", "domain": "paypal.com", "exchange": "NASDAQ", "currency": "$"},
+    "HOOD": {"name": "Robinhood Markets", "sector": "FinTech & Trading", "domain": "robinhood.com", "exchange": "NASDAQ", "currency": "$"},
+    "SOFI": {"name": "SoFi Technologies", "sector": "Digital Banking", "domain": "sofi.com", "exchange": "NASDAQ", "currency": "$"},
+    "ABNB": {"name": "Airbnb Inc.", "sector": "Travel Marketplace", "domain": "airbnb.com", "exchange": "NASDAQ", "currency": "$"},
+    "DASH": {"name": "DoorDash Inc.", "sector": "Delivery Platform", "domain": "doordash.com", "exchange": "NASDAQ", "currency": "$"},
+    "SPOT": {"name": "Spotify Technology", "sector": "Audio Streaming", "domain": "spotify.com", "exchange": "NYSE", "currency": "$"},
+    "SNOW": {"name": "Snowflake Inc.", "sector": "Data Cloud", "domain": "snowflake.com", "exchange": "NYSE", "currency": "$"},
+    "DDOG": {"name": "Datadog Inc.", "sector": "Cloud Observability", "domain": "datadoghq.com", "exchange": "NASDAQ", "currency": "$"},
+    "NET": {"name": "Cloudflare Inc.", "sector": "Edge & Security", "domain": "cloudflare.com", "exchange": "NYSE", "currency": "$"},
+    "MDB": {"name": "MongoDB Inc.", "sector": "Database Cloud", "domain": "mongodb.com", "exchange": "NASDAQ", "currency": "$"},
+    "WDAY": {"name": "Workday Inc.", "sector": "Enterprise SaaS", "domain": "workday.com", "exchange": "NASDAQ", "currency": "$"},
+    "TEAM": {"name": "Atlassian Corp.", "sector": "Collaboration SaaS", "domain": "atlassian.com", "exchange": "NASDAQ", "currency": "$"},
+    "ADSK": {"name": "Autodesk Inc.", "sector": "CAD Software", "domain": "autodesk.com", "exchange": "NASDAQ", "currency": "$"},
+    "SBUX": {"name": "Starbucks Corp.", "sector": "Coffee & Retail", "domain": "starbucks.com", "exchange": "NASDAQ", "currency": "$"},
+    "TGT": {"name": "Target Corp.", "sector": "Retail", "domain": "target.com", "exchange": "NYSE", "currency": "$"},
+    "TJX": {"name": "TJX Companies", "sector": "Apparel Retail", "domain": "tjx.com", "exchange": "NYSE", "currency": "$"},
+    "DE": {"name": "Deere & Company", "sector": "Agri Machinery", "domain": "deere.com", "exchange": "NYSE", "currency": "$"},
+    "UPS": {"name": "United Parcel Service", "sector": "Logistics", "domain": "ups.com", "exchange": "NYSE", "currency": "$"},
+    "FDX": {"name": "FedEx Corp.", "sector": "Logistics", "domain": "fedex.com", "exchange": "NYSE", "currency": "$"},
+    "MMM": {"name": "3M Company", "sector": "Industrials", "domain": "3m.com", "exchange": "NYSE", "currency": "$"},
+    "F": {"name": "Ford Motor Co.", "sector": "Automobiles & EV", "domain": "ford.com", "exchange": "NYSE", "currency": "$"},
+    "GM": {"name": "General Motors", "sector": "Automobiles & EV", "domain": "gm.com", "exchange": "NYSE", "currency": "$"},
+    "RIVN": {"name": "Rivian Automotive", "sector": "Electric Vehicles", "domain": "rivian.com", "exchange": "NASDAQ", "currency": "$"},
+    "LCID": {"name": "Lucid Group", "sector": "Electric Vehicles", "domain": "lucidmotors.com", "exchange": "NASDAQ", "currency": "$"},
+    "NIO": {"name": "NIO Inc.", "sector": "Electric Vehicles", "domain": "nio.com", "exchange": "NYSE", "currency": "$"},
+    "BABA": {"name": "Alibaba Group", "sector": "E-Commerce & Cloud", "domain": "alibaba.com", "exchange": "NYSE", "currency": "$"},
+    "JD": {"name": "JD.com Inc.", "sector": "E-Commerce", "domain": "jd.com", "exchange": "NASDAQ", "currency": "$"},
+    "PDD": {"name": "PDD Holdings", "sector": "E-Commerce", "domain": "temu.com", "exchange": "NASDAQ", "currency": "$"},
+    "BIDU": {"name": "Baidu Inc.", "sector": "Search & AI", "domain": "baidu.com", "exchange": "NASDAQ", "currency": "$"},
+    "SONY": {"name": "Sony Group", "sector": "Electronics & Media", "domain": "sony.com", "exchange": "NYSE", "currency": "$"},
+    "TM": {"name": "Toyota Motor", "sector": "Automobiles", "domain": "toyota.com", "exchange": "NYSE", "currency": "$"},
+    "SAP": {"name": "SAP SE", "sector": "Enterprise Software", "domain": "sap.com", "exchange": "NYSE", "currency": "$"},
+    "NVO": {"name": "Novo Nordisk", "sector": "Pharmaceuticals", "domain": "novonordisk.com", "exchange": "NYSE", "currency": "$"},
+    "AZN": {"name": "AstraZeneca", "sector": "Pharmaceuticals", "domain": "astrazeneca.com", "exchange": "NASDAQ", "currency": "$"},
+    "NVS": {"name": "Novartis AG", "sector": "Pharmaceuticals", "domain": "novartis.com", "exchange": "NYSE", "currency": "$"},
+    "GILD": {"name": "Gilead Sciences", "sector": "Biopharma", "domain": "gilead.com", "exchange": "NASDAQ", "currency": "$"},
+    "REGN": {"name": "Regeneron Pharma", "sector": "Biotech", "domain": "regeneron.com", "exchange": "NASDAQ", "currency": "$"},
+    "VRTX": {"name": "Vertex Pharma", "sector": "Biotech", "domain": "vrtx.com", "exchange": "NASDAQ", "currency": "$"},
+    "MRNA": {"name": "Moderna Inc.", "sector": "mRNA Biotech", "domain": "modernatx.com", "exchange": "NASDAQ", "currency": "$"},
+    "BMY": {"name": "Bristol Myers Squibb", "sector": "Pharmaceuticals", "domain": "bms.com", "exchange": "NYSE", "currency": "$"},
+    "MDT": {"name": "Medtronic plc", "sector": "Medical Devices", "domain": "medtronic.com", "exchange": "NYSE", "currency": "$"},
+    "BSX": {"name": "Boston Scientific", "sector": "Medical Devices", "domain": "bostonscientific.com", "exchange": "NYSE", "currency": "$"},
+    "ZTS": {"name": "Zoetis Inc.", "sector": "Animal Health", "domain": "zoetis.com", "exchange": "NYSE", "currency": "$"},
+    "COP": {"name": "ConocoPhillips", "sector": "Oil & Gas", "domain": "conocophillips.com", "exchange": "NYSE", "currency": "$"},
+    "SLB": {"name": "SLB (Schlumberger)", "sector": "Oilfield Services", "domain": "slb.com", "exchange": "NYSE", "currency": "$"},
+    "EOG": {"name": "EOG Resources", "sector": "Oil & Gas", "domain": "eogresources.com", "exchange": "NYSE", "currency": "$"},
+    "NEE": {"name": "NextEra Energy", "sector": "Clean Utilities", "domain": "nexteraenergy.com", "exchange": "NYSE", "currency": "$"},
+    "DUK": {"name": "Duke Energy", "sector": "Utilities", "domain": "duke-energy.com", "exchange": "NYSE", "currency": "$"},
+    "SO": {"name": "Southern Company", "sector": "Utilities", "domain": "southerncompany.com", "exchange": "NYSE", "currency": "$"},
+    "D": {"name": "Dominion Energy", "sector": "Utilities", "domain": "dominionenergy.com", "exchange": "NYSE", "currency": "$"},
+    "AMT": {"name": "American Tower", "sector": "Telecom REIT", "domain": "americantower.com", "exchange": "NYSE", "currency": "$"},
+    "PLD": {"name": "Prologis Inc.", "sector": "Logistics REIT", "domain": "prologis.com", "exchange": "NYSE", "currency": "$"},
+    "EQIX": {"name": "Equinix Inc.", "sector": "Data Center REIT", "domain": "equinix.com", "exchange": "NASDAQ", "currency": "$"},
+    "CMCSA": {"name": "Comcast Corp.", "sector": "Media & Broadband", "domain": "comcastcorporation.com", "exchange": "NASDAQ", "currency": "$"},
+    "CHTR": {"name": "Charter Comm.", "sector": "Broadband & Media", "domain": "corporate.charter.com", "exchange": "NASDAQ", "currency": "$"},
+    "TTWO": {"name": "Take-Two Interactive", "sector": "Gaming", "domain": "take2games.com", "exchange": "NASDAQ", "currency": "$"},
+    "RBLX": {"name": "Roblox Corp.", "sector": "Gaming Platform", "domain": "roblox.com", "exchange": "NYSE", "currency": "$"},
+    "SNAP": {"name": "Snap Inc.", "sector": "Social Media", "domain": "snap.com", "exchange": "NYSE", "currency": "$"},
+    "PINS": {"name": "Pinterest Inc.", "sector": "Visual Discovery", "domain": "pinterest.com", "exchange": "NYSE", "currency": "$"},
+    "ZM": {"name": "Zoom Video Comm.", "sector": "Enterprise Video", "domain": "zoom.us", "exchange": "NASDAQ", "currency": "$"},
+    "DOCU": {"name": "DocuSign Inc.", "sector": "eSignature SaaS", "domain": "docusign.com", "exchange": "NASDAQ", "currency": "$"},
+    "DKNG": {"name": "DraftKings Inc.", "sector": "Sports Tech", "domain": "draftkings.com", "exchange": "NASDAQ", "currency": "$"},
+    "MSTR": {"name": "Strategy (MicroStrategy)", "sector": "Enterprise & BTC", "domain": "strategy.com", "exchange": "NASDAQ", "currency": "$"},
+    "SMCI": {"name": "Super Micro Computer", "sector": "AI Servers", "domain": "supermicro.com", "exchange": "NASDAQ", "currency": "$"},
+    "DELL": {"name": "Dell Technologies", "sector": "IT Infrastructure", "domain": "dell.com", "exchange": "NYSE", "currency": "$"},
+    "HPQ": {"name": "HP Inc.", "sector": "PC & Printing", "domain": "hp.com", "exchange": "NYSE", "currency": "$"},
+    "HPE": {"name": "Hewlett Packard Ent.", "sector": "Enterprise Servers", "domain": "hpe.com", "exchange": "NYSE", "currency": "$"},
+    "APP": {"name": "AppLovin Corp.", "sector": "AdTech & AI", "domain": "applovin.com", "exchange": "NASDAQ", "currency": "$"},
+    "GME": {"name": "GameStop Corp.", "sector": "Specialty Retail", "domain": "gamestop.com", "exchange": "NYSE", "currency": "$"},
+    "AMC": {"name": "AMC Entertainment", "sector": "Entertainment", "domain": "amctheatres.com", "exchange": "NYSE", "currency": "$"},
+    "MAR": {"name": "Marriott Intl.", "sector": "Hospitality", "domain": "marriott.com", "exchange": "NASDAQ", "currency": "$"},
+    "HLT": {"name": "Hilton Worldwide", "sector": "Hospitality", "domain": "hilton.com", "exchange": "NYSE", "currency": "$"},
+    "DAL": {"name": "Delta Air Lines", "sector": "Aviation", "domain": "delta.com", "exchange": "NYSE", "currency": "$"},
+    "UAL": {"name": "United Airlines", "sector": "Aviation", "domain": "united.com", "exchange": "NASDAQ", "currency": "$"},
+    "LUV": {"name": "Southwest Airlines", "sector": "Aviation", "domain": "southwest.com", "exchange": "NYSE", "currency": "$"},
+    "CCL": {"name": "Carnival Corp.", "sector": "Cruises & Travel", "domain": "carnivalcorp.com", "exchange": "NYSE", "currency": "$"},
+    "RCL": {"name": "Royal Caribbean", "sector": "Cruises & Travel", "domain": "royalcaribbean.com", "exchange": "NYSE", "currency": "$"},
+    "BRK-A": {"name": "Berkshire Hathaway A", "sector": "Conglomerate", "domain": "berkshirehathaway.com", "exchange": "NYSE", "currency": "$"},
+    "NOC": {"name": "Northrop Grumman", "sector": "Aerospace & Defence", "domain": "northropgrumman.com", "exchange": "NYSE", "currency": "$"},
+    "GD": {"name": "General Dynamics", "sector": "Aerospace & Defence", "domain": "gd.com", "exchange": "NYSE", "currency": "$"},
+    "CI": {"name": "The Cigna Group", "sector": "Healthcare", "domain": "thecignagroup.com", "exchange": "NYSE", "currency": "$"},
+    "ELV": {"name": "Elevance Health", "sector": "Healthcare", "domain": "elevancehealth.com", "exchange": "NYSE", "currency": "$"},
+    "CVS": {"name": "CVS Health", "sector": "Healthcare & Pharmacy", "domain": "cvshealth.com", "exchange": "NYSE", "currency": "$"},
+    "MCK": {"name": "McKesson Corp.", "sector": "Healthcare Supply", "domain": "mckesson.com", "exchange": "NYSE", "currency": "$"},
 }
 
 CHAT_STOCK_ALIASES = {
-    "apple": "AAPL", "aapl": "AAPL", "iphone": "AAPL",
-    "nvidia": "NVDA", "nvda": "NVDA",
-    "tesla": "TSLA", "tsla": "TSLA",
-    "microsoft": "MSFT", "msft": "MSFT",
-    "google": "GOOGL", "alphabet": "GOOGL", "googl": "GOOGL",
-    "amazon": "AMZN", "amzn": "AMZN",
-    "meta": "META", "facebook": "META",
-    "netflix": "NFLX", "nflx": "NFLX",
-    "amd": "AMD",
-    "intel": "INTC", "intc": "INTC",
-    "broadcom": "AVGO", "avgo": "AVGO",
-    "palantir": "PLTR", "pltr": "PLTR",
-    "coinbase": "COIN", "coin": "COIN",
-    "uber": "UBER",
-    "adobe": "ADBE", "adbe": "ADBE",
-    "salesforce": "CRM", "crm": "CRM",
-    "oracle": "ORCL", "orcl": "ORCL",
-    "walmart": "WMT", "wmt": "WMT",
-    "jpmorgan": "JPM", "jp morgan": "JPM", "jpm": "JPM",
-    "visa": "V",
-    "mastercard": "MA",
-    "disney": "DIS", "dis": "DIS",
-    "nike": "NKE", "nke": "NKE",
-    "coca cola": "KO", "coca-cola": "KO", "coke": "KO",
-    "pepsi": "PEP", "pepsico": "PEP", "pep": "PEP",
-    "jio": "JIOFIN.NS", "jiofin": "JIOFIN.NS", "jio financial": "JIOFIN.NS",
-    "reliance": "RELIANCE.NS", "ril": "RELIANCE.NS",
-    "tcs": "TCS.NS", "tata consultancy": "TCS.NS",
-    "hdfc": "HDFCBANK.NS", "hdfcbank": "HDFCBANK.NS", "hdfc bank": "HDFCBANK.NS",
-    "infosys": "INFY.NS", "infy": "INFY.NS",
-    "sbi": "SBIN.NS", "state bank": "SBIN.NS", "sbin": "SBIN.NS",
-    "icici": "ICICIBANK.NS", "icicibank": "ICICIBANK.NS", "icici bank": "ICICIBANK.NS",
-    "tata motors": "TATAMOTORS.NS", "tatamotors": "TATAMOTORS.NS",
-    "wipro": "WIPRO.NS",
-    "itc": "ITC.NS",
-    "airtel": "BHARTIARTL.NS", "bharti": "BHARTIARTL.NS", "bharti airtel": "BHARTIARTL.NS",
-    "zomato": "ZOMATO.NS",
-    "adani enterprises": "ADANIENT.NS", "adanient": "ADANIENT.NS", "adani": "ADANIENT.NS",
-    "adani ports": "ADANIPORTS.NS", "adaniports": "ADANIPORTS.NS",
-    "bajaj finance": "BAJFINANCE.NS", "bajfinance": "BAJFINANCE.NS", "bajaj": "BAJFINANCE.NS",
-    "l&t": "LT.NS", "larsen": "LT.NS",
-    "maruti": "MARUTI.NS", "maruti suzuki": "MARUTI.NS",
-    "mahindra": "M&M.NS", "m&m": "M&M.NS",
-    "sun pharma": "SUNPHARMA.NS", "sunpharma": "SUNPHARMA.NS",
-    "titan": "TITAN.NS",
-    "axis bank": "AXISBANK.NS", "axisbank": "AXISBANK.NS", "axis": "AXISBANK.NS",
-    "kotak": "KOTAKBANK.NS", "kotak bank": "KOTAKBANK.NS", "kotakbank": "KOTAKBANK.NS",
-    "hal": "HAL.NS", "hindustan aeronautics": "HAL.NS",
-    "tata steel": "TATASTEEL.NS", "tatasteel": "TATASTEEL.NS",
-    "ntpc": "NTPC.NS",
-    "ongc": "ONGC.NS",
-    "coal india": "COALINDIA.NS", "coalindia": "COALINDIA.NS",
-    "powergrid": "POWERGRID.NS", "power grid": "POWERGRID.NS",
-    "asian paints": "ASIANPAINT.NS", "asianpaint": "ASIANPAINT.NS",
-    "ultratech": "ULTRACEMCO.NS", "ultracemco": "ULTRACEMCO.NS",
-    "hcl": "HCLTECH.NS", "hcl tech": "HCLTECH.NS", "hcltech": "HCLTECH.NS",
-    "tech mahindra": "TECHM.NS", "techm": "TECHM.NS",
-    "trent": "TRENT.NS", "zudio": "TRENT.NS",
-    "bel": "BEL.NS", "bharat electronics": "BEL.NS",
-    "irctc": "IRCTC.NS"
+    "apple": "AAPL", "aapl": "AAPL", "iphone": "AAPL", "nvidia": "NVDA",
+    "nvda": "NVDA", "tesla": "TSLA", "tsla": "TSLA", "microsoft": "MSFT",
+    "msft": "MSFT", "google": "GOOGL", "alphabet": "GOOGL", "googl": "GOOGL",
+    "amazon": "AMZN", "amzn": "AMZN", "meta": "META", "facebook": "META",
+    "netflix": "NFLX", "nflx": "NFLX", "amd": "AMD", "intel": "INTC",
+    "intc": "INTC", "broadcom": "AVGO", "avgo": "AVGO", "palantir": "PLTR",
+    "pltr": "PLTR", "coinbase": "COIN", "coin": "COIN", "uber": "UBER",
+    "adobe": "ADBE", "adbe": "ADBE", "salesforce": "CRM", "crm": "CRM",
+    "oracle": "ORCL", "orcl": "ORCL", "walmart": "WMT", "wmt": "WMT",
+    "jpmorgan": "JPM", "jp morgan": "JPM", "jpm": "JPM", "visa": "V",
+    "mastercard": "MA", "disney": "DIS", "nike": "NKE", "nke": "NKE",
+    "coca cola": "KO", "coke": "KO", "pepsi": "PEP", "pepsico": "PEP",
+    "reliance": "RELIANCE.NS", "ril": "RELIANCE.NS", "jio": "JIOFIN.NS", "jio financial": "JIOFIN.NS",
+    "jiofin": "JIOFIN.NS", "tcs": "TCS.NS", "tata consultancy": "TCS.NS", "hdfc": "HDFCBANK.NS",
+    "hdfc bank": "HDFCBANK.NS", "infosys": "INFY.NS", "infy": "INFY.NS", "sbi": "SBIN.NS",
+    "state bank": "SBIN.NS", "state bank of india": "SBIN.NS", "icici": "ICICIBANK.NS", "icici bank": "ICICIBANK.NS",
+    "tata motors": "TMPV.NS", "tmpv": "TMPV.NS", "tmcv": "TMCV.NS", "tatamotors": "TMPV.NS",
+    "wipro": "WIPRO.NS", "itc": "ITC.NS", "airtel": "BHARTIARTL.NS", "bharti airtel": "BHARTIARTL.NS",
+    "zomato": "ETERNAL.NS", "eternal": "ETERNAL.NS", "blinkit": "ETERNAL.NS", "adani enterprises": "ADANIENT.NS",
+    "adani": "ADANIENT.NS", "adani ports": "ADANIPORTS.NS", "bajaj finance": "BAJFINANCE.NS", "bajfinance": "BAJFINANCE.NS",
+    "l&t": "LT.NS", "larsen": "LT.NS", "larsen & toubro": "LT.NS", "maruti": "MARUTI.NS",
+    "maruti suzuki": "MARUTI.NS", "mahindra": "M&M.NS", "m&m": "M&M.NS", "sun pharma": "SUNPHARMA.NS",
+    "sunpharma": "SUNPHARMA.NS", "titan": "TITAN.NS", "axis bank": "AXISBANK.NS", "axisbank": "AXISBANK.NS",
+    "kotak": "KOTAKBANK.NS", "kotak bank": "KOTAKBANK.NS", "hal": "HAL.NS", "hindustan aeronautics": "HAL.NS",
+    "tata steel": "TATASTEEL.NS", "tatasteel": "TATASTEEL.NS", "ntpc": "NTPC.NS", "ongc": "ONGC.NS",
+    "coal india": "COALINDIA.NS", "coalindia": "COALINDIA.NS", "powergrid": "POWERGRID.NS", "power grid": "POWERGRID.NS",
+    "asian paints": "ASIANPAINT.NS", "asianpaint": "ASIANPAINT.NS", "ultratech": "ULTRACEMCO.NS", "ultracemco": "ULTRACEMCO.NS",
+    "hcl": "HCLTECH.NS", "hcl tech": "HCLTECH.NS", "hcltech": "HCLTECH.NS", "tech mahindra": "TECHM.NS",
+    "techm": "TECHM.NS", "trent": "TRENT.NS", "zudio": "TRENT.NS", "bel": "BEL.NS",
+    "bharat electronics": "BEL.NS", "irctc": "IRCTC.NS", "swiggy": "SWIGGY.NS", "paytm": "PAYTM.NS",
+    "nykaa": "NYKAA.NS", "dmart": "DMART.NS", "indigo": "INDIGO.NS", "suzlon": "SUZLON.NS",
+    "mazagon": "MAZDOCK.NS", "cochin shipyard": "COCHINSHIP.NS", "varun beverages": "VBL.NS", "dixon": "DIXON.NS",
+    "policybazaar": "POLICYBZR.NS", "bse": "BSE.NS", "cdsl": "CDSL.NS", "mcx": "MCX.NS",
+    "angel one": "ANGELONE.NS", "costco": "COST", "starbucks": "SBUX", "boeing": "BA",
+    "goldman sachs": "GS", "morgan stanley": "MS", "paypal": "PYPL", "shopify": "SHOP",
+    "airbnb": "ABNB", "spotify": "SPOT", "snowflake": "SNOW", "crowdstrike": "CRWD",
+    "palo alto": "PANW", "qualcomm": "QCOM", "micron": "MU", "arm": "ARM",
+    "asml": "ASML", "tsmc": "TSM", "ford": "F", "general motors": "GM",
+    "ibm": "IBM", "sony": "SONY", "toyota": "TM", "reliance industries": "RELIANCE.NS",
+    "tata consultancy services": "TCS.NS", "eternal ltd. (zomato)": "ETERNAL.NS", "jio financial services": "JIOFIN.NS", "tata motors (pv)": "TMPV.NS",
+    "tata motors (cv)": "TMCV.NS", "mahindra & mahindra": "M&M.NS", "titan company": "TITAN.NS", "kotak mahindra bank": "KOTAKBANK.NS",
+    "amazon.com": "AMZN", "meta platforms": "META", "palantir technologies": "PLTR", "coinbase global": "COIN",
+    "uber technologies": "UBER", "jpmorgan chase": "JPM", "walt disney": "DIS", "coca-cola": "KO",
+    "hindustan unilever": "HINDUNILVR.NS", "hcl technologies": "HCLTECH.NS", "ultratech cement": "ULTRACEMCO.NS", "adani ports & sez": "ADANIPORTS.NS",
+    "bajaj finserv": "BAJAJFINSV.NS", "jsw steel": "JSWSTEEL.NS", "nestle india": "NESTLEIND.NS", "grasim industries": "GRASIM.NS",
+    "hindalco industries": "HINDALCO.NS", "cipla": "CIPLA.NS", "dr. reddy's labs": "DRREDDY.NS", "britannia industries": "BRITANNIA.NS",
+    "apollo hospitals": "APOLLOHOSP.NS", "eicher motors": "EICHERMOT.NS", "bajaj auto": "BAJAJ-AUTO.NS", "hero motocorp": "HEROMOTOCO.NS",
+    "indusind bank": "INDUSINDBK.NS", "divi's laboratories": "DIVISLAB.NS", "bharat petroleum": "BPCL.NS", "tata consumer products": "TATACONSUM.NS",
+    "hdfc life insurance": "HDFCLIFE.NS", "sbi life insurance": "SBILIFE.NS", "shriram finance": "SHRIRAMFIN.NS", "interglobe aviation": "INDIGO.NS",
+    "pidilite industries": "PIDILITIND.NS", "siemens india": "SIEMENS.NS", "abb india": "ABB.NS", "ambuja cements": "AMBUJACEM.NS",
+    "vedanta": "VEDL.NS", "indian oil": "IOC.NS", "gail india": "GAIL.NS", "bank of baroda": "BANKBARODA.NS",
+    "punjab national bank": "PNB.NS", "canara bank": "CANBK.NS", "union bank of india": "UNIONBANK.NS", "power finance": "PFC.NS",
+    "indian railway finance": "IRFC.NS", "rail vikas nigam": "RVNL.NS", "mazagon dock shipbuilders": "MAZDOCK.NS", "bharat heavy electricals": "BHEL.NS",
+    "suzlon energy": "SUZLON.NS", "tata power": "TATAPOWER.NS", "adani power": "ADANIPOWER.NS", "adani green energy": "ADANIGREEN.NS",
+    "adani energy solutions": "ADANIENSOL.NS", "jsw energy": "JSWENERGY.NS", "nhpc": "NHPC.NS", "ireda": "IREDA.NS",
+    "yes bank": "YESBANK.NS", "idfc first bank": "IDFCFIRSTB.NS", "federal bank": "FEDERALBNK.NS", "au small finance bank": "AUBANK.NS",
+    "bandhan bank": "BANDHANBNK.NS", "cholamandalam inv.": "CHOLAFIN.NS", "muthoot finance": "MUTHOOTFIN.NS", "sbi cards": "SBICARD.NS",
+    "icici lombard": "ICICIGI.NS", "icici prudential life": "ICICIPRULI.NS", "hdfc amc": "HDFCAMC.NS", "mcx india": "MCX.NS",
+    "one97 comm. (paytm)": "PAYTM.NS", "pb fintech (policybazaar)": "POLICYBZR.NS", "fsn e-commerce (nykaa)": "NYKAA.NS", "delhivery": "DELHIVERY.NS",
+    "avenue supermarts (dmart)": "DMART.NS", "dabur india": "DABUR.NS", "marico": "MARICO.NS", "godrej consumer": "GODREJCP.NS",
+    "colgate-palmolive india": "COLPAL.NS", "united spirits": "UNITDSPR.NS", "united breweries": "UBL.NS", "havells india": "HAVELLS.NS",
+    "polycab india": "POLYCAB.NS", "voltas": "VOLTAS.NS", "dixon technologies": "DIXON.NS", "crompton greaves": "CROMPTON.NS",
+    "persistent systems": "PERSISTENT.NS", "coforge": "COFORGE.NS", "mphasis": "MPHASIS.NS", "l&t technology services": "LTTS.NS",
+    "tata elxsi": "TATAELXSI.NS", "kpit technologies": "KPITTECH.NS", "info edge (naukri)": "NAUKRI.NS", "oracle financial services": "OFSS.NS",
+    "lupin": "LUPIN.NS", "aurobindo pharma": "AUROPHARMA.NS", "torrent pharmaceuticals": "TORNTPHARM.NS", "alkem laboratories": "ALKEM.NS",
+    "zydus lifesciences": "ZYDUSLIFE.NS", "biocon": "BIOCON.NS", "max healthcare": "MAXHEALTH.NS", "fortis healthcare": "FORTIS.NS",
+    "tvs motor company": "TVSMOTOR.NS", "ashok leyland": "ASHOKLEY.NS", "samvardhana motherson": "MOTHERSON.NS", "bosch": "BOSCHLTD.NS",
+    "bharat forge": "BHARATFORG.NS", "sona blw precision": "SONACOMS.NS", "cg power & industrial": "CGPOWER.NS", "cummins india": "CUMMINSIND.NS",
+    "steel authority of india": "SAIL.NS", "nmdc": "NMDC.NS", "nalco": "NATIONALUM.NS", "jindal steel & power": "JINDALSTEL.NS",
+    "shree cement": "SHREECEM.NS", "macrotech developers (lodha)": "LODHA.NS", "godrej properties": "GODREJPROP.NS", "oberoi realty": "OBEROIRLTY.NS",
+    "prestige estates": "PRESTIGE.NS", "phoenix mills": "PHOENIXLTD.NS", "indian hotels (taj)": "INDHOTEL.NS", "concor": "CONCOR.NS",
+    "pi industries": "PIIND.NS", "astral": "ASTRAL.NS", "supreme industries": "SUPREMEIND.NS", "page industries (jockey)": "PAGEIND.NS",
+    "jubilant foodworks": "JUBLFOOD.NS", "tata communications": "TATACOMM.NS", "vodafone idea": "IDEA.NS", "indus towers": "INDUSTOWER.NS",
+    "gmr airports": "GMRAIRPORT.NS", "tube investments": "TIINDIA.NS", "lic": "LICI.NS", "lic of india": "LICI.NS", "oil india": "OIL.NS",
+    "hudco": "HUDCO.NS", "nbcc india": "NBCC.NS", "sjvn": "SJVN.NS", "berkshire hathaway": "BRK-B",
+    "eli lilly": "LLY", "exxon mobil": "XOM", "costco wholesale": "COST", "johnson & johnson": "JNJ",
+    "home depot": "HD", "procter & gamble": "PG", "abbvie": "ABBV", "bank of america": "BAC",
+    "unitedhealth": "UNH", "chevron": "CVX", "merck": "MRK", "cisco systems": "CSCO",
+    "t-mobile us": "TMUS", "wells fargo": "WFC", "accenture": "ACN", "mcdonald's": "MCD",
+    "abbott laboratories": "ABT", "philip morris intl.": "PM", "thermo fisher": "TMO", "linde": "LIN",
+    "ge aerospace": "GE", "caterpillar": "CAT", "intuitive surgical": "ISRG", "texas instruments": "TXN",
+    "intuit": "INTU", "servicenow": "NOW", "american express": "AXP", "amgen": "AMGN",
+    "verizon": "VZ", "at&t": "T", "s&p global": "SPGI", "blackrock": "BLK",
+    "pfizer": "PFE", "booking holdings": "BKNG", "lowe's companies": "LOW", "union pacific": "UNP",
+    "honeywell intl.": "HON", "stryker": "SYK", "citigroup": "C", "charles schwab": "SCHW",
+    "lockheed martin": "LMT", "applied materials": "AMAT", "lam research": "LRCX", "micron technology": "MU",
+    "analog devices": "ADI", "palo alto networks": "PANW", "fortinet": "FTNT", "zscaler": "ZS",
+    "synopsys": "SNPS", "cadence design": "CDNS", "marvell technology": "MRVL", "arm holdings": "ARM",
+    "asml holding": "ASML", "paypal holdings": "PYPL", "robinhood markets": "HOOD", "sofi technologies": "SOFI",
+    "doordash": "DASH", "spotify technology": "SPOT", "datadog": "DDOG", "cloudflare": "NET",
+    "mongodb": "MDB", "workday": "WDAY", "atlassian": "TEAM", "autodesk": "ADSK",
+    "tjx companies": "TJX", "deere & company": "DE", "united parcel service": "UPS", "fedex": "FDX",
+    "3m company": "MMM", "ford motor": "F", "rivian automotive": "RIVN", "lucid": "LCID",
+    "alibaba": "BABA", "jd.com": "JD", "pdd holdings": "PDD", "baidu": "BIDU",
+    "toyota motor": "TM", "novo nordisk": "NVO", "astrazeneca": "AZN", "novartis": "NVS",
+    "gilead sciences": "GILD", "regeneron pharma": "REGN", "vertex pharma": "VRTX", "moderna": "MRNA",
+    "bristol myers squibb": "BMY", "medtronic": "MDT", "boston scientific": "BSX", "zoetis": "ZTS",
+    "conocophillips": "COP", "slb (schlumberger)": "SLB", "eog resources": "EOG", "nextera energy": "NEE",
+    "duke energy": "DUK", "southern company": "SO", "dominion energy": "D", "american tower": "AMT",
+    "prologis": "PLD", "equinix": "EQIX", "comcast": "CMCSA", "charter comm.": "CHTR",
+    "take-two interactive": "TTWO", "roblox": "RBLX", "pinterest": "PINS", "zoom video comm.": "ZM",
+    "docusign": "DOCU", "draftkings": "DKNG", "strategy (microstrategy)": "MSTR", "super micro computer": "SMCI",
+    "dell technologies": "DELL", "hewlett packard ent.": "HPE", "applovin": "APP", "gamestop": "GME",
+    "amc entertainment": "AMC", "marriott intl.": "MAR", "hilton worldwide": "HLT", "delta air lines": "DAL",
+    "united airlines": "UAL", "southwest airlines": "LUV", "carnival": "CCL", "royal caribbean": "RCL",
+    "berkshire hathaway a": "BRK-A", "northrop grumman": "NOC", "general dynamics": "GD", "cigna": "CI",
+    "elevance health": "ELV", "cvs health": "CVS", "mckesson": "MCK",
 }
-
-def detect_stock_from_text(user_text, default_ticker=None):
-    cleaned = user_text.lower().strip()
-    if any(p in cleaned for p in ["color of apple", "eat an apple", "apple fruit"]):
-        return default_ticker, False
-    for sym in STOCK_CATALOG.keys():
-        sym_clean = sym.lower()
-        sym_base = sym_clean.replace(".ns", "")
-        if len(sym_base) >= 3 and (re.search(rf'\b{re.escape(sym_clean)}\b', cleaned) or re.search(rf'\b{re.escape(sym_base)}\b', cleaned)):
-            return sym, True
-    for keyword in sorted(CHAT_STOCK_ALIASES.keys(), key=len, reverse=True):
-        if re.search(rf'\b{re.escape(keyword)}\b', cleaned):
-            return CHAT_STOCK_ALIASES[keyword], True
-    return default_ticker, False
-
-def get_logo_url(ticker):
-    dom = STOCK_CATALOG.get(ticker, {}).get("domain", "google.com")
-    return f"https://www.google.com/s2/favicons?domain={dom}&sz=128"
-
-@st.cache_data(ttl=900, show_spinner=False)
-def fetch_stock_history(symbol, period="1y"):
-    stock = yf.Ticker(symbol)
-    df = stock.history(period=period)
-    if df.empty:
-        return None
-    df.index = df.index.tz_localize(None)
-    df["SMA_20"] = df["Close"].rolling(20).mean()
-    df["EMA_50"] = df["Close"].ewm(span=50, adjust=False).mean()
-    
-    delta = df["Close"].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(14).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
-    df["RSI"] = 100 - (100 / (1 + (gain / loss)))
-    return df
-
-@st.cache_data(ttl=900, show_spinner=False)
-def fetch_market_snapshots(tickers_list):
-    snapshots = {}
-    if not is_internet_connected():
-        return snapshots
-    for sym in tickers_list:
-        try:
-            t_obj = yf.Ticker(sym)
-            hist = t_obj.history(period="1mo")
-            if len(hist) >= 2:
-                last_c = float(hist["Close"].iloc[-1])
-                prev_c = float(hist["Close"].iloc[-2])
-                chg = last_c - prev_c
-                pct = (chg / prev_c) * 100
-                
-                delta = hist["Close"].diff()
-                gain = (delta.where(delta > 0, 0)).rolling(14).mean().iloc[-1]
-                loss = (-delta.where(delta < 0, 0)).rolling(14).mean().iloc[-1]
-                rsi = 100 - (100 / (1 + (gain / loss))) if loss != 0 else 50.0
-                sma10 = float(hist["Close"].tail(10).mean())
-                
-                snapshots[sym] = {
-                    "price": last_c,
-                    "change": chg,
-                    "pct": pct,
-                    "rsi": float(rsi) if not np.isnan(rsi) else 50.0,
-                    "above_sma": bool(last_c >= sma10)
-                }
-        except Exception:
-            pass
-    return snapshots
-
-def refresh_held_tickers_live(tickers_list):
-    if not online_status or not tickers_list:
-        return
-    for sym in tickers_list:
-        try:
-            t_obj = yf.Ticker(sym)
-            intraday = t_obj.history(period="1d", interval="1m")
-            if not intraday.empty:
-                live_p = float(intraday["Close"].iloc[-1])
-                prev_p = st.session_state.last_valid_snapshots.get(sym, {}).get("price", live_p)
-                chg = live_p - prev_p
-                pct = (chg / prev_p * 100) if prev_p else 0.0
-                if sym in st.session_state.last_valid_snapshots:
-                    st.session_state.last_valid_snapshots[sym]["price"] = live_p
-                    if chg != 0:
-                        st.session_state.last_valid_snapshots[sym]["change"] = chg
-                        st.session_state.last_valid_snapshots[sym]["pct"] = pct
-        except Exception:
-            pass
 
 DEFAULT_STOCKS_SNAPSHOTS = {
-    "RELIANCE.NS": {"price": 1285.40, "change": 18.20, "pct": 1.44, "rsi": 58.4, "above_sma": True},
-    "JIOFIN.NS": {"price": 324.80, "change": 6.45, "pct": 2.03, "rsi": 61.2, "above_sma": True},
-    "TCS.NS": {"price": 4120.50, "change": 54.80, "pct": 1.35, "rsi": 57.4, "above_sma": True},
-    "HDFCBANK.NS": {"price": 1742.30, "change": 15.40, "pct": 0.89, "rsi": 55.2, "above_sma": True},
-    "INFY.NS": {"price": 1865.10, "change": 21.10, "pct": 1.14, "rsi": 58.0, "above_sma": True},
-    "SBIN.NS": {"price": 842.60, "change": 9.80, "pct": 1.18, "rsi": 60.4, "above_sma": True},
-    "ICICIBANK.NS": {"price": 1295.40, "change": 11.20, "pct": 0.87, "rsi": 56.3, "above_sma": True},
-    "TATAMOTORS.NS": {"price": 918.75, "change": -4.50, "pct": -0.49, "rsi": 49.1, "above_sma": False},
-    "WIPRO.NS": {"price": 564.20, "change": 7.10, "pct": 1.27, "rsi": 56.8, "above_sma": True},
-    "ITC.NS": {"price": 488.90, "change": 3.40, "pct": 0.70, "rsi": 54.5, "above_sma": True},
-    "BHARTIARTL.NS": {"price": 1645.00, "change": 24.50, "pct": 1.51, "rsi": 62.1, "above_sma": True},
-    "ZOMATO.NS": {"price": 268.40, "change": 5.90, "pct": 2.25, "rsi": 63.5, "above_sma": True},
-    "ADANIENT.NS": {"price": 2940.00, "change": 38.00, "pct": 1.31, "rsi": 55.9, "above_sma": True},
-    "ADANIPORTS.NS": {"price": 1385.60, "change": 19.40, "pct": 1.42, "rsi": 57.2, "above_sma": True},
-    "BAJFINANCE.NS": {"price": 7120.00, "change": -42.00, "pct": -0.59, "rsi": 47.8, "above_sma": False},
-    "LT.NS": {"price": 3640.50, "change": 45.20, "pct": 1.26, "rsi": 59.0, "above_sma": True},
-    "MARUTI.NS": {"price": 12450.00, "change": 115.00, "pct": 0.93, "rsi": 54.2, "above_sma": True},
-    "M&M.NS": {"price": 2980.40, "change": 52.10, "pct": 1.78, "rsi": 61.8, "above_sma": True},
-    "SUNPHARMA.NS": {"price": 1890.25, "change": 14.80, "pct": 0.79, "rsi": 56.0, "above_sma": True},
-    "TITAN.NS": {"price": 3480.00, "change": -18.50, "pct": -0.53, "rsi": 48.4, "above_sma": False},
-    "AXISBANK.NS": {"price": 1185.70, "change": 12.30, "pct": 1.05, "rsi": 55.7, "above_sma": True},
-    "KOTAKBANK.NS": {"price": 1795.40, "change": 8.90, "pct": 0.50, "rsi": 52.3, "above_sma": True},
-    "HAL.NS": {"price": 4420.00, "change": 68.50, "pct": 1.57, "rsi": 60.5, "above_sma": True},
-    "TATASTEEL.NS": {"price": 154.80, "change": 2.10, "pct": 1.38, "rsi": 55.1, "above_sma": True},
-    "NTPC.NS": {"price": 412.30, "change": 5.60, "pct": 1.38, "rsi": 58.9, "above_sma": True},
-    "ONGC.NS": {"price": 274.50, "change": -1.80, "pct": -0.65, "rsi": 46.5, "above_sma": False},
-    "COALINDIA.NS": {"price": 462.10, "change": 4.90, "pct": 1.07, "rsi": 54.8, "above_sma": True},
-    "POWERGRID.NS": {"price": 328.40, "change": 3.70, "pct": 1.14, "rsi": 57.0, "above_sma": True},
-    "ASIANPAINT.NS": {"price": 2965.00, "change": -22.00, "pct": -0.74, "rsi": 43.2, "above_sma": False},
-    "ULTRACEMCO.NS": {"price": 11340.00, "change": 135.00, "pct": 1.20, "rsi": 57.6, "above_sma": True},
-    "HCLTECH.NS": {"price": 1840.20, "change": 26.40, "pct": 1.46, "rsi": 60.1, "above_sma": True},
-    "TECHM.NS": {"price": 1690.50, "change": 19.80, "pct": 1.19, "rsi": 58.2, "above_sma": True},
-    "TRENT.NS": {"price": 7240.00, "change": 142.00, "pct": 2.00, "rsi": 64.0, "above_sma": True},
-    "BEL.NS": {"price": 298.60, "change": 5.10, "pct": 1.74, "rsi": 61.0, "above_sma": True},
-    "IRCTC.NS": {"price": 864.20, "change": 7.80, "pct": 0.91, "rsi": 53.9, "above_sma": True},
-    "AAPL": {"price": 232.50, "change": 3.10, "pct": 1.35, "rsi": 56.4, "above_sma": True},
-    "NVDA": {"price": 142.80, "change": 4.65, "pct": 3.37, "rsi": 63.8, "above_sma": True},
-    "MSFT": {"price": 428.90, "change": 4.20, "pct": 0.99, "rsi": 55.1, "above_sma": True},
-    "TSLA": {"price": 258.40, "change": -3.80, "pct": -1.45, "rsi": 47.2, "above_sma": False},
-    "GOOGL": {"price": 182.60, "change": 2.40, "pct": 1.33, "rsi": 57.8, "above_sma": True},
-    "AMZN": {"price": 210.30, "change": 3.50, "pct": 1.69, "rsi": 60.5, "above_sma": True},
-    "META": {"price": 592.40, "change": 8.90, "pct": 1.53, "rsi": 59.4, "above_sma": True},
-    "NFLX": {"price": 795.20, "change": 12.40, "pct": 1.58, "rsi": 62.0, "above_sma": True},
-    "AMD": {"price": 152.30, "change": 2.15, "pct": 1.43, "rsi": 54.6, "above_sma": True},
-    "INTC": {"price": 24.80, "change": -0.45, "pct": -1.78, "rsi": 39.5, "above_sma": False},
-    "AVGO": {"price": 178.90, "change": 3.40, "pct": 1.94, "rsi": 61.1, "above_sma": True},
-    "PLTR": {"price": 58.40, "change": 1.85, "pct": 3.27, "rsi": 65.2, "above_sma": True},
-    "COIN": {"price": 268.50, "change": 9.20, "pct": 3.55, "rsi": 64.5, "above_sma": True},
-    "UBER": {"price": 74.20, "change": 0.95, "pct": 1.30, "rsi": 55.8, "above_sma": True},
-    "ADBE": {"price": 495.60, "change": -4.10, "pct": -0.82, "rsi": 46.9, "above_sma": False},
-    "CRM": {"price": 324.10, "change": 4.80, "pct": 1.50, "rsi": 59.2, "above_sma": True},
-    "ORCL": {"price": 188.40, "change": 2.90, "pct": 1.56, "rsi": 60.3, "above_sma": True},
-    "WMT": {"price": 84.50, "change": 0.85, "pct": 1.02, "rsi": 58.7, "above_sma": True},
-    "JPM": {"price": 238.90, "change": 3.10, "pct": 1.31, "rsi": 59.8, "above_sma": True},
-    "V": {"price": 308.40, "change": 2.20, "pct": 0.72, "rsi": 56.1, "above_sma": True},
-    "MA": {"price": 518.70, "change": 4.50, "pct": 0.88, "rsi": 57.3, "above_sma": True},
-    "DIS": {"price": 102.30, "change": 1.15, "pct": 1.14, "rsi": 54.0, "above_sma": True},
-    "NKE": {"price": 78.40, "change": -0.90, "pct": -1.13, "rsi": 42.8, "above_sma": False},
-    "KO": {"price": 65.20, "change": 0.40, "pct": 0.62, "rsi": 53.5, "above_sma": True},
-    "PEP": {"price": 168.90, "change": 0.95, "pct": 0.57, "rsi": 52.9, "above_sma": True}
+    "RELIANCE.NS": {"price": 1382.6, "change": -13.6, "pct": -0.97, "rsi": 50.0, "above_sma": False},
+    "TCS.NS": {"price": 2572.5, "change": -67.8, "pct": -2.57, "rsi": 46.6, "above_sma": False},
+    "HDFCBANK.NS": {"price": 857.25, "change": -4.75, "pct": -0.55, "rsi": 50.8, "above_sma": False},
+    "INFY.NS": {"price": 1151.3, "change": -31.7, "pct": -2.68, "rsi": 46.4, "above_sma": False},
+    "ICICIBANK.NS": {"price": 1593.4, "change": -17.6, "pct": -1.09, "rsi": 49.7, "above_sma": False},
+    "SBIN.NS": {"price": 1123.9, "change": -12.75, "pct": -1.12, "rsi": 49.6, "above_sma": False},
+    "BHARTIARTL.NS": {"price": 2067.9, "change": -34.6, "pct": -1.65, "rsi": 48.5, "above_sma": False},
+    "ETERNAL.NS": {"price": 363.0, "change": -4.7, "pct": -1.28, "rsi": 49.3, "above_sma": False},
+    "JIOFIN.NS": {"price": 222.6, "change": -4.4, "pct": -1.94, "rsi": 47.9, "above_sma": False},
+    "TMPV.NS": {"price": 258.0, "change": -4.0, "pct": -1.53, "rsi": 48.8, "above_sma": False},
+    "TMCV.NS": {"price": 424.95, "change": -6.05, "pct": -1.4, "rsi": 49.1, "above_sma": False},
+    "HAL.NS": {"price": 5074.0, "change": 164.4, "pct": 3.35, "rsi": 59.0, "above_sma": True},
+    "ITC.NS": {"price": 304.7, "change": -2.3, "pct": -0.75, "rsi": 50.4, "above_sma": False},
+    "LT.NS": {"price": 4108.5, "change": -23.6, "pct": -0.57, "rsi": 50.8, "above_sma": False},
+    "BAJFINANCE.NS": {"price": 1080.0, "change": -17.85, "pct": -1.63, "rsi": 48.6, "above_sma": False},
+    "SUNPHARMA.NS": {"price": 1899.9, "change": -15.8, "pct": -0.82, "rsi": 50.3, "above_sma": False},
+    "MARUTI.NS": {"price": 13765.0, "change": -250.0, "pct": -1.78, "rsi": 48.3, "above_sma": False},
+    "M&M.NS": {"price": 3450.0, "change": -37.5, "pct": -1.08, "rsi": 49.7, "above_sma": False},
+    "TITAN.NS": {"price": 4675.3, "change": 44.2, "pct": 0.95, "rsi": 54.0, "above_sma": True},
+    "AXISBANK.NS": {"price": 1380.1, "change": -27.9, "pct": -1.98, "rsi": 47.8, "above_sma": False},
+    "KOTAKBANK.NS": {"price": 500.0, "change": -9.95, "pct": -1.95, "rsi": 47.9, "above_sma": False},
+    "ADANIENT.NS": {"price": 2640.4, "change": -19.6, "pct": -0.74, "rsi": 50.4, "above_sma": False},
+    "TATASTEEL.NS": {"price": 163.94, "change": 0.4, "pct": 0.24, "rsi": 52.5, "above_sma": True},
+    "WIPRO.NS": {"price": 192.1, "change": -4.44, "pct": -2.26, "rsi": 47.3, "above_sma": False},
+    "AAPL": {"price": 358.62, "change": 3.04, "pct": 0.85, "rsi": 53.8, "above_sma": True},
+    "NVDA": {"price": 147.88, "change": -1.42, "pct": -0.95, "rsi": 50.0, "above_sma": False},
+    "MSFT": {"price": 492.11, "change": 2.18, "pct": 0.45, "rsi": 52.9, "above_sma": True},
+    "TSLA": {"price": 400.21, "change": 20.07, "pct": 5.28, "rsi": 63.1, "above_sma": True},
+    "GOOGL": {"price": 272.71, "change": -0.39, "pct": -0.14, "rsi": 51.7, "above_sma": True},
+    "AMZN": {"price": 252.9, "change": 8.47, "pct": 3.47, "rsi": 59.3, "above_sma": True},
+    "META": {"price": 633.02, "change": 23.13, "pct": 3.79, "rsi": 60.0, "above_sma": True},
+    "NFLX": {"price": 60.67, "change": 1.26, "pct": 2.13, "rsi": 56.5, "above_sma": True},
+    "AMD": {"price": 415.94, "change": 9.91, "pct": 2.44, "rsi": 57.1, "above_sma": True},
+    "AVGO": {"price": 311.36, "change": 10.51, "pct": 3.49, "rsi": 59.3, "above_sma": True},
+    "PLTR": {"price": 170.74, "change": 7.15, "pct": 4.37, "rsi": 61.2, "above_sma": True},
+    "INTC": {"price": 56.46, "change": 1.99, "pct": 3.64, "rsi": 59.6, "above_sma": True},
+    "COIN": {"price": 106.91, "change": 3.19, "pct": 3.08, "rsi": 58.5, "above_sma": True},
+    "UBER": {"price": 67.28, "change": 0.93, "pct": 1.4, "rsi": 54.9, "above_sma": True},
+    "ADBE": {"price": 233.5, "change": 0.67, "pct": 0.29, "rsi": 52.6, "above_sma": True},
+    "CRM": {"price": 197.71, "change": 0.49, "pct": 0.25, "rsi": 52.5, "above_sma": True},
+    "ORCL": {"price": 105.96, "change": 2.08, "pct": 2.0, "rsi": 56.2, "above_sma": True},
+    "JPM": {"price": 323.58, "change": 6.84, "pct": 2.16, "rsi": 56.5, "above_sma": True},
+    "V": {"price": 431.36, "change": 6.97, "pct": 1.64, "rsi": 55.4, "above_sma": True},
+    "MA": {"price": 668.56, "change": 8.59, "pct": 1.3, "rsi": 54.7, "above_sma": True},
+    "WMT": {"price": 132.19, "change": 0.25, "pct": 0.19, "rsi": 52.4, "above_sma": True},
+    "DIS": {"price": 126.88, "change": 1.28, "pct": 1.02, "rsi": 54.1, "above_sma": True},
+    "NKE": {"price": 37.17, "change": 0.51, "pct": 1.4, "rsi": 54.9, "above_sma": True},
+    "KO": {"price": 97.4, "change": -0.19, "pct": -0.19, "rsi": 51.6, "above_sma": True},
+    "HINDUNILVR.NS": {"price": 2117.2, "change": -13.6, "pct": -0.64, "rsi": 50.7, "above_sma": False},
+    "HCLTECH.NS": {"price": 1424.1, "change": -44.5, "pct": -3.03, "rsi": 45.6, "above_sma": False},
+    "ULTRACEMCO.NS": {"price": 12578.0, "change": -159.0, "pct": -1.25, "rsi": 49.4, "above_sma": False},
+    "NTPC.NS": {"price": 319.75, "change": -0.5, "pct": -0.16, "rsi": 51.7, "above_sma": True},
+    "ONGC.NS": {"price": 224.31, "change": 1.43, "pct": 0.64, "rsi": 53.3, "above_sma": True},
+    "ADANIPORTS.NS": {"price": 1880.0, "change": -31.3, "pct": -1.64, "rsi": 48.6, "above_sma": False},
+    "POWERGRID.NS": {"price": 268.2, "change": 1.25, "pct": 0.47, "rsi": 53.0, "above_sma": True},
+    "COALINDIA.NS": {"price": 388.85, "change": -0.05, "pct": -0.01, "rsi": 52.0, "above_sma": True},
+    "ASIANPAINT.NS": {"price": 2532.6, "change": -10.4, "pct": -0.41, "rsi": 51.1, "above_sma": False},
+    "BAJAJFINSV.NS": {"price": 1849.0, "change": -36.9, "pct": -1.96, "rsi": 47.9, "above_sma": False},
+    "JSWSTEEL.NS": {"price": 1321.2, "change": 18.2, "pct": 1.4, "rsi": 54.9, "above_sma": True},
+    "NESTLEIND.NS": {"price": 1317.0, "change": -3.3, "pct": -0.25, "rsi": 51.5, "above_sma": True},
+    "TECHM.NS": {"price": 1813.9, "change": -40.8, "pct": -2.2, "rsi": 47.4, "above_sma": False},
+    "GRASIM.NS": {"price": 3124.2, "change": -54.8, "pct": -1.72, "rsi": 48.4, "above_sma": False},
+    "HINDALCO.NS": {"price": 923.0, "change": 7.5, "pct": 0.82, "rsi": 53.7, "above_sma": True},
+    "CIPLA.NS": {"price": 1439.9, "change": -10.1, "pct": -0.7, "rsi": 50.5, "above_sma": False},
+    "DRREDDY.NS": {"price": 1381.7, "change": -10.3, "pct": -0.74, "rsi": 50.4, "above_sma": False},
+    "BRITANNIA.NS": {"price": 5065.0, "change": -120.0, "pct": -2.31, "rsi": 47.1, "above_sma": False},
+    "APOLLOHOSP.NS": {"price": 9128.0, "change": -94.5, "pct": -1.02, "rsi": 49.9, "above_sma": False},
+    "EICHERMOT.NS": {"price": 8003.5, "change": -176.5, "pct": -2.16, "rsi": 47.5, "above_sma": False},
+    "BAJAJ-AUTO.NS": {"price": 10485.0, "change": -365.0, "pct": -3.36, "rsi": 44.9, "above_sma": False},
+    "HEROMOTOCO.NS": {"price": 5701.0, "change": -88.0, "pct": -1.52, "rsi": 48.8, "above_sma": False},
+    "INDUSINDBK.NS": {"price": 958.4, "change": -7.7, "pct": -0.8, "rsi": 50.3, "above_sma": False},
+    "DIVISLAB.NS": {"price": 11560.0, "change": -71.0, "pct": -0.61, "rsi": 50.7, "above_sma": False},
+    "BPCL.NS": {"price": 308.55, "change": 0.9, "pct": 0.29, "rsi": 52.6, "above_sma": True},
+    "TATACONSUM.NS": {"price": 1155.0, "change": -9.0, "pct": -0.77, "rsi": 50.4, "above_sma": False},
+    "HDFCLIFE.NS": {"price": 588.45, "change": -5.95, "pct": -1.0, "rsi": 49.9, "above_sma": False},
+    "SBILIFE.NS": {"price": 1856.0, "change": 13.7, "pct": 0.74, "rsi": 53.6, "above_sma": True},
+    "SHRIRAMFIN.NS": {"price": 923.5, "change": -38.35, "pct": -3.99, "rsi": 43.6, "above_sma": False},
+    "TRENT.NS": {"price": 3273.0, "change": 10.4, "pct": 0.32, "rsi": 52.7, "above_sma": True},
+    "BEL.NS": {"price": 411.45, "change": 6.95, "pct": 1.72, "rsi": 55.6, "above_sma": True},
+    "IRCTC.NS": {"price": 458.65, "change": 4.45, "pct": 0.98, "rsi": 54.1, "above_sma": True},
+    "INDIGO.NS": {"price": 5659.6, "change": 34.6, "pct": 0.62, "rsi": 53.3, "above_sma": True},
+    "DLF.NS": {"price": 805.45, "change": -2.35, "pct": -0.29, "rsi": 51.4, "above_sma": True},
+    "PIDILITIND.NS": {"price": 1594.8, "change": -10.1, "pct": -0.63, "rsi": 50.7, "above_sma": False},
+    "SIEMENS.NS": {"price": 3595.0, "change": 18.4, "pct": 0.51, "rsi": 53.1, "above_sma": True},
+    "ABB.NS": {"price": 7060.0, "change": 99.5, "pct": 1.43, "rsi": 55.0, "above_sma": True},
+    "AMBUJACEM.NS": {"price": 385.3, "change": -5.65, "pct": -1.45, "rsi": 49.0, "above_sma": False},
+    "VEDL.NS": {"price": 245.31, "change": 7.31, "pct": 3.07, "rsi": 58.4, "above_sma": True},
+    "IOC.NS": {"price": 144.21, "change": -0.21, "pct": -0.15, "rsi": 51.7, "above_sma": True},
+    "GAIL.NS": {"price": 185.0, "change": -3.0, "pct": -1.6, "rsi": 48.6, "above_sma": False},
+    "BANKBARODA.NS": {"price": 274.9, "change": 0.29, "pct": 0.11, "rsi": 52.2, "above_sma": True},
+    "PNB.NS": {"price": 146.5, "change": -1.0, "pct": -0.68, "rsi": 50.6, "above_sma": False},
+    "CANBK.NS": {"price": 131.11, "change": -1.29, "pct": -0.97, "rsi": 50.0, "above_sma": False},
+    "UNIONBANK.NS": {"price": 211.1, "change": 0.9, "pct": 0.43, "rsi": 52.9, "above_sma": True},
+    "PFC.NS": {"price": 327.8, "change": -3.3, "pct": -1.0, "rsi": 49.9, "above_sma": False},
+    "RECLTD.NS": {"price": 295.05, "change": -2.25, "pct": -0.76, "rsi": 50.4, "above_sma": False},
+    "IRFC.NS": {"price": 82.25, "change": -0.05, "pct": -0.06, "rsi": 51.9, "above_sma": True},
+    "RVNL.NS": {"price": 190.7, "change": 3.56, "pct": 1.9, "rsi": 56.0, "above_sma": True},
+    "MAZDOCK.NS": {"price": 1890.0, "change": 73.0, "pct": 4.02, "rsi": 60.4, "above_sma": True},
+    "COCHINSHIP.NS": {"price": 1126.0, "change": 23.0, "pct": 2.09, "rsi": 56.4, "above_sma": True},
+    "BHEL.NS": {"price": 421.95, "change": 3.0, "pct": 0.72, "rsi": 53.5, "above_sma": True},
+    "SUZLON.NS": {"price": 36.38, "change": 0.09, "pct": 0.25, "rsi": 52.5, "above_sma": True},
+    "TATAPOWER.NS": {"price": 320.05, "change": -3.45, "pct": -1.07, "rsi": 49.8, "above_sma": False},
+    "ADANIPOWER.NS": {"price": 205.25, "change": -3.05, "pct": -1.46, "rsi": 48.9, "above_sma": False},
+    "ADANIGREEN.NS": {"price": 1327.6, "change": -21.2, "pct": -1.57, "rsi": 48.7, "above_sma": False},
+    "ADANIENSOL.NS": {"price": 1337.0, "change": -45.0, "pct": -3.26, "rsi": 45.2, "above_sma": False},
+    "JSWENERGY.NS": {"price": 485.0, "change": -0.15, "pct": -0.03, "rsi": 51.9, "above_sma": True},
+    "NHPC.NS": {"price": 75.65, "change": -0.25, "pct": -0.33, "rsi": 51.3, "above_sma": True},
+    "IREDA.NS": {"price": 125.59, "change": -1.41, "pct": -1.11, "rsi": 49.7, "above_sma": False},
+    "YESBANK.NS": {"price": 17.8, "change": 0.12, "pct": 0.68, "rsi": 53.4, "above_sma": True},
+    "IDFCFIRSTB.NS": {"price": 86.8, "change": 0.09, "pct": 0.1, "rsi": 52.2, "above_sma": True},
+    "FEDERALBNK.NS": {"price": 360.0, "change": 3.15, "pct": 0.88, "rsi": 53.8, "above_sma": True},
+    "AUBANK.NS": {"price": 984.85, "change": 2.85, "pct": 0.29, "rsi": 52.6, "above_sma": True},
+    "BANDHANBNK.NS": {"price": 166.66, "change": -2.83, "pct": -1.67, "rsi": 48.5, "above_sma": False},
+    "CHOLAFIN.NS": {"price": 1802.0, "change": -40.9, "pct": -2.22, "rsi": 47.3, "above_sma": False},
+    "MUTHOOTFIN.NS": {"price": 2609.5, "change": 51.5, "pct": 2.01, "rsi": 56.2, "above_sma": True},
+    "SBICARD.NS": {"price": 565.8, "change": -20.3, "pct": -3.46, "rsi": 44.7, "above_sma": False},
+    "ICICIGI.NS": {"price": 1738.5, "change": -1.5, "pct": -0.09, "rsi": 51.8, "above_sma": True},
+    "ICICIPRULI.NS": {"price": 468.5, "change": -5.5, "pct": -1.16, "rsi": 49.6, "above_sma": False},
+    "HDFCAMC.NS": {"price": 2706.0, "change": -19.1, "pct": -0.7, "rsi": 50.5, "above_sma": False},
+    "BSE.NS": {"price": 3945.0, "change": -45.4, "pct": -1.14, "rsi": 49.6, "above_sma": False},
+    "CDSL.NS": {"price": 1453.0, "change": 12.0, "pct": 0.83, "rsi": 53.7, "above_sma": True},
+    "MCX.NS": {"price": 3900.0, "change": 65.0, "pct": 1.69, "rsi": 55.5, "above_sma": True},
+    "ANGELONE.NS": {"price": 376.0, "change": 18.0, "pct": 5.03, "rsi": 62.6, "above_sma": True},
+    "PAYTM.NS": {"price": 1741.9, "change": -27.0, "pct": -1.53, "rsi": 48.8, "above_sma": False},
+    "POLICYBZR.NS": {"price": 1186.5, "change": 16.5, "pct": 1.41, "rsi": 55.0, "above_sma": True},
+    "NYKAA.NS": {"price": 350.65, "change": -2.35, "pct": -0.67, "rsi": 50.6, "above_sma": False},
+    "DELHIVERY.NS": {"price": 458.6, "change": -1.9, "pct": -0.41, "rsi": 51.1, "above_sma": False},
+    "SWIGGY.NS": {"price": 180.0, "change": -2.93, "pct": -1.6, "rsi": 48.6, "above_sma": False},
+    "DMART.NS": {"price": 3541.3, "change": 8.3, "pct": 0.23, "rsi": 52.5, "above_sma": True},
+    "DABUR.NS": {"price": 412.75, "change": -5.75, "pct": -1.37, "rsi": 49.1, "above_sma": False},
+    "MARICO.NS": {"price": 922.3, "change": -16.8, "pct": -1.79, "rsi": 48.2, "above_sma": False},
+    "GODREJCP.NS": {"price": 918.9, "change": -28.6, "pct": -3.02, "rsi": 45.7, "above_sma": False},
+    "COLPAL.NS": {"price": 1770.0, "change": -30.0, "pct": -1.67, "rsi": 48.5, "above_sma": False},
+    "VBL.NS": {"price": 424.9, "change": -3.5, "pct": -0.82, "rsi": 50.3, "above_sma": False},
+    "UNITDSPR.NS": {"price": 1476.2, "change": -12.3, "pct": -0.83, "rsi": 50.3, "above_sma": False},
+    "UBL.NS": {"price": 1275.6, "change": 2.7, "pct": 0.21, "rsi": 52.4, "above_sma": True},
+    "HAVELLS.NS": {"price": 1142.4, "change": -38.6, "pct": -3.27, "rsi": 45.1, "above_sma": False},
+    "POLYCAB.NS": {"price": 7429.0, "change": 79.0, "pct": 1.07, "rsi": 54.2, "above_sma": True},
+    "VOLTAS.NS": {"price": 1186.8, "change": -28.7, "pct": -2.36, "rsi": 47.0, "above_sma": False},
+    "DIXON.NS": {"price": 13138.0, "change": 420.0, "pct": 3.3, "rsi": 58.9, "above_sma": True},
+    "CROMPTON.NS": {"price": 211.0, "change": -4.6, "pct": -2.13, "rsi": 47.5, "above_sma": False},
+    "PERSISTENT.NS": {"price": 6320.0, "change": 120.0, "pct": 1.94, "rsi": 56.1, "above_sma": True},
+    "COFORGE.NS": {"price": 2071.0, "change": 71.0, "pct": 3.55, "rsi": 59.5, "above_sma": True},
+    "MPHASIS.NS": {"price": 2441.2, "change": -68.8, "pct": -2.74, "rsi": 46.2, "above_sma": False},
+    "LTTS.NS": {"price": 4227.2, "change": -18.0, "pct": -0.42, "rsi": 51.1, "above_sma": False},
+    "TATAELXSI.NS": {"price": 3877.3, "change": 16.6, "pct": 0.43, "rsi": 52.9, "above_sma": True},
+    "KPITTECH.NS": {"price": 520.0, "change": -2.2, "pct": -0.42, "rsi": 51.1, "above_sma": False},
+    "NAUKRI.NS": {"price": 1203.8, "change": -25.2, "pct": -2.05, "rsi": 47.7, "above_sma": False},
+    "OFSS.NS": {"price": 9250.0, "change": -41.0, "pct": -0.44, "rsi": 51.1, "above_sma": False},
+    "LUPIN.NS": {"price": 2016.0, "change": 11.0, "pct": 0.55, "rsi": 53.2, "above_sma": True},
+    "AUROPHARMA.NS": {"price": 1791.8, "change": -19.2, "pct": -1.06, "rsi": 49.8, "above_sma": False},
+    "TORNTPHARM.NS": {"price": 5034.0, "change": 14.9, "pct": 0.3, "rsi": 52.6, "above_sma": True},
+    "ALKEM.NS": {"price": 5130.0, "change": -26.5, "pct": -0.51, "rsi": 50.9, "above_sma": False},
+    "ZYDUSLIFE.NS": {"price": 1156.9, "change": -37.3, "pct": -3.12, "rsi": 45.4, "above_sma": False},
+    "BIOCON.NS": {"price": 362.0, "change": -3.0, "pct": -0.82, "rsi": 50.3, "above_sma": False},
+    "MAXHEALTH.NS": {"price": 1071.3, "change": -9.95, "pct": -0.92, "rsi": 50.1, "above_sma": False},
+    "FORTIS.NS": {"price": 832.0, "change": 6.1, "pct": 0.74, "rsi": 53.6, "above_sma": True},
+    "TVSMOTOR.NS": {"price": 4526.5, "change": -23.6, "pct": -0.52, "rsi": 50.9, "above_sma": False},
+    "ASHOKLEY.NS": {"price": 151.42, "change": -4.73, "pct": -3.03, "rsi": 45.6, "above_sma": False},
+    "MOTHERSON.NS": {"price": 161.5, "change": -3.11, "pct": -1.89, "rsi": 48.0, "above_sma": False},
+    "BOSCHLTD.NS": {"price": 49170.0, "change": 340.0, "pct": 0.7, "rsi": 53.5, "above_sma": True},
+    "MRF.NS": {"price": 128000.0, "change": -465.0, "pct": -0.36, "rsi": 51.2, "above_sma": True},
+    "BHARATFORG.NS": {"price": 1771.0, "change": 27.0, "pct": 1.55, "rsi": 55.3, "above_sma": True},
+    "SONACOMS.NS": {"price": 879.0, "change": -2.5, "pct": -0.28, "rsi": 51.4, "above_sma": True},
+    "CGPOWER.NS": {"price": 793.0, "change": 11.0, "pct": 1.41, "rsi": 55.0, "above_sma": True},
+    "CUMMINSIND.NS": {"price": 4205.5, "change": 104.6, "pct": 2.55, "rsi": 57.4, "above_sma": True},
+    "SAIL.NS": {"price": 163.95, "change": 2.99, "pct": 1.86, "rsi": 55.9, "above_sma": True},
+    "NMDC.NS": {"price": 67.96, "change": 0.72, "pct": 1.07, "rsi": 54.2, "above_sma": True},
+    "NATIONALUM.NS": {"price": 304.55, "change": 9.6, "pct": 3.25, "rsi": 58.8, "above_sma": True},
+    "JINDALSTEL.NS": {"price": 1138.7, "change": 23.9, "pct": 2.14, "rsi": 56.5, "above_sma": True},
+    "SHREECEM.NS": {"price": 25160.0, "change": -175.0, "pct": -0.69, "rsi": 50.6, "above_sma": False},
+    "ACC.NS": {"price": 1250.6, "change": -13.0, "pct": -1.03, "rsi": 49.8, "above_sma": False},
+    "LODHA.NS": {"price": 1251.8, "change": -9.4, "pct": -0.75, "rsi": 50.4, "above_sma": False},
+    "GODREJPROP.NS": {"price": 1943.0, "change": -61.3, "pct": -3.06, "rsi": 45.6, "above_sma": False},
+    "OBEROIRLTY.NS": {"price": 1889.2, "change": -16.0, "pct": -0.84, "rsi": 50.2, "above_sma": False},
+    "PRESTIGE.NS": {"price": 1796.7, "change": -35.4, "pct": -1.93, "rsi": 47.9, "above_sma": False},
+    "PHOENIXLTD.NS": {"price": 2229.7, "change": -61.3, "pct": -2.68, "rsi": 46.4, "above_sma": False},
+    "INDHOTEL.NS": {"price": 884.8, "change": -1.9, "pct": -0.21, "rsi": 51.6, "above_sma": True},
+    "CONCOR.NS": {"price": 420.7, "change": -0.3, "pct": -0.07, "rsi": 51.9, "above_sma": True},
+    "PIIND.NS": {"price": 1606.0, "change": 14.8, "pct": 0.93, "rsi": 54.0, "above_sma": True},
+    "SRF.NS": {"price": 2559.5, "change": 43.1, "pct": 1.71, "rsi": 55.6, "above_sma": True},
+    "UPL.NS": {"price": 564.4, "change": -0.6, "pct": -0.11, "rsi": 51.8, "above_sma": True},
+    "ASTRAL.NS": {"price": 1262.5, "change": 4.2, "pct": 0.33, "rsi": 52.7, "above_sma": True},
+    "SUPREMEIND.NS": {"price": 3200.0, "change": 40.0, "pct": 1.27, "rsi": 54.7, "above_sma": True},
+    "PAGEIND.NS": {"price": 30870.0, "change": 10.0, "pct": 0.03, "rsi": 52.1, "above_sma": True},
+    "JUBLFOOD.NS": {"price": 422.8, "change": -2.3, "pct": -0.54, "rsi": 50.9, "above_sma": False},
+    "TATACOMM.NS": {"price": 1707.3, "change": 10.1, "pct": 0.6, "rsi": 53.3, "above_sma": True},
+    "IDEA.NS": {"price": 11.55, "change": -0.05, "pct": -0.43, "rsi": 51.1, "above_sma": False},
+    "INDUSTOWER.NS": {"price": 377.65, "change": -1.35, "pct": -0.36, "rsi": 51.2, "above_sma": True},
+    "GMRAIRPORT.NS": {"price": 99.26, "change": -1.94, "pct": -1.92, "rsi": 48.0, "above_sma": False},
+    "TIINDIA.NS": {"price": 2243.2, "change": 31.0, "pct": 1.4, "rsi": 54.9, "above_sma": True},
+    "LICI.NS": {"price": 405.4, "change": -4.6, "pct": -1.12, "rsi": 49.6, "above_sma": False},
+    "OIL.NS": {"price": 433.45, "change": 6.35, "pct": 1.49, "rsi": 55.1, "above_sma": True},
+    "HUDCO.NS": {"price": 155.64, "change": 0.83, "pct": 0.54, "rsi": 53.1, "above_sma": True},
+    "NBCC.NS": {"price": 75.51, "change": 0.01, "pct": 0.01, "rsi": 52.0, "above_sma": True},
+    "SJVN.NS": {"price": 55.05, "change": 0.01, "pct": 0.02, "rsi": 52.0, "above_sma": True},
+    "BRK-B": {"price": 580.0, "change": 0.68, "pct": 0.12, "rsi": 52.3, "above_sma": True},
+    "LLY": {"price": 1392.31, "change": 0.09, "pct": 0.01, "rsi": 52.0, "above_sma": True},
+    "XOM": {"price": 161.06, "change": 2.98, "pct": 1.89, "rsi": 56.0, "above_sma": True},
+    "COST": {"price": 1098.29, "change": 11.48, "pct": 1.06, "rsi": 54.2, "above_sma": True},
+    "JNJ": {"price": 274.72, "change": 0.78, "pct": 0.28, "rsi": 52.6, "above_sma": True},
+    "HD": {"price": 359.4, "change": -1.86, "pct": -0.51, "rsi": 50.9, "above_sma": False},
+    "PG": {"price": 172.6, "change": -0.63, "pct": -0.36, "rsi": 51.2, "above_sma": True},
+    "ABBV": {"price": 291.59, "change": -2.89, "pct": -0.98, "rsi": 49.9, "above_sma": False},
+    "BAC": {"price": 49.17, "change": 0.63, "pct": 1.3, "rsi": 54.7, "above_sma": True},
+    "UNH": {"price": 351.34, "change": 5.15, "pct": 1.49, "rsi": 55.1, "above_sma": True},
+    "CVX": {"price": 214.56, "change": 3.61, "pct": 1.71, "rsi": 55.6, "above_sma": True},
+    "PEP": {"price": 144.22, "change": 0.29, "pct": 0.2, "rsi": 52.4, "above_sma": True},
+    "MRK": {"price": 141.15, "change": 0.87, "pct": 0.62, "rsi": 53.3, "above_sma": True},
+    "CSCO": {"price": 96.46, "change": 2.26, "pct": 2.4, "rsi": 57.0, "above_sma": True},
+    "TMUS": {"price": 167.88, "change": 1.63, "pct": 0.98, "rsi": 54.1, "above_sma": True},
+    "WFC": {"price": 82.26, "change": 1.32, "pct": 1.63, "rsi": 55.4, "above_sma": True},
+    "ACN": {"price": 241.77, "change": 1.28, "pct": 0.53, "rsi": 53.1, "above_sma": True},
+    "MCD": {"price": 282.3, "change": -1.2, "pct": -0.42, "rsi": 51.1, "above_sma": False},
+    "ABT": {"price": 107.81, "change": -0.19, "pct": -0.18, "rsi": 51.6, "above_sma": True},
+    "PM": {"price": 187.14, "change": 2.82, "pct": 1.53, "rsi": 55.2, "above_sma": True},
+    "TMO": {"price": 680.11, "change": -5.41, "pct": -0.79, "rsi": 50.3, "above_sma": False},
+    "IBM": {"price": 246.47, "change": 3.0, "pct": 1.23, "rsi": 54.6, "above_sma": True},
+    "LIN": {"price": 530.15, "change": 5.54, "pct": 1.06, "rsi": 54.2, "above_sma": True},
+    "GE": {"price": 321.77, "change": 4.79, "pct": 1.51, "rsi": 55.2, "above_sma": True},
+    "CAT": {"price": 559.72, "change": 16.03, "pct": 2.95, "rsi": 58.2, "above_sma": True},
+    "GS": {"price": 811.94, "change": 10.91, "pct": 1.36, "rsi": 54.9, "above_sma": True},
+    "MS": {"price": 171.29, "change": 3.74, "pct": 2.23, "rsi": 56.7, "above_sma": True},
+    "ISRG": {"price": 428.4, "change": 1.22, "pct": 0.29, "rsi": 52.6, "above_sma": True},
+    "QCOM": {"price": 176.87, "change": 8.21, "pct": 4.87, "rsi": 62.2, "above_sma": True},
+    "TXN": {"price": 276.54, "change": 6.35, "pct": 2.35, "rsi": 56.9, "above_sma": True},
+    "INTU": {"price": 274.14, "change": 2.42, "pct": 0.89, "rsi": 53.9, "above_sma": True},
+    "NOW": {"price": 92.62, "change": 0.46, "pct": 0.5, "rsi": 53.0, "above_sma": True},
+    "AXP": {"price": 316.23, "change": 3.84, "pct": 1.23, "rsi": 54.6, "above_sma": True},
+    "AMGN": {"price": 471.56, "change": 2.32, "pct": 0.49, "rsi": 53.0, "above_sma": True},
+    "VZ": {"price": 47.64, "change": 0.36, "pct": 0.76, "rsi": 53.6, "above_sma": True},
+    "T": {"price": 23.14, "change": 0.17, "pct": 0.74, "rsi": 53.6, "above_sma": True},
+    "RTX": {"price": 196.56, "change": 0.37, "pct": 0.19, "rsi": 52.4, "above_sma": True},
+    "SPGI": {"price": 457.42, "change": -3.32, "pct": -0.72, "rsi": 50.5, "above_sma": False},
+    "BLK": {"price": 1165.3, "change": 23.44, "pct": 2.05, "rsi": 56.3, "above_sma": True},
+    "PFE": {"price": 28.44, "change": -0.02, "pct": -0.07, "rsi": 51.9, "above_sma": True},
+    "BKNG": {"price": 149.48, "change": -0.02, "pct": -0.01, "rsi": 52.0, "above_sma": True},
+    "LOW": {"price": 234.8, "change": -0.85, "pct": -0.36, "rsi": 51.2, "above_sma": True},
+    "UNP": {"price": 298.51, "change": 0.12, "pct": 0.04, "rsi": 52.1, "above_sma": True},
+    "HON": {"price": 227.84, "change": 2.74, "pct": 1.22, "rsi": 54.6, "above_sma": True},
+    "SYK": {"price": 333.1, "change": 0.2, "pct": 0.06, "rsi": 52.1, "above_sma": True},
+    "C": {"price": 115.45, "change": 2.12, "pct": 1.87, "rsi": 55.9, "above_sma": True},
+    "SCHW": {"price": 94.0, "change": 0.55, "pct": 0.59, "rsi": 53.2, "above_sma": True},
+    "BA": {"price": 166.63, "change": 2.1, "pct": 1.28, "rsi": 54.7, "above_sma": True},
+    "LMT": {"price": 602.91, "change": 3.67, "pct": 0.61, "rsi": 53.3, "above_sma": True},
+    "AMAT": {"price": 314.11, "change": 2.93, "pct": 0.94, "rsi": 54.0, "above_sma": True},
+    "LRCX": {"price": 188.57, "change": 3.56, "pct": 1.92, "rsi": 56.0, "above_sma": True},
+    "KLAC": {"price": 137.14, "change": 2.94, "pct": 2.19, "rsi": 56.6, "above_sma": True},
+    "MU": {"price": 635.71, "change": 34.46, "pct": 5.73, "rsi": 64.0, "above_sma": True},
+    "ADI": {"price": 339.67, "change": 6.56, "pct": 1.97, "rsi": 56.1, "above_sma": True},
+    "PANW": {"price": 356.28, "change": 0.14, "pct": 0.04, "rsi": 52.1, "above_sma": True},
+    "CRWD": {"price": 212.38, "change": 3.07, "pct": 1.47, "rsi": 55.1, "above_sma": True},
+    "FTNT": {"price": 136.49, "change": 1.53, "pct": 1.13, "rsi": 54.4, "above_sma": True},
+    "ZS": {"price": 234.5, "change": 3.64, "pct": 1.58, "rsi": 55.3, "above_sma": True},
+    "SNPS": {"price": 417.59, "change": 12.5, "pct": 3.09, "rsi": 58.5, "above_sma": True},
+    "CDNS": {"price": 298.6, "change": 3.71, "pct": 1.26, "rsi": 54.6, "above_sma": True},
+    "MRVL": {"price": 138.3, "change": 7.37, "pct": 5.63, "rsi": 63.8, "above_sma": True},
+    "ARM": {"price": 167.38, "change": 5.87, "pct": 3.63, "rsi": 59.6, "above_sma": True},
+    "ASML": {"price": 1309.9, "change": 6.82, "pct": 0.52, "rsi": 53.1, "above_sma": True},
+    "TSM": {"price": 350.71, "change": 8.37, "pct": 2.44, "rsi": 57.1, "above_sma": True},
+    "SHOP": {"price": 142.09, "change": 8.69, "pct": 6.51, "rsi": 65.7, "above_sma": True},
+    "PYPL": {"price": 59.25, "change": 1.44, "pct": 2.49, "rsi": 57.2, "above_sma": True},
+    "HOOD": {"price": 67.41, "change": 1.63, "pct": 2.48, "rsi": 57.2, "above_sma": True},
+    "SOFI": {"price": 13.4, "change": 0.33, "pct": 2.53, "rsi": 57.3, "above_sma": True},
+    "ABNB": {"price": 177.7, "change": 5.55, "pct": 3.22, "rsi": 58.8, "above_sma": True},
+    "DASH": {"price": 167.3, "change": 0.9, "pct": 0.54, "rsi": 53.1, "above_sma": True},
+    "SPOT": {"price": 622.35, "change": 5.89, "pct": 0.96, "rsi": 54.0, "above_sma": True},
+    "SNOW": {"price": 272.53, "change": 4.81, "pct": 1.8, "rsi": 55.8, "above_sma": True},
+    "DDOG": {"price": 162.74, "change": 4.49, "pct": 2.84, "rsi": 58.0, "above_sma": True},
+    "NET": {"price": 291.47, "change": 8.17, "pct": 2.88, "rsi": 58.0, "above_sma": True},
+    "MDB": {"price": 318.01, "change": 4.48, "pct": 1.43, "rsi": 55.0, "above_sma": True},
+    "WDAY": {"price": 179.94, "change": -0.5, "pct": -0.28, "rsi": 51.4, "above_sma": True},
+    "TEAM": {"price": 147.98, "change": 3.59, "pct": 2.49, "rsi": 57.2, "above_sma": True},
+    "ADSK": {"price": 252.39, "change": 5.6, "pct": 2.27, "rsi": 56.8, "above_sma": True},
+    "SBUX": {"price": 109.11, "change": 1.37, "pct": 1.27, "rsi": 54.7, "above_sma": True},
+    "TGT": {"price": 172.36, "change": 0.14, "pct": 0.08, "rsi": 52.2, "above_sma": True},
+    "TJX": {"price": 142.75, "change": -3.34, "pct": -2.29, "rsi": 47.2, "above_sma": False},
+    "DE": {"price": 654.18, "change": 13.16, "pct": 2.05, "rsi": 56.3, "above_sma": True},
+    "UPS": {"price": 112.43, "change": 0.96, "pct": 0.86, "rsi": 53.8, "above_sma": True},
+    "FDX": {"price": 311.64, "change": 2.77, "pct": 0.9, "rsi": 53.9, "above_sma": True},
+    "MMM": {"price": 191.04, "change": 1.21, "pct": 0.64, "rsi": 53.3, "above_sma": True},
+    "F": {"price": 12.37, "change": 0.2, "pct": 1.64, "rsi": 55.4, "above_sma": True},
+    "GM": {"price": 85.89, "change": 1.9, "pct": 2.27, "rsi": 56.8, "above_sma": True},
+    "RIVN": {"price": 12.12, "change": 0.41, "pct": 3.54, "rsi": 59.4, "above_sma": True},
+    "LCID": {"price": 2.58, "change": 0.02, "pct": 0.59, "rsi": 53.2, "above_sma": True},
+    "NIO": {"price": 2.85, "change": 0.16, "pct": 5.95, "rsi": 64.5, "above_sma": True},
+    "BABA": {"price": 90.17, "change": 3.91, "pct": 4.53, "rsi": 61.5, "above_sma": True},
+    "JD": {"price": 27.5, "change": 1.12, "pct": 4.26, "rsi": 60.9, "above_sma": True},
+    "PDD": {"price": 89.39, "change": 1.97, "pct": 2.25, "rsi": 56.7, "above_sma": True},
+    "BIDU": {"price": 63.78, "change": 0.29, "pct": 0.46, "rsi": 53.0, "above_sma": True},
+    "SONY": {"price": 27.92, "change": -0.57, "pct": -2.02, "rsi": 47.8, "above_sma": False},
+    "TM": {"price": 214.73, "change": -1.06, "pct": -0.49, "rsi": 51.0, "above_sma": False},
+    "SAP": {"price": 213.46, "change": 4.09, "pct": 1.95, "rsi": 56.1, "above_sma": True},
+    "NVO": {"price": 41.09, "change": 0.12, "pct": 0.29, "rsi": 52.6, "above_sma": True},
+    "AZN": {"price": 183.38, "change": -0.83, "pct": -0.45, "rsi": 51.1, "above_sma": False},
+    "NVS": {"price": 154.09, "change": -1.2, "pct": -0.78, "rsi": 50.4, "above_sma": False},
+    "GILD": {"price": 175.82, "change": -0.92, "pct": -0.52, "rsi": 50.9, "above_sma": False},
+    "REGN": {"price": 984.34, "change": 2.47, "pct": 0.25, "rsi": 52.5, "above_sma": True},
+    "VRTX": {"price": 526.0, "change": -38.12, "pct": -6.76, "rsi": 37.8, "above_sma": False},
+    "MRNA": {"price": 219.18, "change": -1.65, "pct": -0.75, "rsi": 50.4, "above_sma": False},
+    "BMY": {"price": 61.2, "change": -0.36, "pct": -0.58, "rsi": 50.8, "above_sma": False},
+    "MDT": {"price": 95.29, "change": -0.77, "pct": -0.8, "rsi": 50.3, "above_sma": False},
+    "BSX": {"price": 45.08, "change": -0.04, "pct": -0.1, "rsi": 51.8, "above_sma": True},
+    "ZTS": {"price": 82.18, "change": -0.42, "pct": -0.5, "rsi": 51.0, "above_sma": False},
+    "COP": {"price": 138.03, "change": 3.01, "pct": 2.23, "rsi": 56.7, "above_sma": True},
+    "SLB": {"price": 49.92, "change": 1.4, "pct": 2.89, "rsi": 58.1, "above_sma": True},
+    "EOG": {"price": 150.93, "change": 2.62, "pct": 1.76, "rsi": 55.7, "above_sma": True},
+    "NEE": {"price": 85.08, "change": -0.33, "pct": -0.39, "rsi": 51.2, "above_sma": True},
+    "DUK": {"price": 132.04, "change": 0.14, "pct": 0.11, "rsi": 52.2, "above_sma": True},
+    "SO": {"price": 95.06, "change": 0.06, "pct": 0.06, "rsi": 52.1, "above_sma": True},
+    "D": {"price": 68.04, "change": 0.05, "pct": 0.07, "rsi": 52.1, "above_sma": True},
+    "AMT": {"price": 184.49, "change": -0.1, "pct": -0.05, "rsi": 51.9, "above_sma": True},
+    "PLD": {"price": 127.14, "change": 0.11, "pct": 0.09, "rsi": 52.2, "above_sma": True},
+    "EQIX": {"price": 977.14, "change": -1.08, "pct": -0.11, "rsi": 51.8, "above_sma": True},
+    "CMCSA": {"price": 26.13, "change": 0.4, "pct": 1.55, "rsi": 55.3, "above_sma": True},
+    "CHTR": {"price": 155.52, "change": 8.25, "pct": 5.6, "rsi": 63.8, "above_sma": True},
+    "TTWO": {"price": 230.79, "change": 3.46, "pct": 1.52, "rsi": 55.2, "above_sma": True},
+    "RBLX": {"price": 58.77, "change": 3.14, "pct": 5.64, "rsi": 63.8, "above_sma": True},
+    "SNAP": {"price": 5.29, "change": 0.25, "pct": 4.97, "rsi": 62.4, "above_sma": True},
+    "PINS": {"price": 20.9, "change": 1.19, "pct": 6.04, "rsi": 64.7, "above_sma": True},
+    "ZM": {"price": 91.54, "change": 2.98, "pct": 3.36, "rsi": 59.1, "above_sma": True},
+    "DOCU": {"price": 80.99, "change": 0.24, "pct": 0.29, "rsi": 52.6, "above_sma": True},
+    "DKNG": {"price": 18.0, "change": 0.35, "pct": 2.01, "rsi": 56.2, "above_sma": True},
+    "MSTR": {"price": 82.12, "change": 2.16, "pct": 2.7, "rsi": 57.7, "above_sma": True},
+    "SMCI": {"price": 23.47, "change": 0.16, "pct": 0.69, "rsi": 53.4, "above_sma": True},
+    "DELL": {"price": 315.75, "change": 18.69, "pct": 6.29, "rsi": 65.2, "above_sma": True},
+    "HPQ": {"price": 32.19, "change": 1.04, "pct": 3.34, "rsi": 59.0, "above_sma": True},
+    "HPE": {"price": 42.92, "change": 2.1, "pct": 5.14, "rsi": 62.8, "above_sma": True},
+    "APP": {"price": 396.22, "change": 17.27, "pct": 4.56, "rsi": 61.6, "above_sma": True},
+    "GME": {"price": 26.47, "change": -0.5, "pct": -1.87, "rsi": 48.1, "above_sma": False},
+    "AMC": {"price": 3.23, "change": 0.02, "pct": 0.62, "rsi": 53.3, "above_sma": True},
+    "MAR": {"price": 417.79, "change": 2.02, "pct": 0.49, "rsi": 53.0, "above_sma": True},
+    "HLT": {"price": 368.58, "change": 2.38, "pct": 0.65, "rsi": 53.4, "above_sma": True},
+    "DAL": {"price": 84.52, "change": 1.57, "pct": 1.89, "rsi": 56.0, "above_sma": True},
+    "UAL": {"price": 106.79, "change": 2.27, "pct": 2.17, "rsi": 56.6, "above_sma": True},
+    "LUV": {"price": 46.61, "change": 0.66, "pct": 1.44, "rsi": 55.0, "above_sma": True},
+    "CCL": {"price": 28.01, "change": 0.01, "pct": 0.05, "rsi": 52.1, "above_sma": True},
+    "RCL": {"price": 314.3, "change": 0.19, "pct": 0.06, "rsi": 52.1, "above_sma": True},
+    "BRK-A": {"price": 870289.56, "change": 139.56, "pct": 0.02, "rsi": 52.0, "above_sma": True},
+    "NOC": {"price": 558.13, "change": 2.34, "pct": 0.42, "rsi": 52.9, "above_sma": True},
+    "GD": {"price": 361.38, "change": 1.11, "pct": 0.31, "rsi": 52.7, "above_sma": True},
+    "CI": {"price": 273.62, "change": 2.2, "pct": 0.81, "rsi": 53.7, "above_sma": True},
+    "ELV": {"price": 393.28, "change": 3.58, "pct": 0.92, "rsi": 53.9, "above_sma": True},
+    "CVS": {"price": 82.85, "change": 1.79, "pct": 2.21, "rsi": 56.6, "above_sma": True},
+    "MCK": {"price": 1074.09, "change": -3.22, "pct": -0.3, "rsi": 51.4, "above_sma": True},
 }
 
-if "last_valid_snapshots" not in st.session_state:
-    st.session_state.last_valid_snapshots = DEFAULT_STOCKS_SNAPSHOTS.copy()
-else:
-    for k_sym, v_def in DEFAULT_STOCKS_SNAPSHOTS.items():
-        if k_sym not in st.session_state.last_valid_snapshots:
-            st.session_state.last_valid_snapshots[k_sym] = v_def
+DDG_ICON_SET = {"BSE.NS", "COCHINSHIP.NS", "COP", "HCLTECH.NS", "ITC.NS", "JD", "LODHA.NS", "PANW", "SNPS", "T"}
+FV2_ICON_SET = {"ALKEM.NS", "ANGELONE.NS", "BANDHANBNK.NS", "BEL.NS", "BHEL.NS", "BIOCON.NS", "CGPOWER.NS", "CHOLAFIN.NS", "FEDERALBNK.NS", "GODREJCP.NS", "GODREJPROP.NS", "HAL.NS", "HUDCO.NS", "MAZDOCK.NS", "NBCC.NS", "NMDC.NS", "NTPC.NS", "PNB.NS", "SAIL.NS", "SBILIFE.NS", "SRF.NS", "TCS.NS", "UNIONBANK.NS"}
+SVG_MONOGRAM_SET = {"ACC.NS", "AMBUJACEM.NS", "BRK-A", "BRK-B", "CDSL.NS", "COALINDIA.NS", "FORTIS.NS", "GAIL.NS", "IRCTC.NS", "IREDA.NS", "IRFC.NS", "RVNL.NS", "SUZLON.NS", "UBL.NS"}
 
-online_status = is_internet_connected()
-core_tickers = [
+LEGACY_TICKER_REMAP = {
+    "ZOMATO.NS": "ETERNAL.NS",
+    "TATAMOTORS.NS": "TMPV.NS",
+}
+
+CORE_TICKERS = [
     "RELIANCE.NS", "JIOFIN.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS",
-    "SBIN.NS", "ICICIBANK.NS", "TATAMOTORS.NS", "ZOMATO.NS", "HAL.NS",
-    "AAPL", "NVDA", "TSLA", "MSFT", "GOOGL", "AMZN"
+    "SBIN.NS", "ICICIBANK.NS", "BHARTIARTL.NS", "TMPV.NS", "ETERNAL.NS", "HAL.NS",
+    "AAPL", "NVDA", "TSLA", "MSFT", "GOOGL", "AMZN", "META",
 ]
-if online_status and "initial_snapshots_loaded" not in st.session_state:
-    fresh_snaps = fetch_market_snapshots(core_tickers)
-    if fresh_snaps:
-        st.session_state.last_valid_snapshots.update(fresh_snaps)
-    st.session_state.initial_snapshots_loaded = True
-snapshots = st.session_state.last_valid_snapshots
 
-def ensure_live_snapshot(sym):
-    if online_status and sym in STOCK_CATALOG:
-        fresh = fetch_market_snapshots([sym])
-        if sym in fresh:
-            st.session_state.last_valid_snapshots[sym] = fresh[sym]
-    return st.session_state.last_valid_snapshots.get(sym, DEFAULT_STOCKS_SNAPSHOTS.get(sym, {"price": 100.0, "change": 0.0, "pct": 0.0, "rsi": 50.0, "above_sma": True}))
+SECTOR_PALETTE = [
+    ("#2563EB", "#1D4ED8"),
+    ("#059669", "#047857"),
+    ("#7C3AED", "#5B21B6"),
+    ("#D97706", "#B45309"),
+    ("#DC2626", "#991B1B"),
+    ("#0891B2", "#0E7490"),
+]
 
-def call_groq_llm_live(system_prompt: str, user_prompt: str):
-    active_key = GROQ_API_KEY.strip()
-    if not online_status or not active_key.startswith("gsk_"):
-        return None, None
 
-    models_to_try = [
-        "llama-3.3-70b-versatile",
-        "llama-3.1-8b-instant",
-        "llama3-70b-8192",
-        "llama3-8b-8192",
-        "gemma2-9b-it"
-    ]
+def get_ist_now() -> datetime:
+    return datetime.now(timezone.utc).astimezone(IST_TZ)
 
-    for model_name in models_to_try:
-        try:
-            client = Groq(api_key=active_key)
-            resp = client.chat.completions.create(
-                model=model_name,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                temperature=0.5,
-                max_tokens=800
-            )
-            txt = resp.choices[0].message.content
-            if txt and len(txt.strip()) > 1:
-                return txt, f"🟢 Powered by Live Groq LLaMA ({model_name})"
-        except Exception:
-            pass
 
-        try:
-            payload = json.dumps({
-                "model": model_name,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                "temperature": 0.5,
-                "max_tokens": 800
-            }).encode("utf-8")
-            req = urllib.request.Request(
-                "https://api.groq.com/openai/v1/chat/completions",
-                data=payload,
-                headers={
-                    "Authorization": f"Bearer {active_key}",
-                    "Content-Type": "application/json",
-                    "User-Agent": "FinanceSight/1.0"
-                }
-            )
-            with urllib.request.urlopen(req, timeout=12) as response:
-                res_json = json.loads(response.read().decode("utf-8"))
-                txt = res_json["choices"][0]["message"]["content"]
-                if txt and len(txt.strip()) > 1:
-                    return txt, f"🟢 Powered by Live Groq LLaMA ({model_name})"
-        except Exception:
+def get_us_et_now() -> datetime:
+    return datetime.now(timezone.utc).astimezone(US_ET_TZ)
+
+
+def check_market_trading_hours(ticker: str) -> tuple[bool, str]:
+    now_ist = get_ist_now()
+    is_indian = ticker.endswith(".NS") or ticker.endswith(".BO")
+
+    if is_indian:
+        time_str = now_ist.strftime("%I:%M %p IST")
+        if now_ist.weekday() >= 5:
+            return False, f"Weekend ({now_ist.strftime('%A')}, {time_str}) — NSE closed."
+        m_open = now_ist.replace(hour=9, minute=15, second=0, microsecond=0)
+        m_close = now_ist.replace(hour=15, minute=30, second=0, microsecond=0)
+        if m_open <= now_ist <= m_close:
+            return True, f"NSE Market Open ({time_str})"
+        return False, f"NSE Hours: Mon–Fri 9:15 AM – 3:30 PM IST (Now: {time_str})"
+
+    now_et = get_us_et_now()
+    tz_abbr = now_et.tzname() or "ET"
+    et_str = now_et.strftime(f"%I:%M %p {tz_abbr}")
+    ist_str = now_ist.strftime("%I:%M %p IST")
+    if now_et.weekday() >= 5:
+        return False, f"Weekend ({now_et.strftime('%A')}, {et_str}) — US market closed."
+    us_open = now_et.replace(hour=9, minute=30, second=0, microsecond=0)
+    us_close = now_et.replace(hour=16, minute=0, second=0, microsecond=0)
+    if us_open <= now_et <= us_close:
+        return True, f"US Market Open ({et_str} / {ist_str})"
+    return False, f"US Hours: Mon–Fri 9:30 AM – 4:00 PM {tz_abbr} (Now: {et_str} / {ist_str})"
+
+
+def is_indian_equity(ticker: str) -> bool:
+    return ticker.endswith(".NS") or ticker.endswith(".BO")
+
+
+def get_ticker_meta(ticker: str) -> dict:
+    resolved = LEGACY_TICKER_REMAP.get(ticker, ticker)
+    return STOCK_CATALOG.get(
+        resolved,
+        {
+            "name": resolved,
+            "sector": "Global Equity",
+            "domain": "google.com",
+            "exchange": "NSE" if is_indian_equity(resolved) else "US",
+            "currency": "₹" if is_indian_equity(resolved) else "$",
+        },
+    )
+
+
+def get_fx_rate_for_ticker(ticker: str, usdinr_rate: float) -> float:
+    return 1.0 if is_indian_equity(ticker) else max(1.0, float(usdinr_rate or DEFAULT_USDINR_RATE))
+
+
+def _make_monogram_svg_uri(ticker: str) -> str:
+    clean = re.sub(r"[^A-Z0-9]", "", ticker.replace(".NS", "").upper()) or "EQ"
+    initials = clean[:2] if len(clean) >= 2 else clean
+    c1, c2 = SECTOR_PALETTE[sum(ord(ch) for ch in clean) % len(SECTOR_PALETTE)]
+    svg = (
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">'
+        f'<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">'
+        f'<stop offset="0%" stop-color="{c1}"/><stop offset="100%" stop-color="{c2}"/>'
+        f'</linearGradient></defs>'
+        f'<rect width="64" height="64" rx="16" fill="url(#g)"/>'
+        f'<text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" '
+        f'font-family="Inter,Arial,sans-serif" font-size="24" font-weight="800" fill="#ffffff">{initials}</text>'
+        f'</svg>'
+    )
+    b64 = base64.b64encode(svg.encode("utf-8")).decode("ascii")
+    return f"data:image/svg+xml;base64,{b64}"
+
+
+def get_logo_url(ticker: str) -> str:
+    resolved = LEGACY_TICKER_REMAP.get(ticker, ticker)
+    if resolved in SVG_MONOGRAM_SET:
+        return _make_monogram_svg_uri(resolved)
+    dom = get_ticker_meta(resolved).get("domain", "google.com")
+    if resolved in DDG_ICON_SET:
+        return f"https://icons.duckduckgo.com/ip3/{dom}.ico"
+    if resolved in FV2_ICON_SET:
+        return f"https://t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://{dom}&size=128"
+    return f"https://www.google.com/s2/favicons?domain={dom}&sz=128"
+
+
+def stock_icon_html(ticker: str, size: int = 30, radius: int = 8) -> str:
+    url = get_logo_url(ticker)
+    fallback = _make_monogram_svg_uri(ticker)
+    alt_txt = html.escape(get_ticker_meta(ticker)["name"])
+    return (
+        f'<span style="display:inline-flex;align-items:center;justify-content:center;'
+        f'width:{size}px;height:{size}px;min-width:{size}px;border-radius:{radius}px;'
+        f'background:#ffffff;border:1px solid rgba(148,163,184,0.35);'
+        f'box-shadow:0 2px 6px rgba(15,23,42,0.12);overflow:hidden;padding:3px;">'
+        f'<img src="{url}" alt="{alt_txt}" loading="lazy" '
+        f'onerror="this.onerror=null;this.src=\'{fallback}\';" '
+        f'style="width:100%;height:100%;object-fit:contain;border-radius:{max(2, radius - 3)}px;"/>'
+        f'</span>'
+    )
+
+
+def compute_brokerage_breakdown(segment: str, buy_price: float, sell_price: float, qty: int) -> dict:
+    qty = max(1, int(qty))
+    buy_val = float(buy_price) * qty
+    sell_val = float(sell_price) * qty
+    turnover = buy_val + sell_val
+    gross_pnl = sell_val - buy_val
+
+    if "Delivery" in segment or "CNC" in segment:
+        brokerage = 0.0
+        stt = turnover * 0.001
+        stamp_duty = buy_val * 0.00015
+    elif "Futures" in segment or "F&O" in segment:
+        brokerage = min(20.0, buy_val * 0.0003) + min(20.0, sell_val * 0.0003)
+        stt = sell_val * 0.0002
+        stamp_duty = buy_val * 0.00002
+    else:
+        brokerage = min(20.0, buy_val * 0.0003) + min(20.0, sell_val * 0.0003)
+        stt = sell_val * 0.00025
+        stamp_duty = buy_val * 0.00003
+
+    exch_txn = turnover * 0.0000307
+    sebi_fee = turnover * 0.000001
+    gst = 0.18 * (brokerage + exch_txn + sebi_fee)
+    total_charges = brokerage + stt + exch_txn + sebi_fee + gst + stamp_duty
+    net_pnl = gross_pnl - total_charges
+    breakeven_pts = total_charges / qty
+
+    return {
+        "turnover": turnover,
+        "gross_pnl": gross_pnl,
+        "brokerage": brokerage,
+        "stt": stt,
+        "exch_txn": exch_txn,
+        "sebi_fee": sebi_fee,
+        "gst": gst,
+        "stamp_duty": stamp_duty,
+        "total_charges": total_charges,
+        "net_pnl": net_pnl,
+        "breakeven_pts": breakeven_pts,
+    }
+
+
+def compute_wilder_rsi(close: pd.Series, period: int = 14) -> pd.Series:
+    delta = close.diff()
+    gain = delta.clip(lower=0.0)
+    loss = (-delta).clip(lower=0.0)
+    avg_gain = gain.ewm(alpha=1.0 / period, min_periods=period, adjust=False).mean()
+    avg_loss = loss.ewm(alpha=1.0 / period, min_periods=period, adjust=False).mean()
+    rs = avg_gain / avg_loss.replace(0.0, np.nan)
+    rsi = 100.0 - (100.0 / (1.0 + rs))
+    rsi = rsi.where(avg_loss > 0, np.where(avg_gain > 0, 100.0, 50.0))
+    return rsi.fillna(50.0)
+
+
+def enrich_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
+    out = df.copy()
+    if isinstance(out.columns, pd.MultiIndex):
+        out.columns = out.columns.get_level_values(0)
+    if getattr(out.index, "tz", None) is not None:
+        out.index = out.index.tz_localize(None)
+
+    close = out["Close"].astype(float)
+    high = out["High"].astype(float)
+    low = out["Low"].astype(float)
+
+    out["SMA_20"] = close.rolling(20).mean()
+    out["EMA_50"] = close.ewm(span=50, adjust=False).mean()
+
+    bb_std = close.rolling(20).std()
+    out["BB_Mid"] = out["SMA_20"]
+    out["BB_Upper"] = out["BB_Mid"] + (2.0 * bb_std)
+    out["BB_Lower"] = out["BB_Mid"] - (2.0 * bb_std)
+    bb_range = (out["BB_Upper"] - out["BB_Lower"]).replace(0.0, np.nan)
+    out["BB_PctB"] = ((close - out["BB_Lower"]) / bb_range).fillna(0.5)
+
+    out["RSI"] = compute_wilder_rsi(close, 14)
+
+    ema12 = close.ewm(span=12, adjust=False).mean()
+    ema26 = close.ewm(span=26, adjust=False).mean()
+    out["MACD"] = ema12 - ema26
+    out["MACD_Signal"] = out["MACD"].ewm(span=9, adjust=False).mean()
+    out["MACD_Hist"] = out["MACD"] - out["MACD_Signal"]
+
+    prev_close = close.shift(1)
+    tr = pd.concat(
+        [high - low, (high - prev_close).abs(), (low - prev_close).abs()],
+        axis=1,
+    ).max(axis=1)
+    out["ATR_14"] = tr.rolling(14).mean()
+    return out
+
+
+def _build_default_snapshots() -> tuple[dict, dict, float, bool, str]:
+    snaps = copy.deepcopy(DEFAULT_STOCKS_SNAPSHOTS)
+    for v in snaps.values():
+        p = v["price"]
+        v.setdefault("prev_close", p - v["change"])
+        v.setdefault("sma20", p * (0.985 if v["above_sma"] else 1.015))
+        v.setdefault("ema50", p * (0.97 if v["above_sma"] else 1.03))
+        v.setdefault("atr", p * 0.018)
+        v.setdefault("sparkline", [round(p * (0.97 + 0.006 * i), 2) for i in range(6)])
+        v.setdefault("volume", 0.0)
+        v.setdefault("avg_volume", 1.0)
+    idx_snaps = copy.deepcopy(DEFAULT_INDEX_SNAPSHOTS)
+    return snaps, idx_snaps, DEFAULT_USDINR_RATE, False, "Cached Baseline"
+
+
+def _extract_chunk_metrics(raw: pd.DataFrame, symbols: list[str], snaps: dict, idx_snaps: dict, usdinr: float) -> tuple[float, int]:
+    if raw is None or raw.empty:
+        return usdinr, 0
+
+    top_cols = set(raw.columns.get_level_values(0)) if isinstance(raw.columns, pd.MultiIndex) else set()
+    live_hits = 0
+
+    if "USDINR=X" in top_cols:
+        fx_close = raw["USDINR=X"]["Close"].dropna().astype(float)
+        if not fx_close.empty:
+            usdinr = float(fx_close.iloc[-1])
+            fx_prev = float(fx_close.iloc[-2]) if len(fx_close) >= 2 else usdinr
+            fx_chg = usdinr - fx_prev
+            fx_pct = (fx_chg / fx_prev * 100.0) if fx_prev else 0.0
+            idx_snaps["USDINR=X"] = {
+                "price": usdinr,
+                "change": fx_chg,
+                "pct": fx_pct,
+                "sparkline": [round(float(x), 2) for x in fx_close.tail(20).tolist()],
+            }
+
+    for sym in symbols:
+        if sym == "USDINR=X" or sym not in top_cols:
+            continue
+        sub = raw[sym].dropna(subset=["Close"])
+        if len(sub) < 2:
             continue
 
-    return None, None
+        close_s = sub["Close"].astype(float)
+        last_c = float(close_s.iloc[-1])
+        prev_c = float(close_s.iloc[-2])
+        chg = last_c - prev_c
+        pct = (chg / prev_c * 100.0) if prev_c else 0.0
+
+        if sym in MARKET_INDICES:
+            idx_snaps[sym] = {
+                "price": last_c,
+                "change": chg,
+                "pct": pct,
+                "sparkline": [round(float(x), 2) for x in close_s.tail(20).tolist()],
+            }
+            live_hits += 1
+            continue
+
+        rsi_val = float(compute_wilder_rsi(close_s, 14).iloc[-1])
+        sma20 = float(close_s.tail(20).mean())
+        ema50 = float(close_s.ewm(span=50, adjust=False).mean().iloc[-1])
+
+        high_s = sub["High"].astype(float) if "High" in sub else close_s
+        low_s = sub["Low"].astype(float) if "Low" in sub else close_s
+        atr_val = float((high_s - low_s).tail(14).mean()) if len(sub) >= 2 else last_c * 0.02
+
+        vol_s = sub["Volume"].astype(float) if "Volume" in sub else pd.Series([0.0])
+        vol_last = float(vol_s.iloc[-1]) if not vol_s.empty else 0.0
+        vol_avg = float(vol_s.tail(20).mean()) if not vol_s.empty and float(vol_s.tail(20).mean()) > 0 else 1.0
+
+        snaps[sym] = {
+            "price": last_c,
+            "prev_close": prev_c,
+            "change": chg,
+            "pct": pct,
+            "rsi": rsi_val,
+            "sma20": sma20,
+            "ema50": ema50,
+            "above_sma": bool(last_c >= sma20),
+            "atr": atr_val,
+            "sparkline": [round(float(x), 2) for x in close_s.tail(20).tolist()],
+            "volume": vol_last,
+            "avg_volume": vol_avg,
+        }
+        live_hits += 1
+
+    return usdinr, live_hits
+
+
+@st.cache_data(ttl="5m", max_entries=8, refresh_mode="background", show_spinner=False)
+def fetch_core_market_snapshots():
+    snaps, idx_snaps, usdinr, _, _ = _build_default_snapshots()
+    core_symbols = list(CORE_TICKERS) + list(MARKET_INDICES.keys()) + ["USDINR=X"]
+    try:
+        raw = yf.download(core_symbols, period="1mo", group_by="ticker", threads=True, progress=False)
+        usdinr, hits = _extract_chunk_metrics(raw, core_symbols, snaps, idx_snaps, usdinr)
+        is_live = hits >= 5
+        stamp = get_ist_now().strftime("%d %b %Y, %I:%M %p IST") if is_live else "Cached Baseline"
+        return snaps, idx_snaps, usdinr, is_live, stamp
+    except Exception:
+        return snaps, idx_snaps, usdinr, False, "Cached Baseline (Offline)"
+
+
+@st.cache_data(ttl="5m", max_entries=48, refresh_mode="background", show_spinner=False)
+def fetch_ticker_batch(tickers_tuple: tuple[str, ...]) -> dict:
+    syms = [LEGACY_TICKER_REMAP.get(s, s) for s in tickers_tuple if LEGACY_TICKER_REMAP.get(s, s) not in CORE_TICKERS]
+    if not syms:
+        return {}
+    snaps = {}
+    dummy_idx = {}
+    usdinr = DEFAULT_USDINR_RATE
+    try:
+        for start in range(0, len(syms), 20):
+            chunk = syms[start : start + 20]
+            raw = yf.download(chunk, period="1mo", group_by="ticker", threads=True, progress=False)
+            usdinr, _ = _extract_chunk_metrics(raw, chunk, snaps, dummy_idx, usdinr)
+    except Exception:
+        pass
+    return snaps
+
+
+def ensure_symbols_live(tickers: list[str] | tuple[str, ...], base_snaps: dict) -> dict:
+    missing = tuple(
+        sorted({LEGACY_TICKER_REMAP.get(s, s) for s in tickers if LEGACY_TICKER_REMAP.get(s, s) in STOCK_CATALOG})
+    )
+    need = tuple(s for s in missing if s not in CORE_TICKERS)
+    if not need:
+        return base_snaps
+    fetched = fetch_ticker_batch(need)
+    if not fetched:
+        return base_snaps
+    merged = copy.deepcopy(base_snaps)
+    merged.update(fetched)
+    return merged
+
+
+@st.cache_data(ttl="10m", max_entries=4, refresh_mode="background", show_spinner=False)
+def fetch_extended_market_snapshots():
+    top_ext = tuple(s for s in list(STOCK_CATALOG.keys())[:48] if s not in CORE_TICKERS)
+    return fetch_ticker_batch(top_ext)
+
+
+def fetch_all_market_snapshots(tickers_tuple: tuple[str, ...]):
+    snaps, idx_snaps, usdinr, is_live, stamp = fetch_core_market_snapshots()
+    merged = copy.deepcopy(snaps)
+    need = tuple(s for s in tickers_tuple if s not in CORE_TICKERS)
+    if need:
+        ext = fetch_ticker_batch(need[:48])
+        if ext:
+            merged.update(ext)
+    return merged, idx_snaps, usdinr, is_live, stamp
+
+
+@st.cache_data(ttl="5m", max_entries=32, refresh_mode="background", show_spinner=False)
+def fetch_stock_history(symbol: str, period: str = "1y") -> pd.DataFrame | None:
+    resolved = LEGACY_TICKER_REMAP.get(symbol, symbol)
+    try:
+        df = yf.Ticker(resolved).history(period=period)
+        if df is None or df.empty:
+            return None
+        return enrich_technical_indicators(df)
+    except Exception:
+        return None
+
+
+@st.cache_data(ttl="30m", max_entries=32, show_spinner=False)
+def fetch_stock_fundamentals(symbol: str) -> dict:
+    resolved = LEGACY_TICKER_REMAP.get(symbol, symbol)
+    try:
+        info = yf.Ticker(resolved).info or {}
+        return {
+            "marketCap": info.get("marketCap"),
+            "trailingPE": info.get("trailingPE"),
+            "forwardPE": info.get("forwardPE"),
+            "trailingEps": info.get("trailingEps"),
+            "dividendYield": info.get("dividendYield"),
+            "beta": info.get("beta"),
+            "fiftyTwoWeekHigh": info.get("fiftyTwoWeekHigh"),
+            "fiftyTwoWeekLow": info.get("fiftyTwoWeekLow"),
+            "recommendationKey": info.get("recommendationKey"),
+            "summary": info.get("longBusinessSummary", ""),
+        }
+    except Exception:
+        return {}
+
+
+@st.cache_data(ttl="15m", max_entries=24, show_spinner=False)
+def fetch_stock_news_headlines(symbol: str, company_name: str) -> list[dict]:
+    query = urllib.parse.quote(f"{company_name} {symbol.replace('.NS', '')} stock")
+    is_in = is_indian_equity(symbol)
+    gl, ceid = ("IN", "IN:en") if is_in else ("US", "US:en")
+    url = f"https://news.google.com/rss/search?q={query}&hl=en-{gl}&gl={gl}&ceid={ceid}"
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=3.5) as resp:
+            xml_bytes = resp.read()
+        root = ET.fromstring(xml_bytes)
+        items = []
+        for item in root.findall(".//item")[:4]:
+            title = (item.findtext("title") or "").strip()
+            pub = (item.findtext("pubDate") or "").strip()
+            link = (item.findtext("link") or "").strip()
+            if title:
+                items.append({"title": title, "pubDate": pub[:16], "link": link})
+        return items
+    except Exception:
+        return []
+
+
+@st.cache_data(ttl="15m", max_entries=16, show_spinner=False)
+def fetch_peer_closes(tickers_tuple: tuple[str, ...], period: str = "6mo") -> pd.DataFrame | None:
+    try:
+        raw = yf.download(list(tickers_tuple), period=period, threads=True, progress=False)
+        if raw is None or raw.empty:
+            return None
+        close_df = raw["Close"] if "Close" in raw else raw
+        if isinstance(close_df, pd.Series):
+            close_df = close_df.to_frame(name=tickers_tuple[0])
+        if getattr(close_df.index, "tz", None) is not None:
+            close_df.index = close_df.index.tz_localize(None)
+        return close_df.dropna(how="all")
+    except Exception:
+        return None
+
+
+def format_large_number(val: float | int | None, currency: str = "₹") -> str:
+    if val is None or (isinstance(val, float) and np.isnan(val)):
+        return "N/A"
+    v = float(val)
+    if v >= 1e12:
+        return f"{currency}{v / 1e12:.2f}T"
+    if v >= 1e9:
+        return f"{currency}{v / 1e9:.2f}B"
+    if v >= 1e7 and currency == "₹":
+        return f"₹{v / 1e7:,.2f} Cr"
+    if v >= 1e6:
+        return f"{currency}{v / 1e6:.2f}M"
+    return f"{currency}{v:,.2f}"
+
+
+ML_FEATURE_COLS = [
+    "ret_1d", "ret_3d", "ret_5d", "ret_10d",
+    "sma20_ratio", "ema50_ratio", "rsi_norm",
+    "macd_hist_norm", "bb_pctb", "vol_14d", "vol_ratio",
+]
+
+
+def build_stationary_ml_frame(df: pd.DataFrame) -> pd.DataFrame:
+    feat = pd.DataFrame(index=df.index)
+    close = df["Close"].astype(float)
+    vol = df["Volume"].astype(float).replace(0.0, np.nan)
+    vol_ma = vol.rolling(20).mean().replace(0.0, np.nan)
+
+    feat["Close"] = close
+    feat["ret_1d"] = close.pct_change(1)
+    feat["ret_3d"] = close.pct_change(3)
+    feat["ret_5d"] = close.pct_change(5)
+    feat["ret_10d"] = close.pct_change(10)
+    feat["sma20_ratio"] = (close / df["SMA_20"]) - 1.0
+    feat["ema50_ratio"] = (close / df["EMA_50"]) - 1.0
+    feat["rsi_norm"] = (df["RSI"] - 50.0) / 50.0
+    feat["macd_hist_norm"] = df["MACD_Hist"] / close
+    feat["bb_pctb"] = df["BB_PctB"]
+    feat["vol_14d"] = feat["ret_1d"].rolling(14).std()
+    feat["vol_ratio"] = (vol / vol_ma).fillna(1.0).clip(0.2, 5.0)
+    feat["target_ret_1d"] = close.shift(-1) / close - 1.0
+
+    return feat.replace([np.inf, -np.inf], np.nan).dropna()
+
+
+def _run_ml_forecast_core(df: pd.DataFrame, horizon: int = 7) -> dict | None:
+    if df is None or len(df) < 80:
+        return None
+
+    from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
+    from sklearn.linear_model import Ridge
+    from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+    from sklearn.pipeline import make_pipeline
+    from sklearn.preprocessing import StandardScaler
+
+    ml_frame = build_stationary_ml_frame(df)
+    if len(ml_frame) < 60:
+        return None
+
+    split_idx = max(40, int(len(ml_frame) * 0.80))
+    train_df = ml_frame.iloc[:split_idx]
+    test_df = ml_frame.iloc[split_idx:]
+    if len(test_df) < 8:
+        return None
+
+    X_train = train_df[ML_FEATURE_COLS].values
+    y_train = train_df["target_ret_1d"].values
+    X_test = test_df[ML_FEATURE_COLS].values
+    y_test_ret = test_df["target_ret_1d"].values
+
+    base_test_prices = test_df["Close"].values
+    actual_next_prices = base_test_prices * (1.0 + y_test_ret)
+
+    candidates = {
+        "Random Forest": RandomForestRegressor(n_estimators=150, max_depth=6, min_samples_leaf=4, random_state=42),
+        "Gradient Boosting": GradientBoostingRegressor(n_estimators=120, max_depth=3, learning_rate=0.05, random_state=42),
+        "Ridge Regression": make_pipeline(StandardScaler(), Ridge(alpha=2.0)),
+    }
+
+    eval_rows = []
+    model_preds = {}
+    residuals_map = {}
+
+    for name, model in candidates.items():
+        model.fit(X_train, y_train)
+        pred_ret = np.clip(model.predict(X_test), -0.08, 0.08)
+        pred_prices = base_test_prices * (1.0 + pred_ret)
+
+        rmse = float(np.sqrt(mean_squared_error(actual_next_prices, pred_prices)))
+        mae = float(mean_absolute_error(actual_next_prices, pred_prices))
+        mape = float(np.mean(np.abs((actual_next_prices - pred_prices) / np.maximum(actual_next_prices, 1e-6))) * 100.0)
+        r2 = float(r2_score(actual_next_prices, pred_prices))
+        dir_acc = float(np.mean(np.sign(pred_ret) == np.sign(y_test_ret)) * 100.0)
+
+        eval_rows.append(
+            {
+                "Model": name,
+                "RMSE": round(rmse, 3),
+                "MAE": round(mae, 3),
+                "MAPE (%)": round(mape, 2),
+                "R² Score": round(r2, 4),
+                "Directional Accuracy (%)": round(dir_acc, 1),
+            }
+        )
+        model_preds[name] = pred_prices
+        residuals_map[name] = float(np.std(y_test_ret - pred_ret))
+
+    eval_df = pd.DataFrame(eval_rows).sort_values("RMSE", ascending=True).reset_index(drop=True)
+    best_model_name = str(eval_df.iloc[0]["Model"])
+    best_model = candidates[best_model_name]
+
+    X_all = ml_frame[ML_FEATURE_COLS].values
+    y_all = ml_frame["target_ret_1d"].values
+    best_model.fit(X_all, y_all)
+
+    if hasattr(best_model, "feature_importances_"):
+        importances = best_model.feature_importances_
+    else:
+        coef = best_model.named_steps["ridge"].coef_
+        importances = np.abs(coef) / max(np.sum(np.abs(coef)), 1e-9)
+
+    feat_imp_df = pd.DataFrame(
+        {"Feature": ML_FEATURE_COLS, "Importance": [round(float(x) * 100, 2) for x in importances]}
+    ).sort_values("Importance", ascending=False)
+
+    rolling_closes = list(df["Close"].astype(float).tail(60).values)
+    last_ema50 = float(df["EMA_50"].iloc[-1])
+    last_macd_norm = float(ml_frame["macd_hist_norm"].iloc[-1])
+    last_vol_ratio = float(ml_frame["vol_ratio"].iloc[-1])
+    step_sigma = max(residuals_map[best_model_name], float(ml_frame["vol_14d"].iloc[-1]), 0.006)
+
+    curr_d = df.index[-1]
+    f_dates, f_prices, f_upper, f_lower = [], [], [], []
+    last_actual = rolling_closes[-1]
+
+    for step_i in range(1, horizon + 1):
+        curr_d = curr_d + timedelta(days=1)
+        while curr_d.weekday() >= 5:
+            curr_d = curr_d + timedelta(days=1)
+
+        s_close = pd.Series(rolling_closes)
+        p_now = float(s_close.iloc[-1])
+        ret_1d = (p_now / float(s_close.iloc[-2])) - 1.0
+        ret_3d = (p_now / float(s_close.iloc[-4])) - 1.0
+        ret_5d = (p_now / float(s_close.iloc[-6])) - 1.0
+        ret_10d = (p_now / float(s_close.iloc[-11])) - 1.0
+
+        sma20_cur = float(s_close.tail(20).mean())
+        bb_std_cur = float(s_close.tail(20).std())
+        bb_up = sma20_cur + 2.0 * bb_std_cur
+        bb_lo = sma20_cur - 2.0 * bb_std_cur
+        bb_pctb_cur = (p_now - bb_lo) / max(bb_up - bb_lo, 1e-6)
+
+        last_ema50 = (p_now * (2.0 / 51.0)) + (last_ema50 * (1.0 - 2.0 / 51.0))
+        rsi_cur = float(compute_wilder_rsi(s_close, 14).iloc[-1])
+        vol_14_cur = float(s_close.pct_change().tail(14).std())
+
+        x_vec = np.array([[
+            ret_1d, ret_3d, ret_5d, ret_10d,
+            (p_now / sma20_cur) - 1.0, (p_now / last_ema50) - 1.0,
+            (rsi_cur - 50.0) / 50.0, last_macd_norm * (0.9 ** step_i),
+            float(np.clip(bb_pctb_cur, 0.0, 1.0)), vol_14_cur, last_vol_ratio,
+        ]])
+
+        pred_r = float(np.clip(best_model.predict(x_vec)[0], -0.04, 0.04))
+        next_p = p_now * (1.0 + pred_r)
+        band = next_p * step_sigma * np.sqrt(step_i)
+
+        f_dates.append(curr_d)
+        f_prices.append(next_p)
+        f_upper.append(next_p + band)
+        f_lower.append(max(0.01, next_p - band))
+        rolling_closes.append(next_p)
+
+    test_dates = test_df.index + pd.Timedelta(days=1)
+    return {
+        "best_model": best_model_name,
+        "eval_df": eval_df,
+        "feature_importance": feat_imp_df,
+        "test_dates": test_dates,
+        "test_actual": actual_next_prices,
+        "test_pred": model_preds[best_model_name],
+        "forecast_dates": f_dates,
+        "forecast_prices": f_prices,
+        "forecast_upper": f_upper,
+        "forecast_lower": f_lower,
+        "last_close": last_actual,
+        "target_7d": f_prices[-1],
+    }
+
+
+@st.cache_data(ttl="15m", max_entries=16, show_spinner=False)
+def run_ml_forecast_suite(symbol: str, last_bar_iso: str, bar_count: int, _df: pd.DataFrame) -> dict | None:
+    return _run_ml_forecast_core(_df, horizon=7)
+
+
+BACKTEST_STRATEGIES = [
+    "SMA 20/50 Golden Crossover (Trend Follow)",
+    "RSI < 35 Oversold Reversal (Mean Reversion)",
+    "Bollinger Band Mean Reversion (Lower Band)",
+    "MACD Bullish Crossover (Momentum)",
+]
+
+
+@st.cache_data(ttl="15m", max_entries=24, show_spinner=False)
+def run_backtest_cached(
+    symbol: str,
+    last_bar_iso: str,
+    _df: pd.DataFrame,
+    strategy_name: str,
+    initial_capital: float,
+    stop_loss_pct: float,
+    target_pct: float,
+    currency: str,
+) -> dict:
+    return run_backtest(_df, strategy_name, initial_capital, stop_loss_pct, target_pct, currency)
+
+
+def run_backtest(
+    df: pd.DataFrame,
+    strategy_name: str,
+    initial_capital: float = 100000.0,
+    stop_loss_pct: float = 3.0,
+    target_pct: float = 6.0,
+    currency: str = "₹",
+) -> dict:
+    bt_df = df.dropna(subset=["Close", "SMA_20", "EMA_50", "RSI", "BB_Lower", "MACD", "MACD_Signal"]).copy()
+    if len(bt_df) < 10:
+        return {"empty": True}
+
+    capital = float(initial_capital)
+    shares_held = 0.0
+    in_position = False
+    entry_price = 0.0
+    entry_date = None
+
+    strategy_equity = [capital]
+    trades_log = []
+    signal_points = []
+
+    first_close = float(bt_df["Close"].iloc[0])
+    bh_shares = initial_capital / first_close if first_close > 0 else 0.0
+    bh_equity = [initial_capital]
+
+    for i in range(1, len(bt_df)):
+        row = bt_df.iloc[i]
+        prev = bt_df.iloc[i - 1]
+        dt = bt_df.index[i]
+        date_str = dt.strftime("%d %b %Y")
+
+        close_p = float(row["Close"])
+        high_p = float(row["High"])
+        low_p = float(row["Low"])
+        bh_equity.append(bh_shares * close_p)
+
+        if not in_position:
+            if "SMA" in strategy_name:
+                enter = float(prev["SMA_20"]) <= float(prev["EMA_50"]) and float(row["SMA_20"]) > float(row["EMA_50"])
+            elif "RSI" in strategy_name:
+                enter = float(prev["RSI"]) < 35.0 and float(row["RSI"]) >= float(prev["RSI"])
+            elif "Bollinger" in strategy_name:
+                enter = float(row["Close"]) <= float(row["BB_Lower"])
+            else:
+                enter = float(prev["MACD"]) <= float(prev["MACD_Signal"]) and float(row["MACD"]) > float(row["MACD_Signal"])
+
+            if enter and close_p > 0:
+                in_position = True
+                entry_price = close_p
+                entry_date = date_str
+                shares_held = capital / entry_price
+                signal_points.append({"date": dt, "price": entry_price, "type": "BUY"})
+            strategy_equity.append(capital)
+        else:
+            sl_price = entry_price * (1.0 - stop_loss_pct / 100.0)
+            tp_price = entry_price * (1.0 + target_pct / 100.0)
+            exit_reason = None
+            exit_price = close_p
+
+            if low_p <= sl_price:
+                exit_price = sl_price
+                exit_reason = "Stop-Loss"
+            elif high_p >= tp_price:
+                exit_price = tp_price
+                exit_reason = "Target Hit"
+            elif i == len(bt_df) - 1:
+                exit_price = close_p
+                exit_reason = "End of Period"
+
+            if exit_reason:
+                exit_val = shares_held * exit_price
+                pnl_amt = exit_val - capital
+                ret_pct = ((exit_price - entry_price) / entry_price) * 100.0
+                capital = exit_val
+                in_position = False
+                shares_held = 0.0
+
+                trades_log.append(
+                    {
+                        "Entry Date": entry_date,
+                        "Exit Date": date_str,
+                        "Exit Reason": exit_reason,
+                        f"Entry ({currency})": round(entry_price, 2),
+                        f"Exit ({currency})": round(exit_price, 2),
+                        "Return (%)": round(ret_pct, 2),
+                        f"Net P&L ({currency})": round(pnl_amt, 2),
+                        "Outcome": "WIN" if ret_pct > 0 else "LOSS",
+                    }
+                )
+                signal_points.append({"date": dt, "price": exit_price, "type": "SELL"})
+                strategy_equity.append(capital)
+            else:
+                strategy_equity.append(shares_held * close_p)
+
+    eq_series = pd.Series(strategy_equity, index=bt_df.index)
+    bh_series = pd.Series(bh_equity, index=bt_df.index)
+
+    daily_rets = eq_series.pct_change().dropna()
+    sharpe = (
+        float((daily_rets.mean() / daily_rets.std()) * np.sqrt(252))
+        if len(daily_rets) > 2 and float(daily_rets.std()) > 0
+        else 0.0
+    )
+
+    rolling_peak = eq_series.cummax()
+    drawdown = ((eq_series - rolling_peak) / rolling_peak) * 100.0
+    max_drawdown = float(drawdown.min()) if not drawdown.empty else 0.0
+
+    final_cap = float(eq_series.iloc[-1])
+    total_ret = ((final_cap - initial_capital) / initial_capital) * 100.0
+    bh_ret = ((float(bh_series.iloc[-1]) - initial_capital) / initial_capital) * 100.0
+    alpha = total_ret - bh_ret
+
+    wins = [t for t in trades_log if t["Outcome"] == "WIN"]
+    losses = [t for t in trades_log if t["Outcome"] == "LOSS"]
+    win_rate = (len(wins) / len(trades_log) * 100.0) if trades_log else 0.0
+
+    gross_win = sum(t[f"Net P&L ({currency})"] for t in wins)
+    gross_loss = abs(sum(t[f"Net P&L ({currency})"] for t in losses))
+    profit_factor = (gross_win / gross_loss) if gross_loss > 0 else (99.9 if gross_win > 0 else 0.0)
+
+    return {
+        "empty": False,
+        "bt_df": bt_df,
+        "eq_series": eq_series,
+        "bh_series": bh_series,
+        "trades_log": trades_log,
+        "signal_points": signal_points,
+        "final_capital": final_cap,
+        "total_ret": total_ret,
+        "bh_ret": bh_ret,
+        "alpha": alpha,
+        "sharpe": sharpe,
+        "max_drawdown": max_drawdown,
+        "win_rate": win_rate,
+        "wins_count": len(wins),
+        "profit_factor": profit_factor,
+    }
+
+
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "financesight_pro.db")
+
+
+@contextmanager
+def db_conn(db_path: str = DB_PATH):
+    conn = sqlite3.connect(db_path, timeout=15.0)
+    conn.execute("PRAGMA journal_mode=WAL;")
+    conn.execute("PRAGMA busy_timeout=5000;")
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def _hash_password(password: str) -> str:
+    salt = os.urandom(16).hex()
+    dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), bytes.fromhex(salt), 100_000).hex()
+    return f"pbkdf2$100000${salt}${dk}"
+
+
+def _verify_password(password: str, stored_hash: str) -> tuple[bool, bool]:
+    if stored_hash.startswith("pbkdf2$"):
+        parts = stored_hash.split("$")
+        if len(parts) != 4:
+            return False, False
+        _, iters_s, salt_hex, expected_hex = parts
+        dk = hashlib.pbkdf2_hmac(
+            "sha256", password.encode("utf-8"), bytes.fromhex(salt_hex), int(iters_s)
+        ).hex()
+        return hmac.compare_digest(dk, expected_hex), False
+
+    legacy_hash = hashlib.sha256(password.encode("utf-8")).hexdigest()
+    return hmac.compare_digest(legacy_hash, stored_hash), True
+
+
+def _ensure_column(c: sqlite3.Cursor, table: str, col: str, col_def: str) -> None:
+    existing = {r[1] for r in c.execute(f"PRAGMA table_info({table})").fetchall()}
+    if col not in existing:
+        c.execute(f"ALTER TABLE {table} ADD COLUMN {col} {col_def}")
+
+
+def init_db(db_path: str = DB_PATH) -> None:
+    with db_conn(db_path) as conn:
+        c = conn.cursor()
+        c.execute(
+            """CREATE TABLE IF NOT EXISTS users (
+                username TEXT PRIMARY KEY,
+                full_name TEXT,
+                email TEXT,
+                password_hash TEXT,
+                balance REAL
+            )"""
+        )
+        c.execute(
+            """CREATE TABLE IF NOT EXISTS portfolio (
+                username TEXT,
+                ticker TEXT,
+                shares INTEGER,
+                avg_price REAL,
+                cost_inr REAL,
+                currency TEXT DEFAULT '₹',
+                PRIMARY KEY (username, ticker)
+            )"""
+        )
+        c.execute(
+            """CREATE TABLE IF NOT EXISTS positions (
+                username TEXT,
+                ticker TEXT,
+                product_type TEXT,
+                shares INTEGER,
+                avg_price REAL,
+                cost_inr REAL,
+                currency TEXT DEFAULT '₹',
+                fx_rate REAL DEFAULT 1.0,
+                PRIMARY KEY (username, ticker, product_type)
+            )"""
+        )
+        c.execute(
+            """CREATE TABLE IF NOT EXISTS transactions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT,
+                timestamp TEXT,
+                ticker TEXT,
+                action TEXT,
+                shares INTEGER,
+                price REAL,
+                total REAL,
+                currency TEXT DEFAULT '₹',
+                fx_rate REAL DEFAULT 1.0,
+                order_type TEXT DEFAULT 'MARKET',
+                inr_total REAL
+            )"""
+        )
+        c.execute(
+            """CREATE TABLE IF NOT EXISTS pending_orders (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT,
+                created_at TEXT,
+                ticker TEXT,
+                action TEXT,
+                product_type TEXT,
+                shares INTEGER,
+                limit_price REAL,
+                fx_rate REAL,
+                reserved_margin_inr REAL,
+                status TEXT DEFAULT 'PENDING'
+            )"""
+        )
+        c.execute(
+            """CREATE TABLE IF NOT EXISTS funding_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT,
+                timestamp TEXT,
+                type TEXT,
+                method TEXT,
+                reference TEXT,
+                amount REAL,
+                status TEXT
+            )"""
+        )
+        c.execute(
+            """CREATE TABLE IF NOT EXISTS support_tickets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ticket_id TEXT,
+                timestamp TEXT,
+                category TEXT,
+                subject TEXT,
+                email TEXT,
+                status TEXT
+            )"""
+        )
+        c.execute(
+            """CREATE TABLE IF NOT EXISTS watchlist (
+                username TEXT,
+                ticker TEXT,
+                added_at TEXT,
+                PRIMARY KEY (username, ticker)
+            )"""
+        )
+
+        _ensure_column(c, "portfolio", "cost_inr", "REAL")
+        _ensure_column(c, "portfolio", "currency", "TEXT DEFAULT '₹'")
+        c.execute("UPDATE portfolio SET cost_inr = shares * avg_price WHERE cost_inr IS NULL")
+
+        _ensure_column(c, "positions", "cost_inr", "REAL")
+        _ensure_column(c, "positions", "currency", "TEXT DEFAULT '₹'")
+        _ensure_column(c, "positions", "fx_rate", "REAL DEFAULT 1.0")
+        c.execute("UPDATE positions SET cost_inr = shares * avg_price WHERE cost_inr IS NULL")
+
+        _ensure_column(c, "transactions", "currency", "TEXT DEFAULT '₹'")
+        _ensure_column(c, "transactions", "fx_rate", "REAL DEFAULT 1.0")
+        _ensure_column(c, "transactions", "order_type", "TEXT DEFAULT 'MARKET'")
+        _ensure_column(c, "transactions", "inr_total", "REAL")
+        c.execute("UPDATE transactions SET inr_total = total WHERE inr_total IS NULL")
+
+        c.execute("SELECT COUNT(*) FROM users WHERE LOWER(username) = LOWER('Trader_XYZ')")
+        if c.fetchone()[0] == 0:
+            demo_pw = _hash_password("demo123")
+            c.execute(
+                "INSERT INTO users VALUES (?, ?, ?, ?, ?)",
+                ("Trader_XYZ", "Trader_XYZ", "trader@financesight.in", demo_pw, 100000.0),
+            )
+            c.execute(
+                """INSERT INTO funding_history (username, timestamp, type, method, reference, amount, status)
+                   VALUES (?, ?, 'DEPOSIT', 'Initial Margin Credit', 'BONUS-100K', 100000.0, 'COMPLETED')""",
+                ("Trader_XYZ", get_ist_now().strftime("%Y-%m-%d %H:%M")),
+            )
+
+
+@st.cache_resource
+def ensure_db_initialized() -> bool:
+    init_db(DB_PATH)
+    return True
+
+
+def register_new_user(
+    full_name: str, username: str, email: str, password: str, db_path: str = DB_PATH
+) -> tuple[bool, str]:
+    clean_user = username.strip()
+    clean_name = full_name.strip()
+    clean_email = email.strip()
+    clean_pass = password.strip()
+
+    if not clean_user or not clean_pass or not clean_name:
+        return False, "Please fill in Full Name, User ID, and Password."
+    if not re.fullmatch(r"[A-Za-z0-9_.-]{3,30}", clean_user):
+        return False, "User ID must be 3–30 characters using letters, numbers, '_', '.', or '-'."
+    if len(clean_pass) < 6:
+        return False, "Password must be at least 6 characters long."
+    if clean_email and not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", clean_email):
+        return False, "Please enter a valid email address."
+
+    with db_conn(db_path) as conn:
+        c = conn.cursor()
+        c.execute("SELECT username FROM users WHERE LOWER(username) = LOWER(?)", (clean_user,))
+        if c.fetchone():
+            return False, f"User ID '{clean_user}' is already registered. Please sign in or pick another ID."
+
+        pw_hash = _hash_password(clean_pass)
+        c.execute(
+            "INSERT INTO users (username, full_name, email, password_hash, balance) VALUES (?, ?, ?, ?, ?)",
+            (clean_user, clean_name, clean_email, pw_hash, 100000.0),
+        )
+        c.execute(
+            """INSERT INTO funding_history (username, timestamp, type, method, reference, amount, status)
+               VALUES (?, ?, 'DEPOSIT', 'Signup Margin Credit', 'INIT-100K', 100000.0, 'COMPLETED')""",
+            (clean_user, get_ist_now().strftime("%Y-%m-%d %H:%M")),
+        )
+    return True, clean_user
+
+
+def authenticate_user(
+    username: str, password: str, db_path: str = DB_PATH
+) -> tuple[bool, str | None, str | None]:
+    clean_user = username.strip()
+    clean_pass = password.strip()
+    if not clean_user or not clean_pass:
+        return False, None, None
+
+    with db_conn(db_path) as conn:
+        c = conn.cursor()
+        c.execute(
+            "SELECT username, full_name, password_hash FROM users WHERE LOWER(username) = LOWER(?)",
+            (clean_user,),
+        )
+        row = c.fetchone()
+        if not row:
+            return False, None, None
+
+        db_user, db_name, stored_hash = row
+        valid, needs_upgrade = _verify_password(clean_pass, stored_hash)
+        if not valid:
+            return False, None, None
+
+        if needs_upgrade:
+            c.execute(
+                "UPDATE users SET password_hash = ? WHERE LOWER(username) = LOWER(?)",
+                (_hash_password(clean_pass), db_user),
+            )
+        return True, db_user, db_name
+
+
+def get_user_balance(username: str, db_path: str = DB_PATH) -> float:
+    with db_conn(db_path) as conn:
+        row = conn.execute(
+            "SELECT balance FROM users WHERE LOWER(username) = LOWER(?)", (username,)
+        ).fetchone()
+        return float(row[0]) if row else 0.0
+
+
+def update_funds(
+    username: str,
+    amount: float,
+    tx_type: str,
+    method: str,
+    reference: str,
+    db_path: str = DB_PATH,
+) -> tuple[bool, str]:
+    if amount <= 0 or amount > 1e8:
+        return False, "Amount must be between ₹1 and ₹10,00,00,000."
+    if tx_type not in {"DEPOSIT", "WITHDRAW"}:
+        return False, "Invalid transaction type."
+
+    with db_conn(db_path) as conn:
+        c = conn.cursor()
+        row = c.execute(
+            "SELECT username, balance FROM users WHERE LOWER(username) = LOWER(?)", (username,)
+        ).fetchone()
+        if not row:
+            return False, "User account not found."
+        canon_user, bal = row[0], float(row[1])
+        if tx_type == "WITHDRAW" and amount > bal:
+            return False, "Withdrawal amount exceeds available cash margin."
+        new_bal = bal + amount if tx_type == "DEPOSIT" else bal - amount
+        c.execute("UPDATE users SET balance = ? WHERE username = ?", (new_bal, canon_user))
+        now = get_ist_now().strftime("%Y-%m-%d %H:%M:%S")
+        c.execute(
+            """INSERT INTO funding_history (username, timestamp, type, method, reference, amount, status)
+               VALUES (?, ?, ?, ?, ?, ?, 'COMPLETED')""",
+            (canon_user, now, tx_type, method, reference, amount),
+        )
+    verb = "deposited to" if tx_type == "DEPOSIT" else "withdrawn from"
+    return True, f"₹{amount:,.2f} {verb} your trading wallet."
+
+
+def reset_user_wallet(username: str, db_path: str = DB_PATH) -> tuple[bool, str]:
+    with db_conn(db_path) as conn:
+        c = conn.cursor()
+        row = c.execute(
+            "SELECT username FROM users WHERE LOWER(username) = LOWER(?)", (username,)
+        ).fetchone()
+        if not row:
+            return False, "User not found."
+        canon_user = row[0]
+        c.execute("DELETE FROM portfolio WHERE LOWER(username) = LOWER(?)", (canon_user,))
+        c.execute("DELETE FROM positions WHERE LOWER(username) = LOWER(?)", (canon_user,))
+        c.execute("DELETE FROM pending_orders WHERE LOWER(username) = LOWER(?)", (canon_user,))
+        c.execute("DELETE FROM transactions WHERE LOWER(username) = LOWER(?)", (canon_user,))
+        c.execute("UPDATE users SET balance = 100000.0 WHERE username = ?", (canon_user,))
+        c.execute(
+            """INSERT INTO funding_history (username, timestamp, type, method, reference, amount, status)
+               VALUES (?, ?, 'DEPOSIT', 'Wallet Reset', 'RESET-100K', 100000.0, 'COMPLETED')""",
+            (canon_user, get_ist_now().strftime("%Y-%m-%d %H:%M:%S")),
+        )
+    return True, "Paper trading account reset to ₹1,00,000.00 cleanly."
+
+
+def _get_locked_sell_shares(
+    c: sqlite3.Cursor, username: str, ticker: str, p_tag: str, exclude_order_id: int | None = None
+) -> int:
+    prod_filter = "%MIS%" if p_tag == "MIS" else "%CNC%"
+    if exclude_order_id is not None:
+        row = c.execute(
+            """SELECT COALESCE(SUM(shares), 0) FROM pending_orders
+               WHERE LOWER(username) = LOWER(?) AND ticker = ? AND action = 'SELL'
+                 AND product_type LIKE ? AND status = 'PENDING' AND id != ?""",
+            (username, ticker, prod_filter, exclude_order_id),
+        ).fetchone()
+    else:
+        row = c.execute(
+            """SELECT COALESCE(SUM(shares), 0) FROM pending_orders
+               WHERE LOWER(username) = LOWER(?) AND ticker = ? AND action = 'SELL'
+                 AND product_type LIKE ? AND status = 'PENDING'""",
+            (username, ticker, prod_filter),
+        ).fetchone()
+    return int(row[0]) if row and row[0] else 0
+
+
+def _apply_filled_trade(
+    c: sqlite3.Cursor,
+    canon_user: str,
+    ticker: str,
+    action: str,
+    shares: int,
+    native_price: float,
+    product_type: str,
+    fx_rate: float,
+    order_type: str,
+    now_str: str,
+    exclude_order_id: int | None = None,
+) -> tuple[bool, str]:
+    meta = get_ticker_meta(ticker)
+    currency = meta["currency"]
+    is_mis = "MIS" in product_type
+    p_tag = "MIS" if is_mis else "CNC"
+
+    native_total = shares * native_price
+    inr_total = native_total * fx_rate
+    required_margin_inr = inr_total * (0.20 if is_mis else 1.0)
+
+    bal = float(c.execute("SELECT balance FROM users WHERE username = ?", (canon_user,)).fetchone()[0])
+
+    if action == "BUY":
+        if required_margin_inr > bal + 1e-6:
+            return False, (
+                f"Insufficient margin! Required: ₹{required_margin_inr:,.2f} "
+                f"(Available: ₹{bal:,.2f}). Visit Funds or ask AI to add funds."
+            )
+        new_bal = max(0.0, bal - required_margin_inr)
+        c.execute("UPDATE users SET balance = ? WHERE username = ?", (new_bal, canon_user))
+
+        if not is_mis:
+            prow = c.execute(
+                "SELECT shares, avg_price, cost_inr FROM portfolio WHERE LOWER(username) = LOWER(?) AND ticker = ?",
+                (canon_user, ticker),
+            ).fetchone()
+            if prow:
+                old_s, old_avg, old_cost_inr = int(prow[0]), float(prow[1]), float(prow[2] or (prow[0] * prow[1]))
+                new_s = old_s + shares
+                new_avg = ((old_s * old_avg) + native_total) / new_s
+                new_cost_inr = old_cost_inr + inr_total
+                c.execute(
+                    "UPDATE portfolio SET shares = ?, avg_price = ?, cost_inr = ?, currency = ? WHERE LOWER(username) = LOWER(?) AND ticker = ?",
+                    (new_s, new_avg, new_cost_inr, currency, canon_user, ticker),
+                )
+            else:
+                c.execute(
+                    "INSERT INTO portfolio (username, ticker, shares, avg_price, cost_inr, currency) VALUES (?, ?, ?, ?, ?, ?)",
+                    (canon_user, ticker, shares, native_price, inr_total, currency),
+                )
+
+        pos_row = c.execute(
+            "SELECT shares, avg_price, cost_inr FROM positions WHERE LOWER(username) = LOWER(?) AND ticker = ? AND product_type = ?",
+            (canon_user, ticker, p_tag),
+        ).fetchone()
+        if pos_row:
+            ps, pa, pcost = int(pos_row[0]), float(pos_row[1]), float(pos_row[2] or (pos_row[0] * pos_row[1]))
+            ns = ps + shares
+            na = ((ps * pa) + native_total) / ns
+            ncost = pcost + inr_total
+            c.execute(
+                "UPDATE positions SET shares = ?, avg_price = ?, cost_inr = ?, currency = ?, fx_rate = ? WHERE LOWER(username) = LOWER(?) AND ticker = ? AND product_type = ?",
+                (ns, na, ncost, currency, fx_rate, canon_user, ticker, p_tag),
+            )
+        else:
+            c.execute(
+                "INSERT INTO positions (username, ticker, product_type, shares, avg_price, cost_inr, currency, fx_rate) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (canon_user, ticker, p_tag, shares, native_price, inr_total, currency, fx_rate),
+            )
+
+        c.execute(
+            """INSERT INTO transactions (username, timestamp, ticker, action, shares, price, total, currency, fx_rate, order_type, inr_total)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (canon_user, now_str, ticker, f"BUY ({p_tag})", shares, native_price, native_total, currency, fx_rate, order_type, inr_total),
+        )
+        fx_note = f" (₹{required_margin_inr:,.2f} @ ₹{fx_rate:.2f}/$)" if currency == "$" else f" (Margin: ₹{required_margin_inr:,.2f})"
+        return True, f"Executed BUY ({p_tag}): {shares} {ticker} @ {currency}{native_price:,.2f}{fx_note}"
+
+    locked_sell = _get_locked_sell_shares(c, canon_user, ticker, p_tag, exclude_order_id=exclude_order_id)
+    if is_mis:
+        row = c.execute(
+            "SELECT shares, avg_price, cost_inr FROM positions WHERE LOWER(username) = LOWER(?) AND ticker = ? AND product_type = 'MIS'",
+            (canon_user, ticker),
+        ).fetchone()
+        held_s = int(row[0]) if row else 0
+        if held_s - locked_sell < shares:
+            return False, f"Insufficient available MIS shares of {ticker} to sell (Available: {max(0, held_s - locked_sell)})."
+        avg_p = float(row[1])
+        row_cost_inr = float(row[2] or (held_s * avg_p))
+        sold_cost_inr = row_cost_inr * (shares / held_s)
+        margin_released_inr = sold_cost_inr * 0.20
+        pnl_inr = inr_total - sold_cost_inr
+        c.execute("UPDATE users SET balance = ? WHERE username = ?", (max(0.0, bal + margin_released_inr + pnl_inr), canon_user))
+        rem = held_s - shares
+        if rem == 0:
+            c.execute("DELETE FROM positions WHERE LOWER(username) = LOWER(?) AND ticker = ? AND product_type = 'MIS'", (canon_user, ticker))
+        else:
+            c.execute(
+                "UPDATE positions SET shares = ?, cost_inr = ? WHERE LOWER(username) = LOWER(?) AND ticker = ? AND product_type = 'MIS'",
+                (rem, row_cost_inr - sold_cost_inr, canon_user, ticker),
+            )
+    else:
+        row = c.execute(
+            "SELECT shares, avg_price, cost_inr FROM portfolio WHERE LOWER(username) = LOWER(?) AND ticker = ?",
+            (canon_user, ticker),
+        ).fetchone()
+        held_s = int(row[0]) if row else 0
+        if held_s - locked_sell < shares:
+            return False, f"Insufficient available CNC holdings of {ticker} to sell (Available: {max(0, held_s - locked_sell)})."
+        avg_p = float(row[1])
+        row_cost_inr = float(row[2] or (held_s * avg_p))
+        sold_cost_inr = row_cost_inr * (shares / held_s)
+        c.execute("UPDATE users SET balance = ? WHERE username = ?", (bal + inr_total, canon_user))
+        rem = held_s - shares
+        if rem == 0:
+            c.execute("DELETE FROM portfolio WHERE LOWER(username) = LOWER(?) AND ticker = ?", (canon_user, ticker))
+            c.execute("DELETE FROM positions WHERE LOWER(username) = LOWER(?) AND ticker = ? AND product_type = 'CNC'", (canon_user, ticker))
+        else:
+            c.execute(
+                "UPDATE portfolio SET shares = ?, cost_inr = ? WHERE LOWER(username) = LOWER(?) AND ticker = ?",
+                (rem, row_cost_inr - sold_cost_inr, canon_user, ticker),
+            )
+            c.execute(
+                "UPDATE positions SET shares = ?, cost_inr = ? WHERE LOWER(username) = LOWER(?) AND ticker = ? AND product_type = 'CNC'",
+                (rem, row_cost_inr - sold_cost_inr, canon_user, ticker),
+            )
+
+    c.execute(
+        """INSERT INTO transactions (username, timestamp, ticker, action, shares, price, total, currency, fx_rate, order_type, inr_total)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (canon_user, now_str, ticker, f"SELL ({p_tag})", shares, native_price, native_total, currency, fx_rate, order_type, inr_total),
+    )
+    return True, f"Executed SELL ({p_tag}): {shares} {ticker} @ {currency}{native_price:,.2f} (Credited: ₹{inr_total:,.2f})"
+
+
+def execute_trade(
+    username: str,
+    ticker: str,
+    action: str,
+    shares: int,
+    market_price: float,
+    product_type: str = "CNC (Delivery)",
+    order_type: str = "MARKET",
+    limit_price: float | None = None,
+    usdinr_rate: float = DEFAULT_USDINR_RATE,
+    allow_after_hours: bool = False,
+    db_path: str = DB_PATH,
+) -> tuple[bool, str]:
+    ticker = LEGACY_TICKER_REMAP.get(ticker, ticker)
+    if ticker not in STOCK_CATALOG:
+        return False, f"Unknown stock ticker '{ticker}'."
+    if action not in {"BUY", "SELL"}:
+        return False, "Action must be BUY or SELL."
+    try:
+        shares = int(shares)
+    except (TypeError, ValueError):
+        return False, "Quantity must be a positive integer."
+    if shares <= 0 or shares > 100_000:
+        return False, "Order quantity must be between 1 and 100,000 shares."
+    if market_price <= 0:
+        return False, "Invalid live market price."
+
+    is_open, hours_reason = check_market_trading_hours(ticker)
+    if not is_open and not allow_after_hours:
+        return False, f"Market Closed! Enable 'Allow Demo Orders Outside Market Hours' or trade during market hours. ({hours_reason})"
+
+    fx_rate = get_fx_rate_for_ticker(ticker, usdinr_rate)
+    now_str = get_ist_now().strftime("%Y-%m-%d %H:%M:%S")
+    is_mis = "MIS" in product_type
+    p_tag = "MIS" if is_mis else "CNC"
+    meta = get_ticker_meta(ticker)
+
+    with db_conn(db_path) as conn:
+        c = conn.cursor()
+        urow = c.execute(
+            "SELECT username, balance FROM users WHERE LOWER(username) = LOWER(?)", (username,)
+        ).fetchone()
+        if not urow:
+            return False, "Account not found."
+        canon_user, bal = urow[0], float(urow[1])
+
+        if order_type == "LIMIT":
+            if limit_price is None or limit_price <= 0:
+                return False, "Limit price must be greater than zero."
+            limit_price = float(limit_price)
+
+            is_marketable = (action == "BUY" and limit_price >= market_price) or (
+                action == "SELL" and limit_price <= market_price
+            )
+            if is_marketable:
+                return _apply_filled_trade(
+                    c, canon_user, ticker, action, shares, market_price, product_type, fx_rate, "LIMIT (Filled)", now_str
+                )
+
+            if action == "BUY":
+                reserved_inr = shares * limit_price * fx_rate * (0.20 if is_mis else 1.0)
+                if reserved_inr > bal:
+                    return False, f"Insufficient margin for Limit Order! Required: ₹{reserved_inr:,.2f} (Available: ₹{bal:,.2f})."
+                c.execute("UPDATE users SET balance = ? WHERE username = ?", (bal - reserved_inr, canon_user))
+            else:
+                reserved_inr = 0.0
+                locked_sell = _get_locked_sell_shares(c, canon_user, ticker, p_tag)
+                if is_mis:
+                    prow = c.execute(
+                        "SELECT shares FROM positions WHERE LOWER(username) = LOWER(?) AND ticker = ? AND product_type = 'MIS'",
+                        (canon_user, ticker),
+                    ).fetchone()
+                else:
+                    prow = c.execute(
+                        "SELECT shares FROM portfolio WHERE LOWER(username) = LOWER(?) AND ticker = ?",
+                        (canon_user, ticker),
+                    ).fetchone()
+                held_s = int(prow[0]) if prow else 0
+                if held_s - locked_sell < shares:
+                    return False, f"Insufficient available {p_tag} shares of {ticker} for Limit Sell (Available: {max(0, held_s - locked_sell)})."
+
+            c.execute(
+                """INSERT INTO pending_orders (username, created_at, ticker, action, product_type, shares, limit_price, fx_rate, reserved_margin_inr, status)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING')""",
+                (canon_user, now_str, ticker, action, product_type, shares, limit_price, fx_rate, reserved_inr),
+            )
+            return (
+                True,
+                f"Placed PENDING {action} LIMIT order: {shares} {ticker} @ {meta['currency']}{limit_price:,.2f} "
+                f"(Live: {meta['currency']}{market_price:,.2f}). Reserved ₹{reserved_inr:,.2f}.",
+            )
+
+        return _apply_filled_trade(
+            c, canon_user, ticker, action, shares, market_price, product_type, fx_rate, "MARKET", now_str
+        )
+
+
+def sync_pending_orders(
+    username: str,
+    snapshots: dict,
+    usdinr_rate: float = DEFAULT_USDINR_RATE,
+    allow_after_hours: bool = False,
+    db_path: str = DB_PATH,
+) -> list[str]:
+    filled_msgs = []
+    now_str = get_ist_now().strftime("%Y-%m-%d %H:%M:%S")
+    with db_conn(db_path) as conn:
+        c = conn.cursor()
+        rows = c.execute(
+            """SELECT id, username, ticker, action, product_type, shares, limit_price, reserved_margin_inr
+               FROM pending_orders WHERE LOWER(username) = LOWER(?) AND status = 'PENDING' ORDER BY id ASC""",
+            (username,),
+        ).fetchall()
+        if not rows:
+            return filled_msgs
+
+        for oid, canon_user, ticker, action, prod_type, shares, lim_p, reserved_inr in rows:
+            live_p = float(snapshots.get(ticker, {}).get("price", 0.0))
+            if live_p <= 0:
+                continue
+            is_open, _ = check_market_trading_hours(ticker)
+            if not is_open and not allow_after_hours:
+                continue
+            triggered = (action == "BUY" and live_p <= float(lim_p)) or (
+                action == "SELL" and live_p >= float(lim_p)
+            )
+            if not triggered:
+                continue
+
+            if action == "BUY" and reserved_inr > 0:
+                bal = float(c.execute("SELECT balance FROM users WHERE username = ?", (canon_user,)).fetchone()[0])
+                c.execute("UPDATE users SET balance = ? WHERE username = ?", (bal + float(reserved_inr), canon_user))
+
+            fx_rate = get_fx_rate_for_ticker(ticker, usdinr_rate)
+            ok, msg = _apply_filled_trade(
+                c, canon_user, ticker, action, int(shares), live_p, prod_type, fx_rate,
+                "LIMIT (Triggered)", now_str, exclude_order_id=oid,
+            )
+            if ok:
+                c.execute("UPDATE pending_orders SET status = 'FILLED' WHERE id = ?", (oid,))
+                filled_msgs.append(f"Order #{oid}: {msg}")
+            elif action == "BUY" and reserved_inr > 0:
+                bal = float(c.execute("SELECT balance FROM users WHERE username = ?", (canon_user,)).fetchone()[0])
+                c.execute("UPDATE users SET balance = ? WHERE username = ?", (max(0.0, bal - float(reserved_inr)), canon_user))
+    return filled_msgs
+
+
+def cancel_pending_order(username: str, order_id: int, db_path: str = DB_PATH) -> tuple[bool, str]:
+    with db_conn(db_path) as conn:
+        c = conn.cursor()
+        row = c.execute(
+            """SELECT id, username, ticker, action, shares, limit_price, reserved_margin_inr
+               FROM pending_orders WHERE id = ? AND LOWER(username) = LOWER(?) AND status = 'PENDING'""",
+            (order_id, username),
+        ).fetchone()
+        if not row:
+            return False, f"Pending order #{order_id} was not found."
+        oid, canon_user, ticker, action, shares, lim_p, reserved_inr = row
+        if action == "BUY" and reserved_inr > 0:
+            bal = float(c.execute("SELECT balance FROM users WHERE username = ?", (canon_user,)).fetchone()[0])
+            c.execute("UPDATE users SET balance = ? WHERE username = ?", (bal + float(reserved_inr), canon_user))
+        c.execute("UPDATE pending_orders SET status = 'CANCELLED' WHERE id = ?", (oid,))
+        return True, f"Cancelled pending {action} limit order #{oid} ({shares} {ticker} @ {lim_p:,.2f}) and released ₹{float(reserved_inr):,.2f}."
+
+
+def reverse_last_executed_order(
+    username: str, target_ticker: str | None = None, db_path: str = DB_PATH
+) -> tuple[bool, str]:
+    with db_conn(db_path) as conn:
+        c = conn.cursor()
+        if target_ticker:
+            row = c.execute(
+                """SELECT id, username, ticker, action, shares, price, total, inr_total
+                   FROM transactions WHERE LOWER(username) = LOWER(?) AND ticker = ? ORDER BY id DESC LIMIT 1""",
+                (username, target_ticker),
+            ).fetchone()
+        else:
+            row = c.execute(
+                """SELECT id, username, ticker, action, shares, price, total, inr_total
+                   FROM transactions WHERE LOWER(username) = LOWER(?) ORDER BY id DESC LIMIT 1""",
+                (username,),
+            ).fetchone()
+        if not row:
+            return False, "No executed order was found to reverse."
+
+        tx_id, canon_user, ticker, action, shares, price, total, inr_total = row
+        shares = int(shares)
+        inr_val = float(inr_total if inr_total is not None else total)
+        is_mis = "MIS" in action
+        p_tag = "MIS" if is_mis else "CNC"
+        bal = float(c.execute("SELECT balance FROM users WHERE username = ?", (canon_user,)).fetchone()[0])
+        currency = get_ticker_meta(ticker)["currency"]
+
+        if "BUY" in action:
+            refund_inr = inr_val * (0.20 if is_mis else 1.0)
+            pos_row = c.execute(
+                "SELECT shares, cost_inr FROM positions WHERE LOWER(username) = LOWER(?) AND ticker = ? AND product_type = ?",
+                (canon_user, ticker, p_tag),
+            ).fetchone()
+            if not pos_row or int(pos_row[0]) < shares:
+                return False, f"Cannot reverse BUY #{tx_id}: shares of {ticker} were already sold."
+
+            rem_pos = int(pos_row[0]) - shares
+            if rem_pos <= 0:
+                c.execute(
+                    "DELETE FROM positions WHERE LOWER(username) = LOWER(?) AND ticker = ? AND product_type = ?",
+                    (canon_user, ticker, p_tag),
+                )
+            else:
+                new_cost = max(0.0, float(pos_row[1] or 0.0) - inr_val)
+                c.execute(
+                    "UPDATE positions SET shares = ?, cost_inr = ? WHERE LOWER(username) = LOWER(?) AND ticker = ? AND product_type = ?",
+                    (rem_pos, new_cost, canon_user, ticker, p_tag),
+                )
+
+            if not is_mis:
+                prow = c.execute(
+                    "SELECT shares, cost_inr FROM portfolio WHERE LOWER(username) = LOWER(?) AND ticker = ?",
+                    (canon_user, ticker),
+                ).fetchone()
+                if prow:
+                    rem_p = int(prow[0]) - shares
+                    if rem_p <= 0:
+                        c.execute("DELETE FROM portfolio WHERE LOWER(username) = LOWER(?) AND ticker = ?", (canon_user, ticker))
+                    else:
+                        c.execute(
+                            "UPDATE portfolio SET shares = ?, cost_inr = ? WHERE LOWER(username) = LOWER(?) AND ticker = ?",
+                            (rem_p, max(0.0, float(prow[1] or 0.0) - inr_val), canon_user, ticker),
+                        )
+
+            c.execute("UPDATE users SET balance = ? WHERE username = ?", (bal + refund_inr, canon_user))
+            c.execute("DELETE FROM transactions WHERE id = ?", (tx_id,))
+            return True, f"Reversed Order #{tx_id} ({action} {shares} {ticker} @ {currency}{price:,.2f}) and refunded ₹{refund_inr:,.2f}."
+
+        if is_mis:
+            return False, "MIS sell reversals are blocked after P&L settlement; place a fresh trade instead."
+        if bal < inr_val:
+            return False, f"Insufficient wallet cash (₹{bal:,.2f}) to reverse SELL #{tx_id} (₹{inr_val:,.2f})."
+        c.execute("UPDATE users SET balance = ? WHERE username = ?", (bal - inr_val, canon_user))
+
+        prow = c.execute(
+            "SELECT shares, avg_price, cost_inr FROM portfolio WHERE LOWER(username) = LOWER(?) AND ticker = ?",
+            (canon_user, ticker),
+        ).fetchone()
+        if prow:
+            c.execute(
+                "UPDATE portfolio SET shares = ?, cost_inr = ? WHERE LOWER(username) = LOWER(?) AND ticker = ?",
+                (int(prow[0]) + shares, float(prow[2] or 0.0) + inr_val, canon_user, ticker),
+            )
+        else:
+            c.execute(
+                "INSERT INTO portfolio (username, ticker, shares, avg_price, cost_inr, currency) VALUES (?, ?, ?, ?, ?, ?)",
+                (canon_user, ticker, shares, price, inr_val, currency),
+            )
+
+        pos_row = c.execute(
+            "SELECT shares, cost_inr FROM positions WHERE LOWER(username) = LOWER(?) AND ticker = ? AND product_type = 'CNC'",
+            (canon_user, ticker),
+        ).fetchone()
+        if pos_row:
+            c.execute(
+                "UPDATE positions SET shares = ?, cost_inr = ? WHERE LOWER(username) = LOWER(?) AND ticker = ? AND product_type = 'CNC'",
+                (int(pos_row[0]) + shares, float(pos_row[1] or 0.0) + inr_val, canon_user, ticker),
+            )
+        else:
+            fx = inr_val / max(shares * price, 1e-6)
+            c.execute(
+                "INSERT INTO positions (username, ticker, product_type, shares, avg_price, cost_inr, currency, fx_rate) VALUES (?, ?, 'CNC', ?, ?, ?, ?, ?)",
+                (canon_user, ticker, shares, price, inr_val, currency, fx),
+            )
+        c.execute("DELETE FROM transactions WHERE id = ?", (tx_id,))
+        return True, f"Reversed Order #{tx_id} ({action} {shares} {ticker}) and restored {shares} shares."
+
+
+def toggle_watchlist(username: str, ticker: str, db_path: str = DB_PATH) -> bool:
+    with db_conn(db_path) as conn:
+        c = conn.cursor()
+        exists = c.execute(
+            "SELECT 1 FROM watchlist WHERE LOWER(username) = LOWER(?) AND ticker = ?", (username, ticker)
+        ).fetchone()
+        if exists:
+            c.execute("DELETE FROM watchlist WHERE LOWER(username) = LOWER(?) AND ticker = ?", (username, ticker))
+            return False
+        c.execute(
+            "INSERT INTO watchlist (username, ticker, added_at) VALUES (?, ?, ?)",
+            (username, ticker, get_ist_now().strftime("%Y-%m-%d %H:%M")),
+        )
+        return True
+
+
+def get_user_watchlist(username: str, db_path: str = DB_PATH) -> list[str]:
+    with db_conn(db_path) as conn:
+        rows = conn.execute(
+            "SELECT ticker FROM watchlist WHERE LOWER(username) = LOWER(?) ORDER BY added_at DESC", (username,)
+        ).fetchall()
+        return [r[0] for r in rows]
+
+
+def get_user_account_summary(
+    username: str, snapshots: dict, usdinr_rate: float = DEFAULT_USDINR_RATE, db_path: str = DB_PATH
+) -> dict:
+    with db_conn(db_path) as conn:
+        bal_row = conn.execute(
+            "SELECT balance FROM users WHERE LOWER(username) = LOWER(?)", (username,)
+        ).fetchone()
+        bal = float(bal_row[0]) if bal_row else 0.0
+        port_df = pd.read_sql_query(
+            "SELECT ticker, shares, avg_price, cost_inr, currency FROM portfolio WHERE LOWER(username) = LOWER(?)",
+            conn, params=(username,),
+        )
+        pos_df = pd.read_sql_query(
+            "SELECT ticker, product_type, shares, avg_price, cost_inr, currency, fx_rate FROM positions WHERE LOWER(username) = LOWER(?)",
+            conn, params=(username,),
+        )
+        tx_df = pd.read_sql_query(
+            "SELECT id, timestamp, ticker, action, shares, price, total, currency, order_type, inr_total FROM transactions WHERE LOWER(username) = LOWER(?) ORDER BY id DESC",
+            conn, params=(username,),
+        )
+        pend_df = pd.read_sql_query(
+            "SELECT id, created_at, ticker, action, product_type, shares, limit_price, reserved_margin_inr, status FROM pending_orders WHERE LOWER(username) = LOWER(?) AND status = 'PENDING' ORDER BY id DESC",
+            conn, params=(username,),
+        )
+
+    tot_inv_inr = 0.0
+    tot_cur_inr = 0.0
+    holdings_md_lines = []
+
+    if not port_df.empty:
+        ltps, fx_rates, cur_vals_inr, inv_vals_inr, pnls_inr, pnl_pcts, sectors = [], [], [], [], [], [], []
+        for _, r in port_df.iterrows():
+            sym = LEGACY_TICKER_REMAP.get(r["ticker"], r["ticker"])
+            meta = get_ticker_meta(sym)
+            cur = meta["currency"]
+            fx = get_fx_rate_for_ticker(sym, usdinr_rate)
+            ltp = float(snapshots.get(sym, {}).get("price", r["avg_price"]))
+            inv_inr = float(r["cost_inr"]) if pd.notna(r["cost_inr"]) else float(r["shares"] * r["avg_price"] * fx)
+            cur_inr = float(r["shares"]) * ltp * fx
+            pnl_inr = cur_inr - inv_inr
+            pct = (pnl_inr / inv_inr * 100.0) if inv_inr > 0 else 0.0
+
+            tot_inv_inr += inv_inr
+            tot_cur_inr += cur_inr
+            ltps.append(round(ltp, 2))
+            fx_rates.append(round(fx, 2))
+            inv_vals_inr.append(round(inv_inr, 2))
+            cur_vals_inr.append(round(cur_inr, 2))
+            pnls_inr.append(round(pnl_inr, 2))
+            pnl_pcts.append(round(pct, 2))
+            sectors.append(meta["sector"])
+            holdings_md_lines.append(
+                f"- **{sym}**: {int(r['shares'])} qty @ {cur}{float(r['avg_price']):,.2f} | "
+                f"LTP: {cur}{ltp:,.2f} | Value: ₹{cur_inr:,.2f} | P&L: ₹{pnl_inr:+,.2f} ({pct:+.2f}%)"
+            )
+        port_df["Sector"] = sectors
+        port_df["LTP"] = ltps
+        port_df["FX (₹)"] = fx_rates
+        port_df["Cost (₹)"] = inv_vals_inr
+        port_df["Live Value (₹)"] = cur_vals_inr
+        port_df["Live P&L (₹)"] = pnls_inr
+        port_df["Return (%)"] = pnl_pcts
+
+    tot_m2m_inr = 0.0
+    tot_pos_val_inr = 0.0
+    positions_md_lines = []
+    if not pos_df.empty:
+        p_ltps, p_cur_inr, p_m2m, p_ret = [], [], [], []
+        for _, r in pos_df.iterrows():
+            sym = LEGACY_TICKER_REMAP.get(r["ticker"], r["ticker"])
+            cur = get_ticker_meta(sym)["currency"]
+            fx = get_fx_rate_for_ticker(sym, usdinr_rate)
+            ltp = float(snapshots.get(sym, {}).get("price", r["avg_price"]))
+            inv_inr = float(r["cost_inr"]) if pd.notna(r["cost_inr"]) else float(r["shares"] * r["avg_price"] * fx)
+            cur_inr = float(r["shares"]) * ltp * fx
+            m2m_inr = cur_inr - inv_inr
+            pct = (m2m_inr / inv_inr * 100.0) if inv_inr > 0 else 0.0
+
+            tot_pos_val_inr += cur_inr
+            tot_m2m_inr += m2m_inr
+            p_ltps.append(round(ltp, 2))
+            p_cur_inr.append(round(cur_inr, 2))
+            p_m2m.append(round(m2m_inr, 2))
+            p_ret.append(round(pct, 2))
+            positions_md_lines.append(
+                f"- **{sym} ({r['product_type']})**: {int(r['shares'])} qty @ {cur}{float(r['avg_price']):,.2f} | "
+                f"LTP: {cur}{ltp:,.2f} | M2M P&L: ₹{m2m_inr:+,.2f}"
+            )
+        pos_df["LTP"] = p_ltps
+        pos_df["Live Value (₹)"] = p_cur_inr
+        pos_df["M2M P&L (₹)"] = p_m2m
+        pos_df["Return (%)"] = p_ret
+
+    orders_md_lines = []
+    for _, r in tx_df.head(5).iterrows():
+        c_sym = r["currency"] if pd.notna(r["currency"]) else "₹"
+        orders_md_lines.append(
+            f"- Order `#{int(r['id'])}` ({r['timestamp']}): **{r['action']}** {int(r['shares'])} `{r['ticker']}` @ {c_sym}{float(r['price']):,.2f}"
+        )
+
+    return {
+        "balance": bal,
+        "tot_inv": tot_inv_inr,
+        "tot_cur": tot_cur_inr,
+        "tot_pnl": tot_cur_inr - tot_inv_inr,
+        "tot_pos_val": tot_pos_val_inr,
+        "tot_m2m": tot_m2m_inr,
+        "port_df": port_df,
+        "pos_df": pos_df,
+        "tx_df": tx_df,
+        "pend_df": pend_df,
+        "holdings_md": "\n".join(holdings_md_lines) if holdings_md_lines else "*No CNC holdings yet.*",
+        "positions_md": "\n".join(positions_md_lines) if positions_md_lines else "*No open positions right now.*",
+        "orders_md": "\n".join(orders_md_lines) if orders_md_lines else "*No executed orders yet.*",
+    }
+
 
 SAFE_OPERATORS = {
     ast.Add: operator.add,
@@ -865,406 +2582,273 @@ SAFE_OPERATORS = {
     ast.Pow: operator.pow,
     ast.Mod: operator.mod,
     ast.USub: operator.neg,
-    ast.UAdd: operator.pos
+    ast.UAdd: operator.pos,
 }
 
-def eval_ast_node(node):
+
+def _eval_ast_node(node):
     if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
         return node.value
-    elif isinstance(node, ast.BinOp) and type(node.op) in SAFE_OPERATORS:
-        return SAFE_OPERATORS[type(node.op)](eval_ast_node(node.left), eval_ast_node(node.right))
-    elif isinstance(node, ast.UnaryOp) and type(node.op) in SAFE_OPERATORS:
-        return SAFE_OPERATORS[type(node.op)](eval_ast_node(node.operand))
+    if isinstance(node, ast.BinOp) and type(node.op) in SAFE_OPERATORS:
+        right = _eval_ast_node(node.right)
+        if isinstance(node.op, (ast.Div, ast.Mod)) and right == 0:
+            raise ValueError("Division by zero")
+        if isinstance(node.op, ast.Pow) and abs(right) > 100:
+            raise ValueError("Exponent too large")
+        return SAFE_OPERATORS[type(node.op)](_eval_ast_node(node.left), right)
+    if isinstance(node, ast.UnaryOp) and type(node.op) in SAFE_OPERATORS:
+        return SAFE_OPERATORS[type(node.op)](_eval_ast_node(node.operand))
     raise ValueError("Unsupported expression")
 
-def try_solve_math_query(user_question: str):
-    q = user_question.lower().strip()
-    q_norm = q.replace("×", "*").replace("÷", "/").replace("^", "**").replace("x", "*")
+
+def try_solve_math_query(user_question: str) -> tuple[str | None, float | int | None]:
+    q = user_question.strip().lower()
+    if re.search(r"\b(19|20)\d{2}\s*-\s*((19|20)\d{2}|\d{1,2})\b", q):
+        return None, None
+
+    q_norm = q.replace("×", "*").replace("÷", "/").replace("^", "**")
+    q_norm = re.sub(r"(\d)\s*x\s*(\d)", r"\1 * \2", q_norm)
     q_norm = re.sub(r"\bplus\b", "+", q_norm)
     q_norm = re.sub(r"\bminus\b", "-", q_norm)
     q_norm = re.sub(r"\btimes\b|\bmultiplied by\b", "*", q_norm)
     q_norm = re.sub(r"\bdivided by\b", "/", q_norm)
 
-    match = re.search(r"([-+]?\d+(?:\.\d+)?(?:\s*[\+\-\*\/\%]\s*[-+]?\d+(?:\.\d+)?)+)", q_norm)
-    if match:
-        expr_str = match.group(1).strip()
+    stripped = re.sub(r"^(what is|calculate|compute|solve|eval|evaluate)\s+", "", q_norm).rstrip("? =").strip()
+    if re.fullmatch(r"[-+]?\d+(?:\.\d+)?(?:\s*(?:\*\*|[\+\-\*\/\%])\s*[-+]?\d+(?:\.\d+)?)+", stripped):
         try:
-            tree = ast.parse(expr_str, mode="eval")
-            result = eval_ast_node(tree.body)
-            return expr_str, result
+            tree = ast.parse(stripped, mode="eval")
+            return stripped, _eval_ast_node(tree.body)
         except Exception:
             return None, None
     return None, None
 
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "financesight_pro.db")
 
-def init_db():
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-    c = conn.cursor()
-    c.execute("""CREATE TABLE IF NOT EXISTS users (
-                    username TEXT PRIMARY KEY,
-                    full_name TEXT,
-                    email TEXT,
-                    password_hash TEXT,
-                    balance REAL
-                )""")
-    c.execute("""CREATE TABLE IF NOT EXISTS user_session (
-                    id INTEGER PRIMARY KEY CHECK (id = 1),
-                    logged_in INTEGER,
-                    username TEXT,
-                    full_name TEXT
-                )""")
-    c.execute("""CREATE TABLE IF NOT EXISTS portfolio (
-                    username TEXT,
-                    ticker TEXT,
-                    shares INTEGER,
-                    avg_price REAL,
-                    PRIMARY KEY (username, ticker)
-                )""")
-    c.execute("""CREATE TABLE IF NOT EXISTS positions (
-                    username TEXT,
-                    ticker TEXT,
-                    product_type TEXT,
-                    shares INTEGER,
-                    avg_price REAL,
-                    PRIMARY KEY (username, ticker, product_type)
-                )""")
-    c.execute("""CREATE TABLE IF NOT EXISTS transactions (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    username TEXT,
-                    timestamp TEXT,
-                    ticker TEXT,
-                    action TEXT,
-                    shares INTEGER,
-                    price REAL,
-                    total REAL
-                )""")
-    c.execute("""CREATE TABLE IF NOT EXISTS funding_history (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    username TEXT,
-                    timestamp TEXT,
-                    type TEXT,
-                    method TEXT,
-                    reference TEXT,
-                    amount REAL,
-                    status TEXT
-                )""")
-    c.execute("""CREATE TABLE IF NOT EXISTS support_tickets (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    ticket_id TEXT,
-                    timestamp TEXT,
-                    category TEXT,
-                    subject TEXT,
-                    email TEXT,
-                    status TEXT
-                )""")
-    
-    c.execute("DELETE FROM users WHERE username = 'trader_pro'")
-    demo_hash = hashlib.sha256("demo123".encode()).hexdigest()
-    c.execute("SELECT COUNT(*) FROM users WHERE LOWER(username) = LOWER('Trader_XYZ')")
-    if c.fetchone()[0] == 0:
-        c.execute("INSERT INTO users VALUES (?, ?, ?, ?, ?)",
-                  ("Trader_XYZ", "Trader_XYZ", "trader@financesight.in", demo_hash, 100000.0))
-        c.execute("INSERT INTO funding_history (username, timestamp, type, method, reference, amount, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                  ("Trader_XYZ", datetime.now().strftime("%Y-%m-%d %H:%M"), "DEPOSIT", "Initial Margin Credit", "BONUS-100K", 100000.0, "COMPLETED"))
+def detect_all_stocks_from_text(user_text: str, max_stocks: int = 4) -> list[str]:
+    cleaned = user_text.lower().strip()
+    if any(p in cleaned for p in ["color of apple", "eat an apple", "apple fruit"]):
+        return []
 
-    c.execute("SELECT COUNT(*) FROM user_session WHERE id = 1")
-    if c.fetchone()[0] == 0:
-        c.execute("INSERT INTO user_session VALUES (1, 0, '', '')")
-    conn.commit()
-    return conn
+    found = []
+    for sym in STOCK_CATALOG:
+        sym_clean = sym.lower()
+        sym_base = sym_clean.replace(".ns", "")
+        if len(sym_base) >= 3 and (
+            re.search(rf"\b{re.escape(sym_clean)}\b", cleaned)
+            or re.search(rf"\b{re.escape(sym_base)}\b", cleaned)
+        ):
+            if sym not in found:
+                found.append(sym)
 
-conn = init_db()
+    for keyword in sorted(CHAT_STOCK_ALIASES.keys(), key=len, reverse=True):
+        if re.search(rf"\b{re.escape(keyword)}\b", cleaned):
+            sym = CHAT_STOCK_ALIASES[keyword]
+            if sym not in found:
+                found.append(sym)
+        if len(found) >= max_stocks:
+            break
+    return found[:max_stocks]
 
-def save_login_session(logged_in: bool, username: str = "", full_name: str = ""):
-    c = conn.cursor()
-    c.execute("UPDATE user_session SET logged_in = ?, username = ?, full_name = ? WHERE id = 1",
-              (1 if logged_in else 0, username, full_name))
-    conn.commit()
-    st.session_state.logged_in = logged_in
-    st.session_state.username = username
-    st.session_state.full_name = full_name
 
-def load_login_session():
-    c = conn.cursor()
-    c.execute("SELECT logged_in, username, full_name FROM user_session WHERE id = 1")
-    row = c.fetchone()
-    if row and row[0] == 1 and row[1]:
-        return True, row[1], row[2]
-    return False, "", ""
+def detect_stock_from_text(user_text: str, default_ticker: str | None = None) -> tuple[str | None, bool]:
+    matches = detect_all_stocks_from_text(user_text, max_stocks=1)
+    if matches:
+        return matches[0], True
+    return default_ticker, False
 
-def register_new_user(full_name: str, username: str, email: str, password: str):
-    clean_user = username.strip()
-    clean_name = full_name.strip()
-    clean_email = email.strip()
-    clean_pass = password.strip()
 
-    if not clean_user or not clean_pass or not clean_name:
-        return False, "⚠️ Please fill in Full Name, User ID, and Password."
+def parse_trade_command(user_text: str) -> dict | None:
+    q = user_text.strip().lower()
+    if "?" in q:
+        return None
+    non_imperative_markers = [
+        "should i", "can i", "could i", "would you", "do you", "is it good",
+        "why ", "when ", "what ", "which ", "how to", "don't ", "do not ",
+        "never ", "avoid ", "if i ", "suggest", "recommend", "list ", "show ",
+        "compare ", "vs ", "versus ",
+    ]
+    if any(m in q for m in non_imperative_markers):
+        return None
 
-    c = conn.cursor()
-    c.execute("SELECT username FROM users WHERE LOWER(username) = LOWER(?)", (clean_user,))
-    if c.fetchone():
-        return False, f"❌ User ID '{clean_user}' is already registered! Please sign in or choose another ID."
+    m = re.match(
+        r"^(?:please\s+)?(?:place\s+(?:a\s+)?)?(buy|sell)\s+(?:(\d[\d,]*)\s+(?:shares?\s+of\s+)?)?(.+)$",
+        q,
+    )
+    if not m:
+        return None
 
-    pw_hash = hashlib.sha256(clean_pass.encode()).hexdigest()
-    c.execute("INSERT INTO users (username, full_name, email, password_hash, balance) VALUES (?, ?, ?, ?, ?)",
-              (clean_user, clean_name, clean_email, pw_hash, 100000.0))
-    c.execute("""INSERT INTO funding_history (username, timestamp, type, method, reference, amount, status)
-                 VALUES (?, ?, 'DEPOSIT', 'Signup Margin Credit', 'INIT-100K', 100000.0, 'COMPLETED')""",
-              (clean_user, datetime.now().strftime("%Y-%m-%d %H:%M")))
-    conn.commit()
-    return True, clean_user
+    action = m.group(1).upper()
+    qty_s = m.group(2)
+    rest = m.group(3)
+    ticker, found = detect_stock_from_text(rest, None)
+    if not found or not ticker:
+        return {"action": action, "ticker": None, "qty": 0, "product": "CNC (Delivery)", "limit_price": None}
 
-def authenticate_user(username: str, password: str):
-    clean_user = username.strip()
-    clean_pass = password.strip()
-    if not clean_user or not clean_pass:
-        return False, None, None
-    pw_hash = hashlib.sha256(clean_pass.encode()).hexdigest()
-    c = conn.cursor()
-    c.execute("SELECT username, full_name FROM users WHERE LOWER(username) = LOWER(?) AND password_hash = ?",
-              (clean_user, pw_hash))
-    row = c.fetchone()
-    if row:
-        return True, row[0], row[1]
-    return False, None, None
-
-def get_user_balance(username):
-    c = conn.cursor()
-    c.execute("SELECT balance FROM users WHERE LOWER(username) = LOWER(?)", (username,))
-    row = c.fetchone()
-    return row[0] if row else 0.0
-
-def update_funds(username, amount, tx_type, method, reference):
-    c = conn.cursor()
-    bal = get_user_balance(username)
-    if tx_type == "WITHDRAW" and amount > bal:
-        return False, "❌ Withdrawal amount exceeds your available wallet cash!"
-    new_bal = bal + amount if tx_type == "DEPOSIT" else bal - amount
-    c.execute("UPDATE users SET balance = ? WHERE LOWER(username) = LOWER(?)", (new_bal, username))
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    c.execute("""INSERT INTO funding_history (username, timestamp, type, method, reference, amount, status)
-                 VALUES (?, ?, ?, ?, ?, ?, 'COMPLETED')""",
-              (username, now, tx_type, method, reference, amount))
-    conn.commit()
-    return True, f"✅ ₹{amount:,.2f} {'deposited to' if tx_type == 'DEPOSIT' else 'withdrawn from'} your trading wallet!"
-
-def execute_trade(username, ticker, action, shares, current_price, product_type="CNC (Delivery)"):
-    is_open, hours_reason = check_market_trading_hours(ticker)
-    if not is_open and not st.session_state.get("allow_after_hours", False):
-        return False, f"❌ Market Closed! You can only place a trade during market trading hours. ({hours_reason})"
-
-    c = conn.cursor()
-    balance = get_user_balance(username)
-    is_mis = "MIS" in product_type
-    total_value = shares * current_price
-    required_margin = total_value * 0.20 if is_mis else total_value
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-    if action == "BUY":
-        if required_margin > balance:
-            return False, f"❌ Insufficient margin! Required: ₹{required_margin:,.2f} (Available: ₹{balance:,.2f}). Ask me 'Add 50000 funds' or visit the Funds tab."
-        new_balance = balance - required_margin
-        c.execute("UPDATE users SET balance = ? WHERE LOWER(username) = LOWER(?)", (new_balance, username))
-        
-        if not is_mis:
-            c.execute("SELECT shares, avg_price FROM portfolio WHERE username = ? AND ticker = ?", (username, ticker))
-            row = c.fetchone()
-            if row:
-                old_shares, old_avg = row
-                new_shares = old_shares + shares
-                new_avg = ((old_shares * old_avg) + total_value) / new_shares
-                c.execute("UPDATE portfolio SET shares = ?, avg_price = ? WHERE username = ? AND ticker = ?",
-                          (new_shares, new_avg, username, ticker))
-            else:
-                c.execute("INSERT INTO portfolio VALUES (?, ?, ?, ?)", (username, ticker, shares, current_price))
-        
-        p_tag = "MIS" if is_mis else "CNC"
-        c.execute("SELECT shares, avg_price FROM positions WHERE username = ? AND ticker = ? AND product_type = ?", (username, ticker, p_tag))
-        prow = c.fetchone()
-        if prow:
-            ns = prow[0] + shares
-            na = ((prow[0] * prow[1]) + total_value) / ns
-            c.execute("UPDATE positions SET shares = ?, avg_price = ? WHERE username = ? AND ticker = ? AND product_type = ?",
-                      (ns, na, username, ticker, p_tag))
-        else:
-            c.execute("INSERT INTO positions VALUES (?, ?, ?, ?, ?)", (username, ticker, p_tag, shares, current_price))
-
-        c.execute("""INSERT INTO transactions (username, timestamp, ticker, action, shares, price, total)
-                     VALUES (?, ?, ?, ?, ?, ?, ?)""", (username, now, ticker, f"BUY ({p_tag})", shares, current_price, total_value))
-        conn.commit()
-        return True, f"✅ Executed BUY ({p_tag}): {shares} qty of {ticker} @ {STOCK_CATALOG.get(ticker, {}).get('currency', '₹')}{current_price:,.2f} (Margin Used: ₹{required_margin:,.2f})"
-
-    elif action == "SELL":
-        p_tag = "MIS" if is_mis else "CNC"
-        if is_mis:
-            c.execute("SELECT shares, avg_price FROM positions WHERE username = ? AND ticker = ? AND product_type = 'MIS'", (username, ticker))
-            row = c.fetchone()
-            if not row or row[0] < shares:
-                return False, f"❌ You do not have {shares} open MIS Intraday shares of {ticker} to sell!"
-            new_shares = row[0] - shares
-            pnl = (current_price - row[1]) * shares
-            margin_released = (shares * row[1]) * 0.20
-            c.execute("UPDATE users SET balance = ? WHERE LOWER(username) = LOWER(?)", (balance + margin_released + pnl, username))
-            if new_shares == 0:
-                c.execute("DELETE FROM positions WHERE username = ? AND ticker = ? AND product_type = 'MIS'", (username, ticker))
-            else:
-                c.execute("UPDATE positions SET shares = ? WHERE username = ? AND ticker = ? AND product_type = 'MIS'", (new_shares, username, ticker))
-        else:
-            c.execute("SELECT shares FROM portfolio WHERE username = ? AND ticker = ?", (username, ticker))
-            row = c.fetchone()
-            if not row or row[0] < shares:
-                return False, f"❌ You do not hold {shares} CNC shares of {ticker} in your Holdings to sell!"
-            new_shares = row[0] - shares
-            c.execute("UPDATE users SET balance = ? WHERE LOWER(username) = LOWER(?)", (balance + total_value, username))
-            if new_shares == 0:
-                c.execute("DELETE FROM portfolio WHERE username = ? AND ticker = ?", (username, ticker))
-                c.execute("DELETE FROM positions WHERE username = ? AND ticker = ? AND product_type = 'CNC'", (username, ticker))
-            else:
-                c.execute("UPDATE portfolio SET shares = ? WHERE username = ? AND ticker = ?", (new_shares, username, ticker))
-                c.execute("UPDATE positions SET shares = ? WHERE username = ? AND ticker = ? AND product_type = 'CNC'", (new_shares, username, ticker))
-
-        c.execute("""INSERT INTO transactions (username, timestamp, ticker, action, shares, price, total)
-                     VALUES (?, ?, ?, ?, ?, ?, ?)""", (username, now, ticker, f"SELL ({p_tag})", shares, current_price, total_value))
-        conn.commit()
-        return True, f"✅ Executed SELL ({p_tag}): {shares} qty of {ticker} @ {STOCK_CATALOG.get(ticker, {}).get('currency', '₹')}{current_price:,.2f}"
-
-def cancel_last_user_order(username: str, target_ticker: str = None):
-    c = conn.cursor()
-    if target_ticker:
-        c.execute("SELECT id, timestamp, ticker, action, shares, price, total FROM transactions WHERE username = ? AND ticker = ? ORDER BY id DESC LIMIT 1", (username, target_ticker))
+    if not qty_s:
+        extra_qty = re.search(r"\b(\d[\d,]*)\s*(?:shares?|qty|units?)\b", rest)
+        qty = int(extra_qty.group(1).replace(",", "")) if extra_qty else 1
     else:
-        c.execute("SELECT id, timestamp, ticker, action, shares, price, total FROM transactions WHERE username = ? ORDER BY id DESC LIMIT 1", (username,))
-    row = c.fetchone()
-    if not row:
-        return False, "⚠️ No matching executed order was found in your order book to cancel."
+        qty = max(1, int(qty_s.replace(",", "")))
 
-    tx_id, tx_time, ticker, action, shares, price, total = row
-    balance = get_user_balance(username)
-    is_mis = "MIS" in action
-    p_tag = "MIS" if is_mis else "CNC"
-    refund_margin = total * 0.20 if is_mis else total
-
-    if "BUY" in action:
-        c.execute("UPDATE users SET balance = ? WHERE LOWER(username) = LOWER(?)", (balance + refund_margin, username))
-        if not is_mis:
-            c.execute("SELECT shares FROM portfolio WHERE username = ? AND ticker = ?", (username, ticker))
-            prow = c.fetchone()
-            if prow:
-                rem = prow[0] - shares
-                if rem <= 0:
-                    c.execute("DELETE FROM portfolio WHERE username = ? AND ticker = ?", (username, ticker))
-                else:
-                    c.execute("UPDATE portfolio SET shares = ? WHERE username = ? AND ticker = ?", (rem, username, ticker))
-        c.execute("SELECT shares FROM positions WHERE username = ? AND ticker = ? AND product_type = ?", (username, ticker, p_tag))
-        pos_row = c.fetchone()
-        if pos_row:
-            rem_pos = pos_row[0] - shares
-            if rem_pos <= 0:
-                c.execute("DELETE FROM positions WHERE username = ? AND ticker = ? AND product_type = ?", (username, ticker, p_tag))
-            else:
-                c.execute("UPDATE positions SET shares = ? WHERE username = ? AND ticker = ? AND product_type = ?", (rem_pos, username, ticker, p_tag))
-        c.execute("DELETE FROM transactions WHERE id = ?", (tx_id,))
-        conn.commit()
-        return True, f"✅ Cancelled Order #{tx_id} ({action} {shares} qty of {ticker} @ ₹{price:,.2f}) and refunded ₹{refund_margin:,.2f} to your wallet."
-    else:
-        if balance < refund_margin:
-            return False, "❌ Insufficient wallet cash to reverse this SELL order."
-        c.execute("UPDATE users SET balance = ? WHERE LOWER(username) = LOWER(?)", (balance - refund_margin, username))
-        if not is_mis:
-            c.execute("SELECT shares, avg_price FROM portfolio WHERE username = ? AND ticker = ?", (username, ticker))
-            prow = c.fetchone()
-            if prow:
-                c.execute("UPDATE portfolio SET shares = ? WHERE username = ? AND ticker = ?", (prow[0] + shares, username, ticker))
-            else:
-                c.execute("INSERT INTO portfolio VALUES (?, ?, ?, ?)", (username, ticker, shares, price))
-        c.execute("SELECT shares FROM positions WHERE username = ? AND ticker = ? AND product_type = ?", (username, ticker, p_tag))
-        pos_row = c.fetchone()
-        if pos_row:
-            c.execute("UPDATE positions SET shares = ? WHERE username = ? AND ticker = ? AND product_type = ?", (pos_row[0] + shares, username, ticker, p_tag))
-        else:
-            c.execute("INSERT INTO positions VALUES (?, ?, ?, ?, ?)", (username, ticker, p_tag, shares, price))
-        c.execute("DELETE FROM transactions WHERE id = ?", (tx_id,))
-        conn.commit()
-        return True, f"✅ Cancelled Order #{tx_id} ({action} {shares} qty of {ticker} @ ₹{price:,.2f}) and restored {shares} shares to your portfolio."
-
-def calculate_trade_breakdown(ticker: str, shares: int, balance: float):
-    meta = STOCK_CATALOG.get(ticker, {"name": ticker, "currency": "₹", "exchange": "NSE"})
-    snap = ensure_live_snapshot(ticker)
-    price = float(snap["price"])
-    cur = meta["currency"]
-    total_val = price * shares
-    mis_margin = total_val * 0.20
-    brokerage_mis = min(20.0, total_val * 0.0003) * 2
-    stt_cnc = total_val * 0.001
-    stt_mis = total_val * 0.00025
-    gst = 0.18 * (brokerage_mis + total_val * 0.0000325)
-    max_cnc_shares = int(balance // price) if price > 0 else 0
-    max_mis_shares = int((balance * 5) // price) if price > 0 else 0
-
-    return f"""
-### 🧮 Trade & Margin Calculator: {meta['name']} (`{ticker}`)
-* **Live Spot Price:** `{cur}{price:,.2f}` ({snap['pct']:+.2f}%) | **Quantity:** `{shares} shares`
-* **CNC Delivery (1x) Total Cost:** **`{cur}{total_val:,.2f}`** *(Brokerage: `₹0.00` | Est. STT & Taxes: `{cur}{stt_cnc + gst:,.2f}`)*
-* **MIS Intraday (5x Leverage) Required Margin:** **`{cur}{mis_margin:,.2f}`** *(Brokerage: `₹{brokerage_mis:.2f}` | Est. Taxes: `{cur}{stt_mis + gst:,.2f}`)*
-* **Your Buying Power (`₹{balance:,.2f}` Available):**
-  * **Max CNC Delivery Shares:** `{max_cnc_shares} shares`
-  * **Max MIS Intraday (5x) Shares:** `{max_mis_shares} shares`
-"""
-
-def get_user_account_summary_text(username: str):
-    bal = get_user_balance(username)
-    port_df = pd.read_sql_query("SELECT ticker, shares, avg_price FROM portfolio WHERE username = ?", conn, params=(username,))
-    pos_df = pd.read_sql_query("SELECT ticker, product_type, shares, avg_price FROM positions WHERE username = ?", conn, params=(username,))
-    tx_df = pd.read_sql_query("SELECT id, timestamp, ticker, action, shares, price, total FROM transactions WHERE username = ? ORDER BY id DESC LIMIT 5", conn, params=(username,))
-
-    held_syms = list(set(port_df["ticker"].tolist() + pos_df["ticker"].tolist()))
-    refresh_held_tickers_live(held_syms)
-
-    holdings_list = []
-    tot_inv = 0.0
-    tot_cur = 0.0
-    for _, r in port_df.iterrows():
-        sym = r["ticker"]
-        ltp = st.session_state.last_valid_snapshots.get(sym, {}).get("price", r["avg_price"])
-        inv = r["shares"] * r["avg_price"]
-        cur_v = r["shares"] * ltp
-        pnl = cur_v - inv
-        tot_inv += inv
-        tot_cur += cur_v
-        holdings_list.append(f"- **{sym}**: {r['shares']} shares | Cost: ₹{inv:,.2f} (@ ₹{r['avg_price']:,.2f}) | Live Value: ₹{cur_v:,.2f} (@ ₹{ltp:,.2f}) | P&L: ₹{pnl:+,.2f}")
-
-    positions_list = []
-    tot_m2m = 0.0
-    for _, r in pos_df.iterrows():
-        sym = r["ticker"]
-        ltp = st.session_state.last_valid_snapshots.get(sym, {}).get("price", r["avg_price"])
-        m2m = (ltp - r["avg_price"]) * r["shares"]
-        tot_m2m += m2m
-        positions_list.append(f"- **{sym} ({r['product_type']})**: {r['shares']} qty @ Avg ₹{r['avg_price']:,.2f} | LTP: ₹{ltp:,.2f} | Live Value: ₹{(r['shares']*ltp):,.2f} | M2M P&L: ₹{m2m:+,.2f}")
-
-    orders_list = []
-    for _, r in tx_df.iterrows():
-        orders_list.append(f"- Order `#{r['id']}` ({r['timestamp']}): **{r['action']}** {r['shares']} qty of `{r['ticker']}` @ ₹{r['price']:,.2f}")
-
+    prod = "MIS (Intraday 5x)" if any(w in q for w in ["mis", "intraday", "5x"]) else "CNC (Delivery)"
+    lim_match = re.search(r"(?:at|@|limit)\s*[₹$]?\s*(\d+(?:\.\d+)?)", rest)
+    lim_price = float(lim_match.group(1)) if lim_match else None
     return {
-        "balance": bal,
-        "tot_inv": tot_inv,
-        "tot_cur": tot_cur,
-        "tot_pnl": tot_cur - tot_inv,
-        "tot_m2m": tot_m2m,
-        "holdings_md": "\n".join(holdings_list) if holdings_list else "*No CNC Demat Holdings yet.*",
-        "positions_md": "\n".join(positions_list) if positions_list else "*No Open Intraday/Delivery Positions right now.*",
-        "orders_md": "\n".join(orders_list) if orders_list else "*No recent orders placed yet.*",
-        "pos_df": pos_df,
-        "port_df": port_df
+        "action": action,
+        "ticker": ticker,
+        "qty": qty,
+        "product": prod,
+        "limit_price": lim_price,
     }
 
-def build_universal_stocks_screener_report(user_question: str, acct_balance: float):
-    q_low = user_question.lower()
 
-    sector_filter = None
+def resolve_secret(key_name: str, session_override: str = "") -> str:
+    if session_override and session_override.strip():
+        return session_override.strip()
+    try:
+        secret_val = st.secrets.get(key_name, "")
+        if secret_val and str(secret_val).strip() and "your_" not in str(secret_val):
+            return str(secret_val).strip()
+    except Exception:
+        pass
+    return os.environ.get(key_name, "").strip()
+
+
+def resolve_groq_api_key(session_key: str = "") -> str:
+    return resolve_secret("GROQ_API_KEY", session_key)
+
+
+def _build_llm_messages(system_prompt: str, user_prompt: str, chat_history: list[dict] | None) -> list[dict]:
+    messages = [{"role": "system", "content": system_prompt}]
+    if chat_history:
+        for turn in chat_history[-4:]:
+            q_prev = turn.get("question", "")
+            a_prev = turn.get("answer", "")
+            if q_prev and a_prev:
+                messages.append({"role": "user", "content": q_prev[:500]})
+                messages.append({"role": "assistant", "content": a_prev[:700]})
+    messages.append({"role": "user", "content": user_prompt})
+    return messages
+
+
+def call_groq_llm_live(
+    system_prompt: str,
+    user_prompt: str,
+    api_key: str,
+    chat_history: list[dict] | None = None,
+) -> tuple[str | None, str | None, str | None]:
+    active_key = (api_key or "").strip()
+    if not active_key.startswith("gsk_"):
+        return None, None, "missing_key"
+
+    try:
+        from groq import Groq
+    except ImportError:
+        return None, None, "missing_sdk"
+
+    messages = _build_llm_messages(system_prompt, user_prompt, chat_history)
+    client = Groq(api_key=active_key, timeout=15.0)
+
+    for model_name in ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]:
+        try:
+            resp = client.chat.completions.create(
+                model=model_name,
+                messages=messages,
+                temperature=0.35,
+                max_tokens=950,
+            )
+            txt = resp.choices[0].message.content
+            if txt and len(txt.strip()) > 1:
+                return txt.strip(), f"Live Groq LLaMA ({model_name})", None
+        except Exception as exc:
+            err_s = str(exc).lower()
+            if "401" in err_s or "invalid_api_key" in err_s or "authentication" in err_s:
+                return None, None, "invalid_key"
+            continue
+
+    return None, None, "unavailable"
+
+
+def call_gemini_llm_live(
+    system_prompt: str,
+    user_prompt: str,
+    api_key: str,
+    chat_history: list[dict] | None = None,
+) -> tuple[str | None, str | None]:
+    active_key = (api_key or "").strip()
+    if not active_key:
+        return None, None
+
+    history_ctx = ""
+    if chat_history:
+        snippets = [f"User: {t['question'][:300]}\nAssistant: {t['answer'][:400]}" for t in chat_history[-3:]]
+        history_ctx = "\n\nRecent conversation:\n" + "\n---\n".join(snippets)
+
+    payload = json.dumps({
+        "system_instruction": {"parts": [{"text": system_prompt}]},
+        "contents": [{"role": "user", "parts": [{"text": user_prompt + history_ctx}]}],
+        "generationConfig": {"temperature": 0.35, "maxOutputTokens": 950},
+    }).encode("utf-8")
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={urllib.parse.quote(active_key)}"
+    try:
+        req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=12) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        cands = data.get("candidates", [])
+        if cands:
+            txt = cands[0]["content"]["parts"][0]["text"]
+            if txt and txt.strip():
+                return txt.strip(), "Live Gemini 2.5 Flash"
+    except Exception:
+        pass
+    return None, None
+
+
+def is_market_timing_question(q_clean: str) -> bool:
+    timing_phrases = [
+        "market open", "market opening", "market close", "market closing",
+        "market timing", "market time", "market hour", "trading hour",
+        "trading time", "when does market", "when will market", "is market open",
+        "is the market open", "opening time", "closing time",
+    ]
+    return any(p in q_clean for p in timing_phrases)
+
+
+def is_explicit_screener_request(q_clean: str) -> bool:
+    screener_phrases = [
+        "top benefitting", "benefitting stock", "benefiting stock",
+        "top indian", "top us", "best stock", "top stock", "which stock",
+        "what stock", "stocks to buy", "stocks to invest", "stocks to trade",
+        "recommend stock", "suggest stock", "stock picks", "top gainer", "list top",
+    ]
+    return any(p in q_clean for p in screener_phrases)
+
+
+def build_market_timings_report() -> str:
+    now_ist = get_ist_now()
+    nse_open, nse_status = check_market_trading_hours("RELIANCE.NS")
+    us_open, us_status = check_market_trading_hours("AAPL")
+    return f"""
+### Official Stock Market Trading Hours
+* **Current Clock:** `{now_ist.strftime('%A, %d %B %Y | %I:%M %p IST')}`
+
+#### Indian Markets (NSE & BSE) — Mon to Fri
+* **Pre-Open:** `9:00 AM – 9:15 AM IST` | **Continuous:** `9:15 AM – 3:30 PM IST`
+* **Live Status:** **{'OPEN — ' + nse_status if nse_open else 'CLOSED — ' + nse_status}**
+
+#### US Markets (NASDAQ & NYSE) — Mon to Fri
+* **Regular Hours:** `9:30 AM – 4:00 PM ET` *(handles EST/EDT daylight saving automatically)*
+* **Live Status:** **{'OPEN — ' + us_status if us_open else 'CLOSED — ' + us_status}**
+"""
+
+
+def build_universal_stocks_screener_report(
+    user_question: str,
+    acct_balance: float,
+    snapshots: dict,
+    usdinr_rate: float,
+) -> str:
+    q_low = user_question.lower()
     sector_keywords = {
         "it": ["IT", "Tech", "Software", "Cloud"],
         "bank": ["Bank", "Financial", "Finance", "NBFC"],
@@ -1272,1977 +2856,2264 @@ def build_universal_stocks_screener_report(user_question: str, acct_balance: flo
         "auto": ["Auto", "EV", "SUV"],
         "pharma": ["Pharma"],
         "energy": ["Energy", "Power", "Oil", "Coal"],
-        "fmcg": ["FMCG", "Beverage", "Food", "Retail"]
+        "fmcg": ["FMCG", "Beverage", "Food", "Retail"],
     }
+    sector_filter = None
     for s_key, s_matches in sector_keywords.items():
         if re.search(rf"\b{s_key}\b", q_low):
             sector_filter = s_matches
             break
 
-    ranked_all = []
-    ranked_nse = []
-    ranked_us = []
+    ranked = []
+    for sym, meta in STOCK_CATALOG.items():
+        if sector_filter and not any(m.lower() in meta["sector"].lower() for m in sector_filter):
+            continue
+        sn = snapshots.get(sym, DEFAULT_STOCKS_SNAPSHOTS.get(sym, {"price": 100.0, "pct": 0.0, "rsi": 50.0, "above_sma": True}))
+        rsi_bonus = 1.6 if 50 <= sn["rsi"] <= 66 else (0.8 if 42 <= sn["rsi"] < 50 else -0.8)
+        sma_bonus = 1.8 if sn["above_sma"] else -1.2
+        score = (sn["pct"] * 1.4) + sma_bonus + rsi_bonus
+        proj_5d = max(1.8, sn["pct"] * 1.6 + (1.4 if sn["above_sma"] else 0.3))
+        ranked.append({**meta, "symbol": sym, "score": score, "proj_5d": proj_5d, **sn})
 
-    for s_sym, meta_s in STOCK_CATALOG.items():
-        s_snap = snapshots.get(s_sym, DEFAULT_STOCKS_SNAPSHOTS.get(s_sym, {"price": 100.0, "pct": 0.0, "rsi": 55.0, "above_sma": True}))
-        if sector_filter:
-            if not any(m.lower() in meta_s["sector"].lower() for m in sector_filter):
-                continue
-
-        rsi_bonus = 1.6 if 50 <= s_snap["rsi"] <= 66 else (0.8 if 42 <= s_snap["rsi"] < 50 else -0.8)
-        sma_bonus = 1.8 if s_snap["above_sma"] else -1.2
-        quant_score = (s_snap["pct"] * 1.4) + sma_bonus + rsi_bonus
-
-        proj_5d_pct = max(2.2, s_snap["pct"] * 1.8 + (1.4 if s_snap["above_sma"] else 0.4))
-        item = {
-            "score": quant_score,
-            "symbol": s_sym,
-            "name": meta_s["name"],
-            "sector": meta_s["sector"],
-            "exchange": meta_s["exchange"],
-            "currency": meta_s["currency"],
-            "price": s_snap["price"],
-            "pct": s_snap["pct"],
-            "rsi": s_snap["rsi"],
-            "above_sma": s_snap["above_sma"],
-            "proj_5d_pct": proj_5d_pct
-        }
-        ranked_all.append(item)
-        if meta_s["exchange"] == "NSE":
-            ranked_nse.append(item)
-        else:
-            ranked_us.append(item)
-
-    if not ranked_all:
-        ranked_all = [
-            {
-                "score": snapshots[k]["pct"], "symbol": k, "name": v["name"], "sector": v["sector"],
-                "exchange": v["exchange"], "currency": v["currency"], "price": snapshots[k]["price"],
-                "pct": snapshots[k]["pct"], "rsi": snapshots[k]["rsi"], "above_sma": snapshots[k]["above_sma"],
-                "proj_5d_pct": 4.2
-            }
-            for k, v in STOCK_CATALOG.items()
-        ]
-        ranked_nse = [x for x in ranked_all if x["exchange"] == "NSE"]
-        ranked_us = [x for x in ranked_all if x["exchange"] != "NSE"]
-
-    ranked_all.sort(key=lambda x: x["score"], reverse=True)
-    ranked_nse.sort(key=lambda x: x["score"], reverse=True)
-    ranked_us.sort(key=lambda x: x["score"], reverse=True)
-
-    table_rows = []
-    for idx, st_item in enumerate(ranked_all[:10], start=1):
-        cur = st_item["currency"]
-        pr = st_item["price"]
-        target_p = pr * (1 + st_item["proj_5d_pct"] / 100.0)
-        sl_p = pr * 0.968
-        signal_txt = "STRONG BUY ▲" if st_item["score"] > 3.5 else "BUY / ACCUMULATE ▲"
-        table_rows.append(
-            f"| {idx} | **{st_item['name']}** (`{st_item['symbol']}`) | {st_item['exchange']} • {st_item['sector']} | `{cur}{pr:,.2f}` (`{st_item['pct']:+.2f}%`) | `{st_item['rsi']:.1f}` | `{cur}{target_p:,.2f}` (`+{st_item['proj_5d_pct']:.1f}%`) | `{cur}{sl_p:,.2f}` | **{signal_txt}** |"
-        )
-
-    nse_picks_md = []
-    for st_item in ranked_nse[:5]:
-        cur = st_item["currency"]
-        pr = st_item["price"]
-        rec_qty = max(1, int((acct_balance * 0.20) // pr)) if pr > 0 else 1
-        nse_picks_md.append(
-            f"* **{st_item['name']} (`{st_item['symbol']}`)** — **{cur}{pr:,.2f}** (`{st_item['pct']:+.2f}%` ▲) | **Sector:** {st_item['sector']} | **RSI:** `{st_item['rsi']:.1f}` | **Entry:** `{cur}{pr:,.2f}` | **Target:** `{cur}{pr*1.055:,.2f}` | **Stop-Loss:** `{cur}{pr*0.97:,.2f}` *(Suggested Qty for your margin: `{rec_qty} shares`)*"
-        )
-
-    us_picks_md = []
-    for st_item in ranked_us[:5]:
-        cur = st_item["currency"]
-        pr = st_item["price"]
-        us_picks_md.append(
-            f"* **{st_item['name']} (`{st_item['symbol']}`)** — **{cur}{pr:,.2f}** (`{st_item['pct']:+.2f}%` ▲) | **Sector:** {st_item['sector']} | **RSI:** `{st_item['rsi']:.1f}` | **Entry:** `{cur}{pr:,.2f}` | **Target:** `{cur}{pr*1.06:,.2f}` | **Stop-Loss:** `{cur}{pr*0.965:,.2f}`"
+    ranked.sort(key=lambda x: x["score"], reverse=True)
+    rows_md = []
+    for i, item in enumerate(ranked[:10], 1):
+        cur = item["currency"]
+        pr = item["price"]
+        tgt = pr * (1.0 + item["proj_5d"] / 100.0)
+        sl = pr * 0.968
+        sig = "STRONG BUY" if item["score"] > 3.5 else "ACCUMULATE"
+        rows_md.append(
+            f"| {i} | **{item['name']}** (`{item['symbol']}`) | {item['exchange']} • {item['sector']} | "
+            f"`{cur}{pr:,.2f}` (`{item['pct']:+.2f}%`) | `{item['rsi']:.1f}` | `{cur}{tgt:,.2f}` | `{cur}{sl:,.2f}` | **{sig}** |"
         )
 
     return f"""
-### 🌐 Universal Market Screener — Top Benefitting STOCKS to Invest In
-Scanned **all Indian (NSE) & US (NASDAQ/NYSE) STOCKS** using live price momentum, 20-Day SMA breakout status, and 14-Day RSI strength (tailored to your **`₹{acct_balance:,.2f}`** available margin):
+### Multi-Market Quantitative Screener (Top 10 Ranked)
+Ranked across **NSE & NASDAQ/NYSE** using live momentum, 20-SMA trend, and 14-day Wilder RSI (tailored to your **`₹{acct_balance:,.2f}`** margin at FX `₹{usdinr_rate:.2f}/$`):
 
-| Rank | Company (`Ticker`) | Exchange & Sector | Live Price (Change) | RSI (14) | Projected Target | Stop-Loss | Quant Signal |
+| Rank | Company (`Ticker`) | Exchange & Sector | Live Price | RSI (14) | Target | Stop-Loss | Signal |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-{chr(10).join(table_rows)}
-
----
-#### 🇮🇳 Top 5 Indian (NSE) Benefitting Stocks (With Position Sizing for `₹{acct_balance:,.2f}`)
-{chr(10).join(nse_picks_md)}
-
-#### 🇺🇸 Top 5 Global (NASDAQ / NYSE) Growth & AI Stocks
-{chr(10).join(us_picks_md)}
+{chr(10).join(rows_md)}
 """
 
-def is_market_timing_question(q_clean: str) -> bool:
-    timing_phrases = [
-        "market open", "market opening", "market close", "market closing",
-        "market timing", "market time", "market hour", "trading hour",
-        "trading time", "when does market", "when will market", "when market",
-        "when does nse", "when does bse", "when does stock market",
-        "is market open", "is the market open", "market holiday",
-        "opening time", "closing time"
-    ]
-    return any(p in q_clean for p in timing_phrases)
 
-def build_market_timings_report(now_dt: datetime):
-    nse_open, nse_status = check_market_trading_hours("RELIANCE.NS")
-    us_open, us_status = check_market_trading_hours("AAPL")
-    next_open_msg = "Monday at 9:15 AM IST" if now_dt.weekday() >= 5 else ("Today at 9:15 AM IST" if now_dt.hour < 9 or (now_dt.hour == 9 and now_dt.minute < 15) else ("Tomorrow at 9:15 AM IST" if now_dt.weekday() < 4 else "Monday at 9:15 AM IST"))
-    return f"""
-### 🕒 Official Stock Market Opening & Closing Timings
+def build_stock_quant_profile(
+    sym: str,
+    snapshots: dict,
+    usdinr_rate: float,
+    acct_balance: float,
+    include_news: bool = False,
+) -> dict:
+    meta = get_ticker_meta(sym)
+    cur = meta["currency"]
+    fx = get_fx_rate_for_ticker(sym, usdinr_rate)
+    df_live = fetch_stock_history(sym, "1y")
+    sn = snapshots.get(sym, DEFAULT_STOCKS_SNAPSHOTS.get(sym, {"price": 100.0, "pct": 0.0, "rsi": 50.0, "above_sma": True}))
 
-* **Current System Time:** **`{now_dt.strftime('%A, %d %B %Y | %I:%M:%S %p IST')}`**
-* **Next Indian Market Opening:** **`{next_open_msg}`**
+    if df_live is not None and len(df_live) >= 30:
+        close = df_live["Close"].astype(float)
+        price = float(close.iloc[-1])
+        prev_c = float(close.iloc[-2])
+        pct_1d = ((price - prev_c) / prev_c * 100.0) if prev_c else 0.0
+        pct_1w = ((price / float(close.iloc[-6])) - 1.0) * 100.0 if len(close) >= 6 else pct_1d
+        pct_1m = ((price / float(close.iloc[-22])) - 1.0) * 100.0 if len(close) >= 22 else pct_1w
+        pct_6m = ((price / float(close.iloc[-126])) - 1.0) * 100.0 if len(close) >= 126 else pct_1m
+        pct_1y = ((price / float(close.iloc[0])) - 1.0) * 100.0
 
-#### 🇮🇳 Indian Stock Market (NSE & BSE) — Monday to Friday
-* **Pre-Open Session:** `9:00 AM – 9:15 AM IST` *(Order collection: 9:00–9:08 AM | Order matching: 9:08–9:15 AM)*
-* **Normal / Continuous Trading Hours:** **`9:15 AM – 3:30 PM IST`**
-* **Post-Closing Session:** `3:40 PM – 4:00 PM IST`
-* **Weekend / Holidays:** Closed on **Saturday, Sunday**, and official NSE/BSE exchange holidays.
-* **Live Status Right Now:** **{'🟢 OPEN — ' + nse_status if nse_open else '🔴 CLOSED — ' + nse_status}**
+        rsi = float(df_live["RSI"].iloc[-1])
+        sma20 = float(df_live["SMA_20"].iloc[-1])
+        ema50 = float(df_live["EMA_50"].iloc[-1])
+        macd_val = float(df_live["MACD"].iloc[-1])
+        macd_sig = float(df_live["MACD_Signal"].iloc[-1])
+        bb_pctb = float(df_live["BB_PctB"].iloc[-1])
+        high52 = float(df_live["High"].max())
+        low52 = float(df_live["Low"].min())
+        atr_val = float(df_live["ATR_14"].iloc[-1])
+        ann_vol = float(close.pct_change().std() * np.sqrt(252) * 100.0)
 
-#### 🇺🇸 US Stock Market (NASDAQ & NYSE) — Monday to Friday
-* **Regular Trading Hours (EST):** **`9:30 AM – 4:00 PM EST`** *(approx. `7:00 PM – 1:30 AM IST`)*
-* **Live Status Right Now:** **{'🟢 OPEN — ' + us_status if us_open else '🔴 CLOSED — ' + us_status}**
-"""
+        vol_last = float(df_live["Volume"].iloc[-1])
+        vol_avg20 = float(df_live["Volume"].tail(20).mean())
+        vol_ratio = (vol_last / vol_avg20) if vol_avg20 > 0 else 1.0
 
-def is_explicit_screener_request(q_clean: str) -> bool:
-    screener_phrases = [
-        "top benefitting", "benefitting stock", "benefiting stock",
-        "top indian", "top us", "best stock", "top stock", "which stock",
-        "what stock", "stocks to buy", "stocks to invest", "stocks to trade",
-        "stocks should i", "share to buy", "shares to buy", "recommend stock",
-        "suggest stock", "stock picks", "top gainer", "multibagger", "list top"
-    ]
-    return any(p in q_clean for p in screener_phrases)
+        p_high = float(df_live["High"].iloc[-2])
+        p_low = float(df_live["Low"].iloc[-2])
+        pivot = (p_high + p_low + prev_c) / 3.0
+        r1 = (2.0 * pivot) - p_low
+        s1 = (2.0 * pivot) - p_high
+        r2 = pivot + (p_high - p_low)
+        s2 = pivot - (p_high - p_low)
 
-def answer_general_or_fallback_question(user_question: str, now_dt: datetime, acct: dict, nse_status_str: str):
-    q_clean = user_question.strip().lower()
+        ml_res = run_ml_forecast_suite(sym, str(df_live.index[-1]), len(df_live), df_live)
+        ml_pred_7d = ml_res["target_7d"] if ml_res else price * (1.02 if price >= sma20 else 0.985)
+        ml_model = ml_res["best_model"] if ml_res else "Heuristic"
+        ml_dir_acc = float(ml_res["eval_df"].iloc[0]["Directional Accuracy (%)"]) if ml_res else 55.0
+    else:
+        price = float(sn["price"])
+        pct_1d = float(sn["pct"])
+        pct_1w, pct_1m, pct_6m, pct_1y = pct_1d, pct_1d, pct_1d, pct_1d
+        rsi = float(sn["rsi"])
+        sma20 = float(sn.get("sma20", price * 0.99))
+        ema50 = float(sn.get("ema50", price * 0.97))
+        macd_val, macd_sig, bb_pctb = 0.0, 0.0, 0.5
+        high52, low52 = price * 1.15, price * 0.85
+        atr_val = price * 0.02
+        ann_vol, vol_ratio = 22.0, 1.0
+        pivot = price
+        r1, s1, r2, s2 = price * 1.015, price * 0.985, price * 1.03, price * 0.97
+        ml_pred_7d = price * (1.02 if price >= sma20 else 0.985)
+        ml_model, ml_dir_acc = "Quant Baseline", 55.0
 
-    if is_market_timing_question(q_clean):
-        return build_market_timings_report(now_dt), "🟢 FinanceSight Market Schedule Engine"
+    funds = fetch_stock_fundamentals(sym)
+    news_items = fetch_stock_news_headlines(sym, meta["name"]) if include_news else []
+    ml_move_pct = ((ml_pred_7d - price) / price * 100.0) if price else 0.0
+    affordable_cnc = int(acct_balance // (price * fx)) if price > 0 else 0
+    trend_up = price >= sma20
+    golden_cross = sma20 >= ema50
 
-    greetings_set = {"hi", "hii", "hiii", "hello", "hey", "heyy", "hola", "namaste", "good morning", "good afternoon", "good evening", "sup", "yo"}
-    if q_clean in greetings_set or any(q_clean.startswith(g + " ") for g in greetings_set):
-        return (
-            f"### 👋 Hello!\n"
-            f"I am **FinanceSight AI**. Your account currently has **`₹{acct['balance']:,.2f}`** in available cash margin and **`₹{acct['tot_cur']:,.2f}`** in live holdings.\n\n"
-            f"How can I help you today? You can ask me any general question, check market timings or math calculations, screen top stocks, or tell me to place, calculate, or cancel trades in your portfolio."
-        ), "🟢 FinanceSight Universal AI"
+    score = sum([
+        price >= sma20,
+        price >= ema50,
+        golden_cross,
+        macd_val >= macd_sig,
+        40.0 <= rsi <= 68.0,
+        ml_move_pct > 0.0,
+    ])
+    if rsi >= 72:
+        verdict = "OVERBOUGHT — WAIT FOR PULLBACK"
+    elif score >= 5:
+        verdict = "STRONG BULLISH ACCUMULATION"
+    elif score >= 3:
+        verdict = "MODERATELY BULLISH / HOLD"
+    else:
+        verdict = "BEARISH / CAUTIOUS"
 
-    math_expr, math_ans = try_solve_math_query(user_question)
-    if math_expr is not None and math_ans is not None:
-        formatted_ans = f"{math_ans:,.4f}".rstrip("0").rstrip(".") if isinstance(math_ans, float) else f"{math_ans:,}"
-        return f"### 🧮 Calculation Result\n* `{math_expr}` = **`{formatted_ans}`**", "🟢 FinanceSight Math Engine"
-
-    if any(p in q_clean for p in ["what time", "current time", "time is it", "what day", "what date", "today's date", "todays date", "which day", "date today", "time now"]):
-        return (
-            f"### 🕒 Live System Clock\n"
-            f"* **Day & Date:** **{now_dt.strftime('%A, %d %B %Y')}**\n"
-            f"* **Current Time:** **`{now_dt.strftime('%I:%M:%S %p')} IST`**\n"
-            f"* **Market Status:** {nse_status_str}"
-        ), "🟢 FinanceSight System Clock"
-
-    general_kb = {
-        "sky": "The sky appears **blue** during a clear day because Earth's atmosphere scatters shorter-wavelength blue sunlight in all directions more than other colors (Rayleigh scattering).",
-        "banana": "A ripe banana is **bright yellow** (unripe bananas are green, and overripe bananas turn brown).",
-        "grass": "Grass is **green** because it contains chlorophyll, a pigment that absorbs red and blue light for photosynthesis and reflects green light.",
-        "milk": "Milk is **white** because its casein proteins and fat droplets scatter all wavelengths of visible light equally.",
-        "water": "Pure water is practically **colorless** in small quantities, with a very slight intrinsic **blue** hue in large volumes.",
-        "blood": "Human blood is **red** due to hemoglobin, an iron-containing protein in red blood cells that binds oxygen.",
-        "sun": "The Sun emits **white light** across all visible wavelengths, though atmospheric scattering often makes it look yellow or orange from Earth.",
-        "capital of india": "The capital of India is **New Delhi**.",
-        "prime minister of india": "The Prime Minister of India is **Narendra Modi**.",
-        "rsi": "**RSI (Relative Strength Index)** is a momentum oscillator (`0–100`) that measures the speed and magnitude of recent price movements over 14 sessions. Below 30 indicates oversold conditions, while above 70 indicates overbought conditions.",
-        "sma": "**SMA (Simple Moving Average)** is the unweighted average closing price of a stock over a specific number of days (such as 20 days).",
-        "ema": "**EMA (Exponential Moving Average)** is a moving average that gives greater weight to the most recent closing prices.",
-        "macd": "**MACD (Moving Average Convergence Divergence)** is a trend-following momentum indicator showing the relationship between two moving averages (the 12-day and 26-day EMA).",
-        "intraday": "**Intraday trading (MIS)** means buying and selling shares within the same market session before 3:30 PM IST, using up to 5x margin leverage.",
-        "delivery": "**Equity Delivery (CNC)** means buying shares and holding them in your Demat portfolio across multiple days, weeks, or years."
+    return {
+        "sym": sym, "meta": meta, "cur": cur, "fx": fx, "price": price,
+        "pct_1d": pct_1d, "pct_1w": pct_1w, "pct_1m": pct_1m, "pct_6m": pct_6m, "pct_1y": pct_1y,
+        "rsi": rsi, "sma20": sma20, "ema50": ema50, "macd_val": macd_val, "macd_sig": macd_sig,
+        "bb_pctb": bb_pctb, "high52": high52, "low52": low52, "atr": atr_val, "ann_vol": ann_vol,
+        "vol_ratio": vol_ratio, "pivot": pivot, "r1": r1, "r2": r2, "s1": s1, "s2": s2,
+        "ml_pred_7d": ml_pred_7d, "ml_move_pct": ml_move_pct, "ml_model": ml_model, "ml_dir_acc": ml_dir_acc,
+        "affordable_cnc": affordable_cnc, "verdict": verdict, "score": score,
+        "funds": funds, "news": news_items,
     }
 
-    for k_word, k_ans in general_kb.items():
-        if k_word in q_clean:
-            return f"### 💡 Answer\n{k_ans}", "🟢 FinanceSight Universal AI"
 
-    if online_status:
-        try:
-            sys_msg = "You are a helpful, accurate AI assistant. Answer the user's question directly, clearly, and concisely."
-            payload = json.dumps({
-                "model": "openai",
-                "messages": [
-                    {"role": "system", "content": sys_msg},
-                    {"role": "user", "content": user_question}
-                ],
-                "temperature": 0.5
-            }).encode("utf-8")
-            req = urllib.request.Request(
-                "https://text.pollinations.ai/openai",
-                data=payload,
-                headers={"Content-Type": "application/json", "User-Agent": "FinanceSightAI/1.0"}
-            )
-            with urllib.request.urlopen(req, timeout=10) as response:
-                res_json = json.loads(response.read().decode("utf-8"))
-                ai_text = res_json["choices"][0]["message"]["content"]
-                if ai_text and len(ai_text.strip()) > 1:
-                    return ai_text, "🟢 Powered by FinanceSight Cloud AI"
-        except Exception:
-            pass
-
-        try:
-            encoded_q = urllib.parse.quote(user_question)
-            req_get = urllib.request.Request(
-                f"https://text.pollinations.ai/{encoded_q}",
-                headers={"User-Agent": "FinanceSightAI/1.0"}
-            )
-            with urllib.request.urlopen(req_get, timeout=10) as response:
-                txt_out = response.read().decode("utf-8").strip()
-                if txt_out and len(txt_out) > 1:
-                    return txt_out, "🟢 Powered by FinanceSight Cloud AI"
-        except Exception:
-            pass
-
+def _format_stock_context_for_llm(p: dict) -> str:
+    cur = p["cur"]
+    funds = p["funds"]
+    f_line = (
+        f"MktCap={format_large_number(funds.get('marketCap'), cur)}, "
+        f"P/E={funds.get('trailingPE') or 'N/A'}, EPS={funds.get('trailingEps') or 'N/A'}, "
+        f"Beta={funds.get('beta') or 'N/A'}, Analyst={funds.get('recommendationKey') or 'N/A'}"
+    )
+    news_line = ""
+    if p["news"]:
+        news_line = "\nRecent News:\n" + "\n".join(f"- {n['title']} ({n['pubDate']})" for n in p["news"])
     return (
-        f"### 💬 Response\n"
-        f"I received your message: **\"{user_question}\"**. Your account currently holds **`₹{acct['balance']:,.2f}`** in available cash margin and **`₹{acct['tot_cur']:,.2f}`** in holdings."
-    ), "🟢 FinanceSight Universal AI"
+        f"[{p['meta']['name']} ({p['sym']}, {p['meta']['exchange']}, {p['meta']['sector']})]\n"
+        f"Price={cur}{p['price']:,.2f} (1D {p['pct_1d']:+.2f}%, 1W {p['pct_1w']:+.2f}%, 1M {p['pct_1m']:+.2f}%, 6M {p['pct_6m']:+.2f}%, 1Y {p['pct_1y']:+.2f}%) | FX=₹{p['fx']:.2f}\n"
+        f"RSI(14)={p['rsi']:.1f} | 20-SMA={cur}{p['sma20']:,.2f} | 50-EMA={cur}{p['ema50']:,.2f} | MACD={p['macd_val']:+.2f} vs Sig={p['macd_sig']:+.2f} | BB%B={p['bb_pctb']:.2f}\n"
+        f"VolRatio={p['vol_ratio']:.2f}x avg | ATR(14)={cur}{p['atr']:,.2f} | AnnVol={p['ann_vol']:.1f}%\n"
+        f"52W={cur}{p['low52']:,.2f}-{cur}{p['high52']:,.2f} | Pivots: S2={cur}{p['s2']:,.2f}, S1={cur}{p['s1']:,.2f}, P={cur}{p['pivot']:,.2f}, R1={cur}{p['r1']:,.2f}, R2={cur}{p['r2']:,.2f}\n"
+        f"7D ML Forecast ({p['ml_model']}, {p['ml_dir_acc']:.1f}% dir acc)={cur}{p['ml_pred_7d']:,.2f} ({p['ml_move_pct']:+.2f}%)\n"
+        f"Fundamentals: {f_line} | Affordable CNC Qty={p['affordable_cnc']} | Quant Score={p['score']}/6 ({p['verdict']})"
+        f"{news_line}"
+    )
 
-def ask_universal_ai_advisor(username: str, user_question: str):
+
+def ask_universal_ai_advisor(
+    username: str,
+    user_question: str,
+    snapshots: dict,
+    usdinr_rate: float,
+    groq_api_key: str = "",
+    gemini_api_key: str = "",
+    allow_after_hours: bool = False,
+    chat_history: list[dict] | None = None,
+) -> tuple[str, str, str, str, list[str]]:
     q_clean = user_question.strip().lower()
-    now_dt = datetime.utcnow() + timedelta(hours=5, minutes=30)
-    now_str = now_dt.strftime("%A, %d %B %Y | %I:%M:%S %p IST")
-    acct = get_user_account_summary_text(username)
-    nse_open_flag, nse_status_str = check_market_trading_hours("RELIANCE.NS")
+    acct = get_user_account_summary(username, snapshots, usdinr_rate)
+    matched_syms = detect_all_stocks_from_text(user_question, max_stocks=4)
+    explicit_sym = matched_syms[0] if matched_syms else None
+    was_explicit = len(matched_syms) > 0
+    card_title = "FinanceSight Universal AI"
+    card_logo = get_logo_url("GOOGL")
+    steps_log = [f"Loaded account snapshot for @{username} (Cash: ₹{acct['balance']:,.2f})"]
 
-    explicit_sym, was_explicitly_mentioned = detect_stock_from_text(user_question, None)
-    card_title = "🌐 Universal AI Advisor"
-    card_logo = "https://www.google.com/s2/favicons?domain=google.com&sz=128"
-
-    if any(w in q_clean for w in ["cancel", "undo", "reverse"]) and any(w in q_clean for w in ["order", "trade", "last", "buy", "sell"]) or q_clean in ["cancel", "cancel order", "cancel trade"]:
-        ok_c, msg_c = cancel_last_user_order(username, explicit_sym if was_explicitly_mentioned else None)
-        updated_acct = get_user_account_summary_text(username)
-        return f"""
-### 🔄 Order Cancellation & Portfolio Reversal
-* **Status:** **{msg_c}**
-* **Updated Available Cash Margin:** **`₹{updated_acct['balance']:,.2f}`**
-* **Active Demat Holdings:**
-{updated_acct['holdings_md']}
-* **Recent Orders:**
-{updated_acct['orders_md']}
-""", "🟢 FinanceSight Autonomous Order Manager", card_title, card_logo
+    if any(w in q_clean for w in ["cancel", "undo", "reverse"]) and (
+        any(w in q_clean for w in ["order", "trade", "last", "buy", "sell", "pending"])
+        or q_clean in {"cancel", "cancel order", "cancel trade"}
+    ):
+        pend_match = re.search(r"#?(\d+)", q_clean)
+        if "pending" in q_clean and pend_match:
+            ok_c, msg_c = cancel_pending_order(username, int(pend_match.group(1)))
+        else:
+            ok_c, msg_c = reverse_last_executed_order(username, explicit_sym if was_explicit else None)
+        steps_log.append(f"Order reversal processed: {'success' if ok_c else 'declined'}")
+        updated = get_user_account_summary(username, snapshots, usdinr_rate)
+        return (
+            f"### Order Cancellation & Reversal\n* **Status:** {msg_c}\n* **Updated Cash Margin:** `₹{updated['balance']:,.2f}`\n\n#### Active Holdings\n{updated['holdings_md']}",
+            "FinanceSight Order Manager", card_title, card_logo, steps_log,
+        )
 
     if any(k in q_clean for k in ["square off", "close all position", "exit all position", "close position", "exit position"]):
         if acct["pos_df"].empty:
-            return f"### ⚡ Position Square-Off Check\nYou currently have **no open positions** to square off. Your available cash margin is **₹{acct['balance']:,.2f}**.", "🟢 FinanceSight Agentic Execution Engine", card_title, card_logo
+            return (
+                f"### Position Square-Off Check\nNo open positions found. Available cash margin: **₹{acct['balance']:,.2f}**.",
+                "FinanceSight Execution Engine", card_title, card_logo, steps_log,
+            )
         closed_logs = []
         for _, r in acct["pos_df"].iterrows():
-            if was_explicitly_mentioned and explicit_sym and r["ticker"] != explicit_sym:
+            sym = LEGACY_TICKER_REMAP.get(r["ticker"], r["ticker"])
+            if was_explicit and sym not in matched_syms:
                 continue
-            sym = r["ticker"]
-            ltp = ensure_live_snapshot(sym)["price"]
-            ok, msg = execute_trade(username, sym, "SELL", int(r["shares"]), float(ltp), r["product_type"])
-            closed_logs.append(f"* {msg}")
+            ltp = float(snapshots.get(sym, {}).get("price", r["avg_price"]))
+            _, msg = execute_trade(
+                username, sym, "SELL", int(r["shares"]), ltp, r["product_type"],
+                usdinr_rate=usdinr_rate, allow_after_hours=allow_after_hours,
+            )
+            closed_logs.append(f"- {msg}")
         new_bal = get_user_balance(username)
-        return f"""
-### ✅ Autonomous Square-Off Result for `@{username}`
-{chr(10).join(closed_logs) if closed_logs else '* No matching open position found.'}
-
-* **Updated Available Margin:** **`₹{new_bal:,.2f}`**
-""", "🟢 FinanceSight Autonomous Order Engine", card_title, card_logo
+        steps_log.append(f"Processed {len(closed_logs)} square-off order(s)")
+        return (
+            "### Autonomous Square-Off Summary\n" + ("\n".join(closed_logs) or "- No matching open positions.") + f"\n\n* **Updated Margin:** `₹{new_bal:,.2f}`",
+            "FinanceSight Execution Engine", card_title, card_logo, steps_log,
+        )
 
     fund_match = re.search(r"\b(add|deposit|top up|withdraw)\b.*?(\d[\d,]*)", q_clean)
     if fund_match and any(w in q_clean for w in ["fund", "money", "cash", "margin", "wallet", "rupee", "rs", "inr", "deposit", "withdraw"]):
-        action_word = fund_match.group(1)
-        amt_val = float(fund_match.group(2).replace(",", ""))
-        tx_t = "WITHDRAW" if action_word == "withdraw" else "DEPOSIT"
-        ok_f, msg_f = update_funds(username, amt_val, tx_t, "AI Advisor Instant Transfer", "AI-WALLET-TX")
+        verb = fund_match.group(1)
+        amt = float(fund_match.group(2).replace(",", ""))
+        tx_t = "WITHDRAW" if verb == "withdraw" else "DEPOSIT"
+        _, msg_f = update_funds(username, amt, tx_t, "AI Advisor Instant Transfer", "AI-WALLET-TX")
         new_bal = get_user_balance(username)
-        return f"""
-### 💳 FinanceSight AI Wallet Transaction
-* **Status:** {msg_f}
-* **Previous Margin:** `₹{acct['balance']:,.2f}`
-* **Updated Available Cash Margin:** **`₹{new_bal:,.2f}`**
-""", "🟢 FinanceSight Autonomous Banking Engine", card_title, card_logo
+        steps_log.append(f"Executed wallet {tx_t} of ₹{amt:,.2f}")
+        return (
+            f"### Wallet Transaction\n* **Status:** {msg_f}\n* **Updated Cash Margin:** **`₹{new_bal:,.2f}`**",
+            "FinanceSight Wallet Engine", card_title, card_logo, steps_log,
+        )
 
-    if any(w in q_clean for w in ["calculate", "cost of", "margin for", "how much for", "brokerage for"]) and was_explicitly_mentioned and explicit_sym:
+    if any(w in q_clean for w in ["calculate", "cost of", "margin for", "how much for", "brokerage for"]) and was_explicit and explicit_sym:
         qty_clean = re.sub(r"5x|20-sma|50-ema|14-day", "", q_clean)
         qty_nums = [int(n.replace(",", "")) for n in re.findall(r"\b(\d[\d,]*)\b", qty_clean)]
-        calc_qty = qty_nums[0] if qty_nums and qty_nums[0] > 0 else 10
-        calc_md = calculate_trade_breakdown(explicit_sym, calc_qty, acct["balance"])
-        t_meta = STOCK_CATALOG.get(explicit_sym, {"name": explicit_sym})
-        return calc_md, "🟢 FinanceSight Trade & Margin Calculator", f"{t_meta['name']} ({explicit_sym})", get_logo_url(explicit_sym)
+        calc_qty = max(1, qty_nums[0]) if qty_nums else 10
+        meta = get_ticker_meta(explicit_sym)
+        live_snaps = ensure_symbols_live([explicit_sym], snapshots)
+        snap = live_snaps.get(explicit_sym, DEFAULT_STOCKS_SNAPSHOTS.get(explicit_sym, {"price": 100.0, "pct": 0.0}))
+        price = float(snap["price"])
+        fx = get_fx_rate_for_ticker(explicit_sym, usdinr_rate)
+        inr_total = price * calc_qty * fx
+        mis_margin_inr = inr_total * 0.20
+        cnc_fees = compute_brokerage_breakdown("Equity Delivery (CNC)", price * fx, price * fx, calc_qty)
+        mis_fees = compute_brokerage_breakdown("Equity Intraday (MIS)", price * fx, price * fx, calc_qty)
+        steps_log.append(f"Calculated CNC & MIS breakdown for {calc_qty} {explicit_sym}")
+        return (
+            f"""### Trade & Margin Breakdown: {meta['name']} (`{explicit_sym}`)
+* **Live Price:** `{meta['currency']}{price:,.2f}` (`{snap['pct']:+.2f}%`) | **FX Rate:** `₹{fx:.2f}`
+* **CNC Delivery (1x) Margin:** **`₹{inr_total:,.2f}`** *(Est. round-trip statutory levies: `₹{cnc_fees['total_charges']:,.2f}`)*
+* **MIS Intraday (5x) Margin:** **`₹{mis_margin_inr:,.2f}`** *(Brokerage + levies: `₹{mis_fees['total_charges']:,.2f}`)*
+* **Max Buying Power (`₹{acct['balance']:,.2f}`):** `{int(acct['balance'] // (price * fx))}` CNC shares | `{int((acct['balance'] * 5) // (price * fx))}` MIS shares""",
+            "FinanceSight Margin Calculator", f"{meta['name']} ({explicit_sym})", get_logo_url(explicit_sym), steps_log,
+        )
 
-    trade_intent_match = re.search(r"\b(buy|sell|purchase|short|place trade|place order)\b", q_clean)
-    is_question_only = any(q_clean.startswith(prefix) for prefix in ["should i ", "can i ", "how to ", "what is ", "why ", "when ", "is it good to ", "which ", "what ", "list ", "show ", "tell ", "give "])
-    if trade_intent_match and not is_question_only and not is_explicit_screener_request(q_clean):
-        if not was_explicitly_mentioned or not explicit_sym:
-            return "### ⚠️ Please Specify a Stock Name\nTo place a trade via chat, include the stock name and quantity—for example: **\"Buy 10 Jio\"**, **\"Buy 5 Apple\"**, or **\"Sell 5 TCS\"**.", "⚡ FinanceSight Order Assistant", card_title, card_logo
+    trade_cmd = parse_trade_command(user_question)
+    if trade_cmd is not None:
+        if not trade_cmd["ticker"]:
+            return (
+                "### Specify Stock Ticker\nInclude a recognized stock name and quantity, e.g. `Buy 5 Reliance` or `Buy 2 Apple`.",
+                "FinanceSight Order Assistant", card_title, card_logo, steps_log,
+            )
+        sym = trade_cmd["ticker"]
+        meta = get_ticker_meta(sym)
+        live_snaps = ensure_symbols_live([sym], snapshots)
+        live_p = float(live_snaps.get(sym, DEFAULT_STOCKS_SNAPSHOTS.get(sym, {"price": 100.0})).get("price", 100.0))
+        o_type = "LIMIT" if trade_cmd["limit_price"] is not None else "MARKET"
+        _, msg_t = execute_trade(
+            username, sym, trade_cmd["action"], trade_cmd["qty"], live_p, trade_cmd["product"],
+            order_type=o_type, limit_price=trade_cmd["limit_price"],
+            usdinr_rate=usdinr_rate, allow_after_hours=allow_after_hours,
+        )
+        steps_log.append(f"Trade engine response: {msg_t}")
+        updated = get_user_account_summary(username, snapshots, usdinr_rate)
+        return (
+            f"### Order Execution Receipt\n* **Command:** *\"{user_question}\"*\n* **Result:** **{msg_t}**\n* **Updated Cash Margin:** **`₹{updated['balance']:,.2f}`**\n\n#### Active Holdings\n{updated['holdings_md']}",
+            "FinanceSight Autonomous Order Engine", f"{meta['name']} ({sym})", get_logo_url(sym), steps_log,
+        )
 
-        action_verb = "SELL" if "sell" in q_clean or "short" in q_clean else "BUY"
-        qty_clean = re.sub(r"5x|20-sma|50-ema|14-day", "", q_clean)
-        qty_nums = [int(n.replace(",", "")) for n in re.findall(r"\b(\d[\d,]*)\b", qty_clean)]
-        order_qty = qty_nums[0] if qty_nums and qty_nums[0] > 0 else 1
+    if any(p in q_clean for p in ["my fund", "my balance", "my margin", "my wallet", "how much money", "my portfolio", "my holding", "my position", "my order", "account summary", "show portfolio"]):
+        steps_log.append("Compiled SQLite holdings, positions, and order book")
+        return (
+            f"""### Live Account & Portfolio Summary (`@{username}`)
+* **Available Cash Margin:** **`₹{acct['balance']:,.2f}`**
+* **Live Holdings Value:** **`₹{acct['tot_cur']:,.2f}`** *(Cost: `₹{acct['tot_inv']:,.2f}` | Unrealized P&L: `₹{acct['tot_pnl']:+,.2f}`)*
+* **Open Positions M2M P&L:** **`₹{acct['tot_m2m']:+,.2f}`**
+* **Total Account Net Worth:** **`₹{acct['balance'] + acct['tot_cur']:,.2f}`**
 
-        prod_mode = "MIS (Intraday 5x)" if any(w in q_clean for w in ["mis", "intraday", "5x"]) else "CNC (Delivery)"
-        snap_t = ensure_live_snapshot(explicit_sym)
-        exec_p = float(snap_t["price"])
-        t_meta = STOCK_CATALOG.get(explicit_sym, {"name": explicit_sym, "currency": "₹"})
-
-        ok_t, msg_t = execute_trade(username, explicit_sym, action_verb, order_qty, exec_p, prod_mode)
-        updated_acct = get_user_account_summary_text(username)
-        return f"""
-### ⚡ FinanceSight AI Autonomous Order Execution
-* **Command Received:** *"{user_question}"*
-* **Execution Result:** **{msg_t}**
-* **Stock:** **{t_meta['name']} (`{explicit_sym}`)** | **Product:** `{prod_mode}` | **Reference Price:** `{t_meta['currency']}{exec_p:,.2f}`
-
----
-#### 💼 Updated Account Snapshot (`@{username}`)
-* **Available Cash Margin:** **`₹{updated_acct['balance']:,.2f}`**
-* **Active Demat Holdings:**
-{updated_acct['holdings_md']}
-* **Open Positions (MIS / CNC):**
-{updated_acct['positions_md']}
-""", "🟢 FinanceSight Autonomous Order Execution Engine", f"{t_meta['name']} ({explicit_sym})", get_logo_url(explicit_sym)
-
-    if any(p in q_clean for p in ["my fund", "my balance", "my margin", "my wallet", "how much money", "my portfolio", "my holding", "my position", "my order", "account summary", "check my account", "show portfolio"]):
-        return f"""
-### 💼 Live Account, Funds & Portfolio Statement (`@{username}`)
-
-* **💳 Available Cash Margin:** **`₹{acct['balance']:,.2f}`**
-* **📊 Total Demat Holdings Value:** **`₹{acct['tot_cur']:,.2f}`** *(Initial Cost: `₹{acct['tot_inv']:,.2f}` | Live Net P&L: `₹{acct['tot_pnl']:+,.2f}`)*
-* **⚡ Open Positions M2M P&L:** **`₹{acct['tot_m2m']:+,.2f}`**
-* **🏆 Total Account Net Worth:** **`₹{acct['balance'] + acct['tot_cur']:,.2f}`**
-
-#### 📂 Active CNC Holdings (Moves Live with Stock Price)
+#### Active CNC Holdings
 {acct['holdings_md']}
 
-#### ⚡ Open Positions (MIS 5x / CNC)
+#### Open Positions
 {acct['positions_md']}
 
-#### 📜 Recent Executed Orders
-{acct['orders_md']}
-""", "🟢 FinanceSight Live SQLite Account Inspector", card_title, card_logo
+#### Recent Orders
+{acct['orders_md']}""",
+            "FinanceSight SQLite Inspector", card_title, card_logo, steps_log,
+        )
 
     if is_market_timing_question(q_clean):
-        timing_md = build_market_timings_report(now_dt)
-        return timing_md, "🟢 FinanceSight Market Schedule Engine", card_title, card_logo
+        steps_log.append("Checked NSE (IST) & US (ET) market schedules")
+        return build_market_timings_report(), "FinanceSight Schedule Engine", card_title, card_logo, steps_log
 
-    if not was_explicitly_mentioned and is_explicit_screener_request(q_clean):
-        top_stocks_feed = []
-        for k_sym, v_meta in list(STOCK_CATALOG.items())[:30]:
-            sn = snapshots.get(k_sym, DEFAULT_STOCKS_SNAPSHOTS.get(k_sym, {"price": 100.0, "pct": 0.0, "rsi": 50.0, "above_sma": True}))
-            top_stocks_feed.append(f"{k_sym} ({v_meta['name']}, {v_meta['exchange']}, {v_meta['sector']}): {v_meta['currency']}{sn['price']:,.2f} ({sn['pct']:+.2f}%, RSI {sn['rsi']:.1f})")
-
-        sys_screener = (
-            "You are FinanceSight Universal AI. Analyze the live multi-stock market feed and recommend the top benefitting stocks to invest/trade in across NSE and NASDAQ. "
-            "Include a clean Markdown table and bullet points with exact live prices, RSI, entry zones, stop-loss, targets, and position sizing for the user's available cash margin."
+    if not was_explicit and is_explicit_screener_request(q_clean):
+        full_snaps = ensure_symbols_live(list(STOCK_CATALOG.keys())[:48], snapshots)
+        steps_log.append(f"Ranked {len(STOCK_CATALOG)} NSE & US equities by momentum, SMA-20 & RSI")
+        top_feed = []
+        for sym, meta in list(STOCK_CATALOG.items())[:40]:
+            sn = full_snaps.get(sym, DEFAULT_STOCKS_SNAPSHOTS.get(sym, {"price": 100.0, "pct": 0.0, "rsi": 50.0}))
+            top_feed.append(f"{sym} ({meta['name']}, {meta['exchange']}): {meta['currency']}{sn['price']:,.2f} ({sn['pct']:+.2f}%, RSI {sn['rsi']:.1f})")
+        sys_msg = "You are FinanceSight AI. Recommend top benefitting stocks from the live feed with prices, RSI, entry, stop-loss, and targets."
+        usr_msg = f"USER MARGIN: ₹{acct['balance']:,.2f} (FX ₹{usdinr_rate:.2f}/$)\nFEED:\n" + "\n".join(top_feed) + f"\nQUESTION: {user_question}"
+        llm_reply, llm_badge, _ = call_groq_llm_live(sys_msg, usr_msg, groq_api_key, chat_history)
+        if not llm_reply and gemini_api_key:
+            llm_reply, llm_badge = call_gemini_llm_live(sys_msg, usr_msg, gemini_api_key, chat_history)
+        if llm_reply:
+            return llm_reply, llm_badge, "Universal Market Screener", get_logo_url("RELIANCE.NS"), steps_log
+        return (
+            build_universal_stocks_screener_report(user_question, acct["balance"], full_snaps, usdinr_rate),
+            "FinanceSight Quant Screener", "Universal Market Screener", get_logo_url("RELIANCE.NS"), steps_log,
         )
-        usr_screener = (
-            f"USER (@{username}) AVAILABLE MARGIN: ₹{acct['balance']:,.2f}\n"
-            f"LIVE MARKET FEED:\n{chr(10).join(top_stocks_feed)}\n\n"
-            f"USER QUESTION: \"{user_question}\""
-        )
-        groq_reply, groq_badge = call_groq_llm_live(sys_screener, usr_screener)
-        if groq_reply:
-            return groq_reply, groq_badge, "🌐 Universal Market Screener (All STOCKS)", "https://www.google.com/s2/favicons?domain=nseindia.com&sz=128"
 
-        screener_report = build_universal_stocks_screener_report(user_question, acct["balance"])
-        return screener_report, "🟢 FinanceSight Universal Multi-Stock Quant Screener", "🌐 Universal Market Screener (All STOCKS)", "https://www.google.com/s2/favicons?domain=nseindia.com&sz=128"
+    if was_explicit:
+        want_news = any(w in q_clean for w in ["news", "headline", "why", "catalyst", "latest", "today", "earning", "update", "reason"])
+        profiles = []
+        for sym in matched_syms:
+            p = build_stock_quant_profile(sym, snapshots, usdinr_rate, acct["balance"], include_news=want_news)
+            profiles.append(p)
+        steps_log.append(f"Computed multi-timeframe technicals, pivots, ML forecast & fundamentals for {', '.join(matched_syms)}")
+        if want_news and any(p["news"] for p in profiles):
+            steps_log.append("Fetched latest market news headlines")
 
-    if was_explicitly_mentioned and explicit_sym:
-        ticker = explicit_sym
-        meta = STOCK_CATALOG.get(ticker, {"name": ticker, "sector": "Equity", "domain": "google.com", "exchange": "NSE", "currency": "₹"})
-        currency = meta["currency"]
-        logo_url = get_logo_url(ticker)
-        card_title = f"{meta['name']} ({ticker})"
-        card_logo = logo_url
-        snap_s = ensure_live_snapshot(ticker)
-        df_live = fetch_stock_history(ticker, "1y") if online_status else None
-
-        if df_live is not None and len(df_live) >= 20:
-            price = float(df_live["Close"].iloc[-1])
-            prev_c = float(df_live["Close"].iloc[-2])
-            pct_change = ((price - prev_c) / prev_c) * 100
-            rsi = float(df_live["RSI"].iloc[-1])
-            sma20 = float(df_live["SMA_20"].iloc[-1])
-            ema50 = float(df_live["EMA_50"].iloc[-1])
-            high52 = float(df_live["High"].max())
-            low52 = float(df_live["Low"].min())
-            volatility_pct = float(df_live["Close"].pct_change().std() * 100)
-            atr_val = float((df_live["High"] - df_live["Low"]).tail(14).mean())
-        else:
-            price = snap_s["price"]
-            pct_change = snap_s["pct"]
-            rsi = snap_s["rsi"]
-            sma20 = price * 0.99
-            ema50 = price * 0.97
-            high52 = price * 1.15
-            low52 = price * 0.85
-            volatility_pct = 1.8
-            atr_val = price * 0.02
-
-        ml_pred_5d = price * (1.022 if price >= sma20 else 0.982)
-        if df_live is not None and len(df_live) > 40:
-            ml_sub = df_live[["Close", "SMA_20", "EMA_50", "RSI"]].dropna().copy()
-            ml_sub["Target_5D"] = ml_sub["Close"].shift(-5)
-            train_df = ml_sub.dropna()
-            if len(train_df) > 20:
-                rf_quick = RandomForestRegressor(n_estimators=60, random_state=42)
-                rf_quick.fit(train_df[["Close", "SMA_20", "EMA_50", "RSI"]].values, train_df["Target_5D"].values)
-                ml_pred_5d = float(rf_quick.predict([[price, sma20, ema50, rsi]])[0])
-        ml_move_pct = ((ml_pred_5d - price) / price) * 100
-
+        context_blocks = "\n\n".join(_format_stock_context_for_llm(p) for p in profiles)
         sys_stock = (
-            "You are FinanceSight AI, an elite institutional stock market analyst. "
-            "Answer the user's exact question about the specified company directly and accurately. "
-            "Cite exact live prices, RSI, moving averages, and how many shares the user can afford with their available margin."
+            "You are FinanceSight AI, an institutional quantitative market analyst. "
+            "Give direct, crisp, data-backed answers using ONLY the verified metrics, pivot levels, multi-timeframe returns, fundamentals, and ML outputs provided. "
+            "Include clear Entry/Support/Resistance/Stop-Loss levels and position sizing for the user's margin when relevant."
         )
-        usr_stock = f"""
-        CURRENT SYSTEM CLOCK: {now_str}
-        USER ACCOUNT (@{username}): Available Margin: ₹{acct['balance']:,.2f} | Holdings Value: ₹{acct['tot_cur']:,.2f}
-        REQUESTED STOCK ({meta['name']} - {ticker}):
-        - Live Price: {currency}{price:,.2f} ({pct_change:+.2f}% today)
-        - 14-Day RSI: {rsi:.1f} | Daily Volatility: {volatility_pct:.2f}% | 14-Day ATR: {currency}{atr_val:,.2f}
-        - 20-Day SMA: {currency}{sma20:,.2f} | 50-Day EMA: {currency}{ema50:,.2f}
-        - 52-Week Low/High: {currency}{low52:,.2f} to {currency}{high52:,.2f}
-        - 5-Day Random Forest ML Forecast: {currency}{ml_pred_5d:,.2f} ({ml_move_pct:+.2f}%)
+        usr_stock = f"USER MARGIN: ₹{acct['balance']:,.2f} | FX: ₹{usdinr_rate:.2f}/$\n\n{context_blocks}\n\nUSER QUESTION: {user_question}"
 
-        USER QUESTION: "{user_question}"
-        """
-        groq_reply, groq_badge = call_groq_llm_live(sys_stock, usr_stock)
-        if groq_reply:
-            return groq_reply, groq_badge, card_title, card_logo
+        llm_reply, llm_badge, _ = call_groq_llm_live(sys_stock, usr_stock, groq_api_key, chat_history)
+        if not llm_reply and gemini_api_key:
+            llm_reply, llm_badge = call_gemini_llm_live(sys_stock, usr_stock, gemini_api_key, chat_history)
 
-        trend_up = price >= sma20
-        verdict = "BULLISH ACCUMULATION 🟢 ▲" if (trend_up and rsi < 68) else ("OVERBOUGHT / BOOK PROFITS 🟡" if rsi >= 68 else "BEARISH / WAIT FOR SUPPORT 🔴 ▼")
-        safe_qty = max(1, int((acct["balance"] * 0.20) // price)) if price > 0 else 1
-        return f"""
-### 📊 Live Stock Intelligence Report: {meta['name']} (`{ticker}`)
-* **Live Market Snapshot:** **{meta['name']} (`{ticker}`)** is trading at **`{currency}{price:,.2f}`** (`{pct_change:+.2f}%` today), with a 52-week range of **`{currency}{low52:,.2f}` – `{currency}{high52:,.2f}`**.
-* **AI Technical Verdict:** **{verdict}**
-  * **Trend vs 20-SMA (`{currency}{sma20:,.2f}`):** Price is trading **`{((price - sma20)/sma20)*100:+.2f}%`** {'above ▲' if trend_up else 'below ▼'} its 20-day average.
-  * **Momentum (RSI-14):** **`{rsi:.1f}`** | **5-Day ML Forecast:** **`{currency}{ml_pred_5d:,.2f}`** (`{ml_move_pct:+.2f}%`).
-* **Key Action Levels & Position Sizing for Your `₹{acct['balance']:,.2f}` Margin:**
-  * **Buy / Entry Zone:** `{currency}{price * 0.994:,.2f}` – `{currency}{price:,.2f}`
-  * **Stop-Loss (1.5x ATR):** `{currency}{price - (1.5 * atr_val):,.2f}`
-  * **Target 1:** `{currency}{price + (1.8 * atr_val):,.2f}` | **Target 2:** `{currency}{price + (3.2 * atr_val):,.2f}`
-  * **Suggested Allocation (20% of Available Cash):** Up to **`{safe_qty} shares`**.
-""", f"⚡ Powered by FinanceSight Quant Engine ({ticker})", card_title, card_logo
+        primary = profiles[0]
+        title_str = " vs ".join(f"{p['meta']['name']} ({p['sym']})" for p in profiles[:2])
+        logo_url = get_logo_url(primary["sym"])
+        if llm_reply:
+            return llm_reply, llm_badge, title_str, logo_url, steps_log
+
+        if len(profiles) >= 2:
+            rows = []
+            for p in profiles:
+                c = p["cur"]
+                rows.append(
+                    f"| **{p['meta']['name']}** (`{p['sym']}`) | `{c}{p['price']:,.2f}` (`{p['pct_1d']:+.2f}%`) | "
+                    f"`{p['pct_1m']:+.2f}%` | `{p['pct_1y']:+.2f}%` | `{p['rsi']:.1f}` | "
+                    f"`{c}{p['ml_pred_7d']:,.2f}` (`{p['ml_move_pct']:+.2f}%`) | **{p['verdict']}** |"
+                )
+            winner = max(profiles, key=lambda x: (x["score"], x["pct_1m"]))
+            return (
+                f"""### Multi-Stock Quantitative Comparison
+| Company | Spot Price (1D) | 1M Return | 1Y Return | RSI (14) | 7D ML Target | Verdict |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+{chr(10).join(rows)}
+
+* **Quantitative Leader:** **{winner['meta']['name']} (`{winner['sym']}`)** leads with a technical score of **`{winner['score']}/6`**, Support S1 `{winner['cur']}{winner['s1']:,.2f}`, and Resistance R1 `{winner['cur']}{winner['r1']:,.2f}`.""",
+                "FinanceSight Quant Comparator", title_str, logo_url, steps_log,
+            )
+
+        p = primary
+        c = p["cur"]
+        safe_qty = max(1, int((acct["balance"] * 0.20) // (p["price"] * p["fx"]))) if p["price"] > 0 else 0
+        pe_txt = f"{p['funds']['trailingPE']:.2f}" if p["funds"].get("trailingPE") else "N/A"
+        mc_txt = format_large_number(p["funds"].get("marketCap"), c)
+        news_md = ""
+        if p["news"]:
+            news_md = "\n\n#### Latest News Catalysts\n" + "\n".join(f"- [{n['title']}]({n['link']}) *({n['pubDate']})*" for n in p["news"])
+
+        return (
+            f"""### Institutional Stock Intelligence: {p['meta']['name']} (`{p['sym']}`)
+* **Spot Quote:** `{c}{p['price']:,.2f}` (`1D {p['pct_1d']:+.2f}%` | `1W {p['pct_1w']:+.2f}%` | `1M {p['pct_1m']:+.2f}%` | `1Y {p['pct_1y']:+.2f}%`)
+* **Quantitative Verdict (`{p['score']}/6`):** **{p['verdict']}**
+  * **Trend:** `{((p['price'] - p['sma20'])/p['sma20'])*100:+.2f}%` vs 20-SMA (`{c}{p['sma20']:,.2f}`) | 50-EMA (`{c}{p['ema50']:,.2f}`) | Volume `{p['vol_ratio']:.2f}x` 20D avg
+  * **Momentum & Risk:** Wilder RSI-14 `{p['rsi']:.1f}` | MACD `{p['macd_val']:+.2f}` | Ann. Volatility `{p['ann_vol']:.1f}%` | Market Cap `{mc_txt}` | P/E `{pe_txt}`
+  * **7-Day ML Forecast (`{p['ml_model']}`):** `{c}{p['ml_pred_7d']:,.2f}` (`{p['ml_move_pct']:+.2f}%` | Dir. Accuracy `{p['ml_dir_acc']:.1f}%`)
+* **Pivot & Trade Levels (`₹{acct['balance']:,.2f}` Available):**
+  * **Supports:** S1 `{c}{p['s1']:,.2f}` | S2 `{c}{p['s2']:,.2f}` &nbsp;•&nbsp; **Resistances:** R1 `{c}{p['r1']:,.2f}` | R2 `{c}{p['r2']:,.2f}`
+  * **Suggested Stop-Loss (1.5× ATR):** `{c}{max(0.01, p['price'] - 1.5*p['atr']):,.2f}` | **Target (2× ATR):** `{c}{p['price'] + 2.0*p['atr']:,.2f}`
+  * **Position Sizing (20% Cash):** `{safe_qty} shares` *(Max affordable CNC: `{p['affordable_cnc']}` shares)*{news_md}""",
+            f"FinanceSight Quant Engine ({p['sym']})", title_str, logo_url, steps_log,
+        )
 
     math_expr, math_ans = try_solve_math_query(user_question)
-    math_hint = f"\nEXACT PRE-COMPUTED MATH RESULT: {math_expr} = {math_ans}" if math_expr is not None else ""
-    sys_general = (
-        "You are FinanceSight AI, an intelligent, friendly, and accurate assistant with full knowledge of general topics, "
-        "science, math, current time/date, and global stock markets (NSE/BSE and NASDAQ/NYSE).\n"
-        "Answer the user's exact question directly, naturally, and concisely in sentence 1.\n"
-        "Do NOT output unrequested stock recommendation tables unless the user specifically asks for stock picks."
+    if math_expr is not None and math_ans is not None:
+        steps_log.append("Evaluated expression with safe AST solver")
+        fmt = f"{math_ans:,.4f}".rstrip("0").rstrip(".") if isinstance(math_ans, float) else f"{math_ans:,}"
+        return f"### Calculation Result\n`{math_expr}` = **`{fmt}`**", "FinanceSight Math Engine", card_title, card_logo, steps_log
+
+    sys_gen = "You are FinanceSight AI, an accurate financial and general assistant. Answer clearly and concisely."
+    usr_gen = f"Current Time: {get_ist_now().strftime('%A, %d %B %Y %I:%M %p IST')}\nUser Cash: ₹{acct['balance']:,.2f}\nQuestion: {user_question}"
+    llm_reply, llm_badge, err_code = call_groq_llm_live(sys_gen, usr_gen, groq_api_key, chat_history)
+    if not llm_reply and gemini_api_key:
+        llm_reply, llm_badge = call_gemini_llm_live(sys_gen, usr_gen, gemini_api_key, chat_history)
+    if llm_reply:
+        steps_log.append(f"Generated response via {llm_badge}")
+        return llm_reply, llm_badge, card_title, card_logo, steps_log
+
+    glossary = {
+        "rsi": "**RSI (Relative Strength Index)** measures momentum on a 0–100 scale using Wilder's 14-day smoothing. Above 70 suggests overbought conditions; below 30 suggests oversold conditions.",
+        "sma": "**SMA (Simple Moving Average)** is the arithmetic mean of closing prices over N periods (e.g. 20-day SMA).",
+        "ema": "**EMA (Exponential Moving Average)** applies exponentially higher weight to recent prices for faster trend sensitivity.",
+        "macd": "**MACD (Moving Average Convergence Divergence)** compares 12-day and 26-day EMAs against a 9-day signal line to spot trend shifts.",
+        "bollinger": "**Bollinger Bands** plot a 20-day SMA with ±2 standard deviation bands to gauge volatility expansion and mean reversion.",
+        "sharpe": "**Sharpe Ratio** measures risk-adjusted return (annualized excess return divided by return volatility).",
+        "intraday": "**MIS (Margin Intraday Square-off)** provides 5× leverage for same-day trades settled before market close.",
+        "delivery": "**CNC (Cash & Carry)** is 1× margin equity delivery held across days in your Demat portfolio.",
+    }
+    for kw, desc in glossary.items():
+        if re.search(rf"\b{re.escape(kw)}\b", q_clean):
+            steps_log.append(f"Matched quantitative glossary ({kw.upper()})")
+            return f"### FinanceSight Knowledge Base\n{desc}", "FinanceSight Quant KB", card_title, card_logo, steps_log
+
+    key_hint = (
+        "\n\n*Tip: Add your `GROQ_API_KEY` or `GEMINI_API_KEY` in the sidebar API Settings (or Streamlit Cloud Secrets) for full conversational LLM answers on open-ended questions.*"
+        if err_code in {"missing_key", "invalid_key"}
+        else ""
     )
-    usr_general = (
-        f"CURRENT IST DATE & TIME: {now_str}\n"
-        f"INDIAN MARKET (NSE/BSE) HOURS: Monday–Friday, 9:15 AM – 3:30 PM IST (Pre-open 9:00–9:15 AM IST). Current Status: {nse_status_str}\n"
-        f"US MARKET (NASDAQ/NYSE) HOURS: Monday–Friday, 9:30 AM – 4:00 PM EST (7:00 PM – 1:30 AM IST).\n"
-        f"USER (@{username}) AVAILABLE WALLET MARGIN: ₹{acct['balance']:,.2f}, LIVE HOLDINGS VALUE: ₹{acct['tot_cur']:,.2f}{math_hint}\n\n"
-        f"USER QUESTION: \"{user_question}\""
+    return (
+        f"### FinanceSight Assistant\n"
+        f"Your account has **`₹{acct['balance']:,.2f}`** cash margin and **`₹{acct['tot_cur']:,.2f}`** in holdings.\n\n"
+        f"Try asking:\n"
+        f"- *\"Analyze Reliance Industries\"* or *\"Compare TCS vs Infosys\"*\n"
+        f"- *\"Latest news on NVDA\"* or *\"List top benefitting Indian NSE stocks\"*\n"
+        f"- *\"Calculate margin for 10 AAPL\"* or *\"Buy 5 TCS\"*{key_hint}",
+        "FinanceSight Quant Engine", card_title, card_logo, steps_log,
     )
-    groq_reply, groq_badge = call_groq_llm_live(sys_general, usr_general)
-    if groq_reply:
-        return groq_reply, groq_badge, card_title, card_logo
 
-    fb_reply, fb_badge = answer_general_or_fallback_question(user_question, now_dt, acct, nse_status_str)
-    return fb_reply, fb_badge, card_title, card_logo
 
-db_logged, db_user, db_name = load_login_session()
-if "logged_in" not in st.session_state:
-    st.session_state.logged_in = db_logged
-if "username" not in st.session_state:
-    st.session_state.username = db_user
-if "full_name" not in st.session_state:
-    st.session_state.full_name = db_name
-if "page" not in st.session_state:
-    st.session_state.page = "Dashboard"
-if "selected_ticker" not in st.session_state:
-    st.session_state.selected_ticker = "RELIANCE.NS"
-if "ai_chat_history" not in st.session_state:
-    st.session_state.ai_chat_history = []
-if "public_page" not in st.session_state:
-    st.session_state.public_page = "Home"
-if "auth_notice" not in st.session_state:
-    st.session_state.auth_notice = ""
-if "allow_after_hours" not in st.session_state:
-    st.session_state.allow_after_hours = False
+def render_ticker_marquee(snapshots: dict, idx_snaps: dict, usdinr: float) -> None:
+    fx_sn = idx_snaps.get("USDINR=X", {"pct": 0.0})
+    fx_clr = "#10b981" if fx_sn.get("pct", 0.0) >= 0 else "#ef4444"
+    parts = [
+        f'<span style="display:inline-flex;align-items:center;gap:6px;margin:0 16px;font-family:JetBrains Mono,monospace;font-size:0.82rem;">'
+        f'<span style="background:rgba(37,99,235,0.18);color:#60a5fa;border-radius:5px;padding:1px 6px;font-weight:700;font-size:0.72rem;">FX</span>'
+        f'<b>USD/INR</b> ₹{usdinr:.2f} <span style="color:{fx_clr};font-weight:700;">{fx_sn.get("pct", 0.0):+.2f}%</span></span>'
+    ]
+    for sym, meta in MARKET_INDICES.items():
+        sn = idx_snaps.get(sym, {"price": 0.0, "pct": 0.0})
+        clr = "#10b981" if sn["pct"] >= 0 else "#ef4444"
+        arr = "▲" if sn["pct"] >= 0 else "▼"
+        parts.append(
+            f'<span style="display:inline-flex;align-items:center;gap:6px;margin:0 16px;font-family:JetBrains Mono,monospace;font-size:0.82rem;">'
+            f'<b>{meta["name"]}</b> {sn["price"]:,.2f} <span style="color:{clr};font-weight:700;">{arr} {sn["pct"]:+.2f}%</span></span>'
+        )
+    for sym in CORE_TICKERS[:14]:
+        sn = snapshots.get(sym, {"price": 0.0, "pct": 0.0})
+        cur = get_ticker_meta(sym)["currency"]
+        clr = "#10b981" if sn["pct"] >= 0 else "#ef4444"
+        arr = "▲" if sn["pct"] >= 0 else "▼"
+        parts.append(
+            f'<span style="display:inline-flex;align-items:center;gap:6px;margin:0 16px;font-family:JetBrains Mono,monospace;font-size:0.82rem;">'
+            f'{stock_icon_html(sym, size=18, radius=5)}'
+            f'<b>{sym.replace(".NS", "")}</b> {cur}{sn["price"]:,.2f} <span style="color:{clr};font-weight:700;">{arr} {sn["pct"]:+.2f}%</span></span>'
+        )
+    row = "".join(parts)
+    st.html(
+        f"""
+        <style>
+        @keyframes fsMarquee {{ 0% {{ transform: translateX(0); }} 100% {{ transform: translateX(-50%); }} }}
+        .fs-marquee-box {{
+            width: 100%; overflow: hidden; white-space: nowrap;
+            background: var(--secondary-background-color);
+            color: var(--text-color);
+            border: 1px solid rgba(128,128,128,0.24);
+            border-radius: 10px; padding: 8px 0; margin-bottom: 12px;
+        }}
+        .fs-marquee-track {{ display: inline-flex; align-items: center; animation: fsMarquee 42s linear infinite; }}
+        .fs-marquee-box:hover .fs-marquee-track {{ animation-play-state: paused; }}
+        </style>
+        <div class="fs-marquee-box"><div class="fs-marquee-track">{row}{row}</div></div>
+        """
+    )
 
-if "nav" in st.query_params:
-    target_nav = st.query_params["nav"]
-    st.query_params.clear()
-    if target_nav == "Logout":
-        save_login_session(False, "", "")
-        st.session_state.public_page = "Home"
-    elif target_nav in ["Home", "Signup", "About", "Products", "Pricing", "Support"]:
-        save_login_session(False, "", "")
-        st.session_state.public_page = target_nav
-    elif target_nav in ["Dashboard", "Orders", "Holdings", "Positions", "Funds", "Terminal", "Advisor", "Apps"]:
-        if st.session_state.logged_in and st.session_state.username:
-            st.session_state.page = target_nav
-        else:
-            st.session_state.public_page = "Home"
-            st.session_state.auth_notice = "🔒 Please sign in with your User ID and Password to access the trading dashboard."
 
-def navigate_to(page_name, ticker=None):
-    st.session_state.page = page_name
-    if ticker:
-        st.session_state.selected_ticker = ticker
+def render_indices_row(idx_snaps: dict, usdinr: float) -> None:
+    cols = st.columns(5)
+    for i, (sym, meta) in enumerate(MARKET_INDICES.items()):
+        sn = idx_snaps.get(sym, {"price": 0.0, "pct": 0.0, "sparkline": []})
+        cols[i].metric(
+            label=meta["name"],
+            value=f"{sn['price']:,.2f}",
+            delta=f"{sn['pct']:+.2f}%",
+            chart_data=sn.get("sparkline") or None,
+            chart_type="area",
+            border=True,
+            height="stretch",
+        )
+    fx_sn = idx_snaps.get("USDINR=X", DEFAULT_INDEX_SNAPSHOTS["USDINR=X"])
+    cols[4].metric(
+        label="USD / INR FX",
+        value=f"₹{usdinr:.2f}",
+        delta=f"{fx_sn.get('pct', 0.0):+.2f}% 1D",
+        chart_data=fx_sn.get("sparkline") or None,
+        chart_type="area",
+        border=True,
+        height="stretch",
+    )
 
-nav_token = f"{st.session_state.public_page}_{st.session_state.page}_{int(datetime.now().timestamp())}"
 
-def render_financesight_open_account(key_suffix="main"):
-    render_html("""
-    <div class="z-section-card" style="text-align:center;">
-        <h2 class="fs-title" style="font-size:1.95rem; margin-bottom:10px;">Start Exploring with a FinanceSight Account</h2>
-        <p class="fs-muted" style="font-size:1.02rem; margin-bottom:20px;">
-            Access live NSE & NASDAQ STOCKS, 7-day ML price forecasting, autonomous AI order execution, and a ₹1,00,000 virtual trading wallet.
-        </p>
-    </div>
-    """)
-    c1, c2, c3 = st.columns([1.6, 1.2, 1.6])
-    with c2:
-        if st.button("🚀 SIGN UP NOW (CLAIM ₹1,00,000 VIRTUAL MARGIN)", key=f"open_acc_btn_{key_suffix}", type="primary", use_container_width=True):
-            st.session_state.public_page = "Signup"
-            st.rerun()
+def render_brokerage_calculator_widget(key_prefix: str = "calc") -> None:
+    st.subheader("Brokerage, STT & Statutory Charges Calculator", icon=":material/calculate:")
+    with st.container(border=True):
+        c1, c2, c3, c4 = st.columns(4)
+        seg = c1.selectbox(
+            "Segment",
+            ["Equity Delivery (CNC)", "Equity Intraday (MIS)", "F&O Futures"],
+            key=f"{key_prefix}_seg",
+        )
+        buy_p = c2.number_input("Buy Price (₹)", min_value=1.0, value=1500.0, step=10.0, key=f"{key_prefix}_bp")
+        sell_p = c3.number_input("Sell Price (₹)", min_value=1.0, value=1545.0, step=10.0, key=f"{key_prefix}_sp")
+        qty = c4.number_input("Quantity (Shares)", min_value=1, max_value=100000, value=100, step=10, key=f"{key_prefix}_qty")
 
-def render_financesight_footer():
-    render_html(f"""
-    <div class="z-footer">
-        <div style="display:grid; grid-template-columns: 1.45fr 1fr 1fr 1fr; gap:28px; padding-bottom:28px; border-bottom:1px solid rgba(128,128,128,0.25);">
-            <div>
-                <a href="?nav=Home&r=ftr_{nav_token}" target="_self" class="fs-logo-link" title="Go to FinanceSight Home" style="margin-bottom:10px;">
-                    {FINANCESIGHT_LOGO_SVG}
-                    <span><span style="color:#38bdf8;">FINANCE</span>SIGHT</span>
-                </a>
-                <p class="fs-muted" style="font-size:0.82rem; line-height:1.6;">
+    res = compute_brokerage_breakdown(seg, buy_p, sell_p, int(qty))
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Total Turnover", f"₹{res['turnover']:,.2f}", f"Brokerage: ₹{res['brokerage']:.2f}", delta_color="off", border=True, height="stretch")
+    m2.metric("Total Taxes & Charges", f"₹{res['total_charges']:,.2f}", f"STT ₹{res['stt']:.2f} | GST ₹{res['gst']:.2f}", delta_color="off", border=True, height="stretch")
+    m3.metric("Breakeven / Share", f"₹{res['breakeven_pts']:.2f}", "Points to cover fees", delta_color="off", border=True, height="stretch")
+    m4.metric("Net P&L", f"₹{res['net_pnl']:,.2f}", f"Gross: ₹{res['gross_pnl']:+.2f}", border=True, height="stretch")
+
+    st.table(
+        {
+            "Brokerage": f"₹{res['brokerage']:,.2f}",
+            "STT (Securities Transaction Tax)": f"₹{res['stt']:,.2f}",
+            "Exchange Transaction Charge": f"₹{res['exch_txn']:,.2f}",
+            "SEBI Turnover Fee": f"₹{res['sebi_fee']:,.2f}",
+            "Stamp Duty": f"₹{res['stamp_duty']:,.2f}",
+            "GST (18% on Brokerage + Txn + SEBI)": f"₹{res['gst']:,.2f}",
+            "**Total Charges**": f"**₹{res['total_charges']:,.2f}**",
+        },
+        border="horizontal",
+        width="content",
+    )
+
+
+def render_public_footer() -> None:
+    pub_pages = st.session_state.get("_pub_page_map", {})
+    st.space("medium")
+    with st.container(border=True):
+        c_brand, c_plat, c_supp, c_acct = st.columns([1.45, 1.0, 1.0, 1.0], gap="medium")
+
+        with c_brand:
+            st.html(
+                f"""
+                <div style="margin-bottom:8px;">{FINANCESIGHT_LOGO_SVG}</div>
+                <p style="font-size:0.82rem;opacity:0.82;line-height:1.55;margin:6px 0 12px 0;">
                     © 2026 FinanceSight.<br>
                     All rights reserved.<br>
-                    Market Analytics, AI Forecasting & Paper Trading Platform
+                    Market Analytics, AI Forecasting &amp; Paper Trading Platform
                 </p>
-                <div class="fs-social-wrap">
-                    <a href="https://x.com" target="_blank" rel="noopener noreferrer" class="fs-social-link">
-                        <img src="https://www.google.com/s2/favicons?domain=x.com&sz=64" class="social-logo" alt="X"> X
+                <div style="display:flex;flex-wrap:wrap;gap:6px;">
+                    <a href="https://x.com" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:999px;border:1px solid rgba(128,128,128,0.3);color:inherit;text-decoration:none;font-size:0.76rem;font-weight:600;">
+                        <img src="https://www.google.com/s2/favicons?domain=x.com&sz=32" width="14" height="14" style="border-radius:3px;"> X
                     </a>
-                    <a href="https://www.linkedin.com" target="_blank" rel="noopener noreferrer" class="fs-social-link">
-                        <img src="https://www.google.com/s2/favicons?domain=linkedin.com&sz=64" class="social-logo" alt="LinkedIn"> LinkedIn
+                    <a href="https://www.linkedin.com" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:999px;border:1px solid rgba(128,128,128,0.3);color:inherit;text-decoration:none;font-size:0.76rem;font-weight:600;">
+                        <img src="https://www.google.com/s2/favicons?domain=linkedin.com&sz=32" width="14" height="14" style="border-radius:3px;"> LinkedIn
                     </a>
-                    <a href="https://www.facebook.com" target="_blank" rel="noopener noreferrer" class="fs-social-link">
-                        <img src="https://www.google.com/s2/favicons?domain=facebook.com&sz=64" class="social-logo" alt="Facebook"> Facebook
+                    <a href="https://www.facebook.com" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:999px;border:1px solid rgba(128,128,128,0.3);color:inherit;text-decoration:none;font-size:0.76rem;font-weight:600;">
+                        <img src="https://www.google.com/s2/favicons?domain=facebook.com&sz=32" width="14" height="14" style="border-radius:3px;"> Facebook
                     </a>
-                    <a href="https://www.instagram.com" target="_blank" rel="noopener noreferrer" class="fs-social-link">
-                        <img src="https://www.google.com/s2/favicons?domain=instagram.com&sz=64" class="social-logo" alt="Instagram"> Instagram
+                    <a href="https://www.instagram.com" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:999px;border:1px solid rgba(128,128,128,0.3);color:inherit;text-decoration:none;font-size:0.76rem;font-weight:600;">
+                        <img src="https://www.google.com/s2/favicons?domain=instagram.com&sz=32" width="14" height="14" style="border-radius:3px;"> Instagram
                     </a>
-                    <a href="https://www.youtube.com" target="_blank" rel="noopener noreferrer" class="fs-social-link">
-                        <img src="https://www.google.com/s2/favicons?domain=youtube.com&sz=64" class="social-logo" alt="YouTube"> YouTube
+                    <a href="https://www.youtube.com" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:999px;border:1px solid rgba(128,128,128,0.3);color:inherit;text-decoration:none;font-size:0.76rem;font-weight:600;">
+                        <img src="https://www.google.com/s2/favicons?domain=youtube.com&sz=32" width="14" height="14" style="border-radius:3px;"> YouTube
                     </a>
-                    <a href="https://telegram.org" target="_blank" rel="noopener noreferrer" class="fs-social-link">
-                        <img src="https://www.google.com/s2/favicons?domain=telegram.org&sz=64" class="social-logo" alt="Telegram"> Telegram
+                    <a href="https://telegram.org" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:999px;border:1px solid rgba(128,128,128,0.3);color:inherit;text-decoration:none;font-size:0.76rem;font-weight:600;">
+                        <img src="https://www.google.com/s2/favicons?domain=telegram.org&sz=32" width="14" height="14" style="border-radius:3px;"> Telegram
                     </a>
                 </div>
-            </div>
-            <div>
-                <div class="fs-title" style="font-size:0.95rem; margin-bottom:14px;">Platform</div>
-                <a href="?nav=Home&r={nav_token}" target="_self" class="fs-footer-link">Home</a>
-                <a href="?nav=About&r={nav_token}" target="_self" class="fs-footer-link">About</a>
-                <a href="?nav=Products&r={nav_token}" target="_self" class="fs-footer-link">Products & Tools</a>
-                <a href="?nav=Pricing&r={nav_token}" target="_self" class="fs-footer-link">Fee & Tax Calculator</a>
-                <a href="?nav=Terminal&r={nav_token}" target="_self" class="fs-footer-link">SuperChart Terminal</a>
-                <a href="?nav=Advisor&r={nav_token}" target="_self" class="fs-footer-link">AI Stock Advisor</a>
-            </div>
-            <div>
-                <div class="fs-title" style="font-size:0.95rem; margin-bottom:14px;">Support & Resources</div>
-                <a href="?nav=Support&r={nav_token}" target="_self" class="fs-footer-link">Contact us</a>
-                <a href="?nav=Support&r={nav_token}" target="_self" class="fs-footer-link">Support portal</a>
-                <a href="?nav=Pricing&r={nav_token}" target="_self" class="fs-footer-link">Brokerage & tax breakdown</a>
-                <a href="?nav=Orders&r={nav_token}" target="_self" class="fs-footer-link">Order book CSV export</a>
-                <a href="https://www.youtube.com" target="_blank" rel="noopener noreferrer" class="fs-footer-link">Video tutorials</a>
-                <a href="?nav=Dashboard&r={nav_token}" target="_self" class="fs-footer-link">Live market overview</a>
-            </div>
-            <div>
-                <div class="fs-title" style="font-size:0.95rem; margin-bottom:14px;">Account & Simulation</div>
-                <a href="?nav=Signup&r={nav_token}" target="_self" class="fs-footer-link">Open an account</a>
-                <a href="?nav=Funds&r={nav_token}" target="_self" class="fs-footer-link">Fund transfer (Virtual Wallet)</a>
-                <a href="?nav=Holdings&r={nav_token}" target="_self" class="fs-footer-link">Portfolio holdings</a>
-                <a href="?nav=Positions&r={nav_token}" target="_self" class="fs-footer-link">Intraday & delivery positions</a>
-                <a href="?nav=Apps&r={nav_token}" target="_self" class="fs-footer-link">FinanceSight Algo Backtester</a>
-            </div>
-        </div>
-        <div class="fs-muted" style="margin-top:22px; font-size:0.75rem; line-height:1.7;">
-            <p>FinanceSight is a market analysis, machine learning price forecasting, and paper trading simulation platform covering global STOCKS. Live and historical market data is fetched via the Yahoo Finance API for educational and analytical use.</p>
-            <p style="margin-top:8px;">Stock market investments and trading involve market risk. Past backtest performance and machine learning projections do not guarantee future returns. Always verify technical setups and risk parameters before making financial decisions.</p>
-            <div style="margin-top:14px; text-align:center;">
-                <a href="https://www.nseindia.com" target="_blank" rel="noopener noreferrer" class="fs-bottom-link">NSE</a> •
-                <a href="https://www.bseindia.com" target="_blank" rel="noopener noreferrer" class="fs-bottom-link">BSE</a> •
-                <a href="https://www.mcxindia.com" target="_blank" rel="noopener noreferrer" class="fs-bottom-link">MCX</a> •
-                <a href="?nav=About&r={nav_token}" target="_self" class="fs-bottom-link">About Platform</a> •
-                <a href="?nav=Pricing&r={nav_token}" target="_self" class="fs-bottom-link">Fee Calculator</a> •
-                <a href="?nav=Support&r={nav_token}" target="_self" class="fs-bottom-link">Help & Support</a>
-            </div>
-        </div>
-    </div>
-    """)
+                """
+            )
 
-if not st.session_state.logged_in:
-    st.markdown("""
-    <style>
-        .stApp {
-            background-color: #030612 !important;
-            background-image:
-                radial-gradient(circle at 50% 78%, rgba(244, 114, 182, 0.28) 0%, rgba(168, 85, 247, 0.34) 18%, rgba(37, 99, 235, 0.44) 40%, rgba(6, 182, 212, 0.18) 58%, transparent 74%),
-                radial-gradient(circle at 20% 22%, rgba(14, 165, 233, 0.22) 0%, transparent 48%),
-                radial-gradient(circle at 82% 24%, rgba(139, 92, 246, 0.24) 0%, transparent 48%),
-                linear-gradient(180deg, #02040a 0%, #060b1e 52%, #090d24 100%) !important;
-            background-attachment: fixed !important;
-            color: #f8fafc !important;
-        }
-        .z-section-card, .fs-panel, .z-universe-card, .stock-card, .kpi-box, .z-footer, [data-testid="stForm"] {
-            background: rgba(8, 13, 28, 0.84) !important;
-            backdrop-filter: blur(18px) !important;
-            -webkit-backdrop-filter: blur(18px) !important;
-            border: 1px solid rgba(56, 189, 248, 0.28) !important;
-            box-shadow: 0 14px 36px rgba(0, 0, 0, 0.55) !important;
-            color: #f8fafc !important;
-        }
-        .fs-title, .stApp h1, .stApp h2, .stApp h3, .stApp h4, .mono-price, .kpi-val {
-            color: #ffffff !important;
-        }
-        .fs-muted, .stApp p, .stApp li, .kpi-title, .fs-footer-link, .fs-bottom-link {
-            color: #e2e8f0 !important;
-            opacity: 0.92 !important;
-        }
-        .fs-logo-link {
-            color: #ffffff !important;
-        }
-        .fs-nav-btn {
-            background: rgba(15, 23, 42, 0.85) !important;
-            border: 1px solid rgba(56, 189, 248, 0.32) !important;
-            color: #f8fafc !important;
-        }
-        .fs-nav-btn:hover {
-            border-color: #38bdf8 !important;
-            color: #38bdf8 !important;
-            background: rgba(30, 41, 59, 0.95) !important;
-        }
-        .fs-social-link {
-            background: rgba(15, 23, 42, 0.9) !important;
-            border: 1px solid rgba(56, 189, 248, 0.3) !important;
-            color: #f8fafc !important;
-        }
-        [data-testid="stWidgetLabel"] p, label p, .stTabs [data-baseweb="tab"] p {
-            color: #f8fafc !important;
-            font-weight: 600 !important;
-        }
-        .stTextInput input, .stNumberInput input, [data-baseweb="select"] > div {
-            background-color: rgba(15, 23, 42, 0.92) !important;
-            color: #ffffff !important;
-            border: 1px solid rgba(56, 189, 248, 0.35) !important;
-        }
-        .watch-row {
-            color: #f8fafc !important;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.12) !important;
-        }
-    </style>
-    """, unsafe_allow_html=True)
+        with c_plat:
+            st.markdown("**Platform**")
+            if "home" in pub_pages:
+                st.page_link(pub_pages["home"], label="Home")
+            if "about" in pub_pages:
+                st.page_link(pub_pages["about"], label="About")
+            if "products" in pub_pages:
+                st.page_link(pub_pages["products"], label="Products & Tools")
+            if "fees" in pub_pages:
+                st.page_link(pub_pages["fees"], label="Fee & Tax Calculator")
+            if st.button("SuperChart Terminal", type="tertiary", key="ftr_term"):
+                st.toast("Click '1-Click Demo Login' above to open SuperChart Terminal.", icon=":material/lock_open:")
+            if st.button("AI Stock Advisor", type="tertiary", key="ftr_ai"):
+                st.toast("Click '1-Click Demo Login' above to open AI Stock Advisor.", icon=":material/lock_open:")
 
-    nav_c1, nav_c2, nav_c3, nav_c4, nav_c5, nav_c6, nav_c7, nav_c8 = st.columns([1.85, 1.75, 0.88, 0.92, 0.88, 1.0, 0.92, 0.95], gap="small")
-    
-    with nav_c1:
-        render_html(f"""
-        <div style="padding-right:12px; padding-top:3px;">
-            <a href="?nav=Home&r=top_{nav_token}" target="_self" class="fs-logo-link" title="Go to FinanceSight Home">
-                {FINANCESIGHT_LOGO_SVG}
-                <span><span style="color:#38bdf8;">FINANCE</span>SIGHT</span>
-            </a>
-        </div>
-        """)
+        with c_supp:
+            st.markdown("**Support & Resources**")
+            if "support" in pub_pages:
+                st.page_link(pub_pages["support"], label="Contact us")
+                st.page_link(pub_pages["support"], label="Support portal")
+            if "fees" in pub_pages:
+                st.page_link(pub_pages["fees"], label="Brokerage & tax breakdown")
+            if st.button("Order book CSV export", type="tertiary", key="ftr_ord"):
+                st.toast("Sign in to export your Tradebook CSV.", icon=":material/lock_open:")
+            st.markdown("[Video tutorials](https://www.youtube.com)")
+            if "home" in pub_pages:
+                st.page_link(pub_pages["home"], label="Live market overview")
 
-    with nav_c2:
-        search_options = ["Search Stocks"] + [
-            f"{sym} — {meta['name']} ({meta['exchange']})" for sym, meta in STOCK_CATALOG.items()
-        ]
-        picked_search = st.selectbox("Search Stocks", search_options, label_visibility="collapsed")
-        if picked_search != "Search Stocks":
-            sym_jump = picked_search.split(" — ")[0]
-            st.session_state.selected_ticker = sym_jump
-            st.session_state.auth_notice = f"🔒 Please sign in with your User ID and Password to view {sym_jump} in the terminal."
-
-    pub_pages = [
-        ("HOME", "Home", nav_c3),
-        ("SIGNUP", "Signup", nav_c4),
-        ("ABOUT", "About", nav_c5),
-        ("PRODUCTS", "Products", nav_c6),
-        ("PRICING", "Pricing", nav_c7),
-        ("SUPPORT", "Support", nav_c8)
-    ]
-    for label_caps, p_name, col_obj in pub_pages:
-        active_cls = "active" if st.session_state.public_page == p_name else ""
-        svg_icon = NAV_SVGS[p_name]
-        with col_obj:
-            render_html(f"""
-            <a href="?nav={p_name}&r={nav_token}" target="_self" class="fs-nav-btn {active_cls}">
-                {svg_icon}
-                <span>{label_caps}</span>
-            </a>
-            """)
-
-    if not online_status:
-        st.warning("⚠️ **Offline Mode Detected:** Your internet connection is currently disconnected. Market prices are frozen at their last recorded close and will not fluctuate until internet is restored.")
-
-    if st.session_state.auth_notice:
-        st.info(st.session_state.auth_notice)
-        st.session_state.auth_notice = ""
-
-    render_html("<hr style='border:0; border-top:1px solid rgba(56,189,248,0.25); margin:6px 0 18px 0;'>")
-
-    if st.session_state.public_page == "Home":
-        hero_left, hero_right = st.columns([1.62, 1.0], gap="large")
-
-        with hero_left:
-            watch_rows_html = ""
-            for w_sym, w_label, w_dom in [
-                ("NVDA", "NVDA", "nvidia.com"),
-                ("AAPL", "AAPL", "apple.com"),
-                ("JIOFIN.NS", "JIOFIN", "jio.com"),
-                ("RELIANCE.NS", "RELIANCE", "ril.com"),
-                ("TSLA", "TSLA", "tesla.com")
+        with c_acct:
+            st.markdown("**Account & Simulation**")
+            if "home" in pub_pages:
+                st.page_link(pub_pages["home"], label="Open an account")
+            for lbl, fkey in [
+                ("Fund transfer (Virtual Wallet)", "ftr_funds"),
+                ("Portfolio holdings", "ftr_hold"),
+                ("Intraday & delivery positions", "ftr_pos"),
+                ("FinanceSight Algo Backtester", "ftr_algo"),
             ]:
-                s_data = snapshots.get(w_sym, {"price": 0.0, "pct": 0.0})
-                cur_sym = STOCK_CATALOG.get(w_sym, {}).get("currency", "₹")
-                is_up = s_data["pct"] >= 0
-                clr = "#34d399" if is_up else "#fb7185"
-                arr = "▲" if is_up else "▼"
-                watch_rows_html += (
-                    f'<div class="watch-row">'
-                    f'<div style="display:flex; align-items:center; gap:8px; font-weight:700;">'
-                    f'<img src="https://www.google.com/s2/favicons?domain={w_dom}&sz=128" class="logo-sm">'
-                    f'<span>{w_label}</span></div>'
-                    f'<span style="font-weight:700;">{cur_sym}{s_data["price"]:,.2f}</span>'
-                    f'<span style="color:{clr}; font-weight:800;">{arr} {s_data["pct"]:+.2f}%</span>'
-                    f'</div>'
+                if st.button(lbl, type="tertiary", key=fkey):
+                    st.toast(f"Sign in on Home (or use Demo Login) to access {lbl}.", icon=":material/lock_open:")
+
+        st.divider()
+        st.caption(
+            "FinanceSight is a market analysis, machine learning price forecasting, and paper trading simulation platform covering global equities. "
+            "Live and historical market data is fetched via the Yahoo Finance API for educational and analytical use. "
+            "Stock market investments involve market risk; past backtest performance and ML projections do not guarantee future returns."
+        )
+        st.markdown(
+            "[NSE](https://www.nseindia.com) · [BSE](https://www.bseindia.com) · [MCX](https://www.mcxindia.com) · "
+            "About Platform · Fee Calculator · Help & Support",
+            text_alignment="center",
+        )
+
+
+def get_market_context():
+    return st.session_state["_mkt_snaps"], st.session_state["_idx_snaps"], st.session_state["_usdinr"], st.session_state["_is_live"], st.session_state["_mkt_stamp"]
+
+
+def _hero_spotlight_html(snaps: dict, is_live: bool, stamp: str) -> str:
+    total_count = len(STOCK_CATALOG)
+    nse_count = sum(1 for v in STOCK_CATALOG.values() if v["exchange"] == "NSE")
+    us_count = total_count - nse_count
+    dot_clr = "#10b981" if is_live else "#f59e0b"
+    status_txt = f"Live Yahoo Finance · {stamp}" if is_live else stamp
+
+    showcase_syms = [
+        "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "ETERNAL.NS",
+        "HAL.NS", "SBIN.NS", "AAPL", "NVDA",
+        "TSLA", "MSFT", "GOOGL", "AMZN",
+    ]
+    tiles = []
+    for sym in showcase_syms:
+        meta = get_ticker_meta(sym)
+        sn = snaps.get(sym, DEFAULT_STOCKS_SNAPSHOTS.get(sym, {"price": 0.0, "pct": 0.0}))
+        pct = float(sn.get("pct", 0.0))
+        mv_clr = "#10b981" if pct >= 0 else "#ef4444"
+        mv_bg = "rgba(16,185,129,0.14)" if pct >= 0 else "rgba(239,68,68,0.14)"
+        short_sym = html.escape(sym.replace(".NS", ""))
+        tiles.append(
+            f'<div class="fs-tile">'
+            f'<div class="fs-tile-top">{stock_icon_html(sym, size=26, radius=7)}'
+            f'<div><div class="fs-tile-sym">{short_sym}</div>'
+            f'<div class="fs-tile-ex">{meta["exchange"]}</div></div></div>'
+            f'<div class="fs-tile-btm">'
+            f'<span class="fs-tile-pr">{meta["currency"]}{sn["price"]:,.2f}</span>'
+            f'<span class="fs-tile-pct" style="color:{mv_clr};background:{mv_bg};">{pct:+.2f}%</span>'
+            f'</div></div>'
+        )
+
+    return f"""
+    <style>
+    .fs-hero {{
+        display: grid;
+        grid-template-columns: 1.15fr 1.25fr;
+        gap: 22px;
+        align-items: center;
+        padding: 24px 26px;
+        margin-bottom: 14px;
+        border-radius: 16px;
+        border: 1px solid rgba(59,130,246,0.28);
+        background:
+            radial-gradient(circle at 12% 18%, rgba(37,99,235,0.18), transparent 46%),
+            radial-gradient(circle at 88% 82%, rgba(16,185,129,0.14), transparent 46%),
+            var(--secondary-background-color);
+        color: var(--text-color);
+    }}
+    @media (max-width: 960px) {{
+        .fs-hero {{ grid-template-columns: 1fr; padding: 18px; }}
+    }}
+    .fs-live-pill {{
+        display: inline-flex; align-items: center; gap: 8px;
+        padding: 5px 12px; border-radius: 999px;
+        font-size: 0.78rem; font-weight: 600;
+        background: rgba(16,185,129,0.12);
+        border: 1px solid rgba(16,185,129,0.32);
+        margin-bottom: 12px;
+    }}
+    .fs-dot {{
+        width: 8px; height: 8px; border-radius: 50%;
+        background: {dot_clr}; box-shadow: 0 0 8px {dot_clr};
+    }}
+    .fs-hero-title {{
+        font-size: 2.15rem; font-weight: 800; line-height: 1.15;
+        margin: 0 0 10px 0; letter-spacing: -0.02em;
+    }}
+    .fs-hero-grad {{
+        background: linear-gradient(90deg, #3b82f6, #10b981);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }}
+    .fs-hero-sub {{
+        font-size: 0.96rem; opacity: 0.85; line-height: 1.5; margin: 0 0 16px 0;
+    }}
+    .fs-kpis {{
+        display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+    }}
+    .fs-kpi-pill {{
+        background: rgba(128,128,128,0.08);
+        border: 1px solid rgba(128,128,128,0.22);
+        border-radius: 10px; padding: 10px 12px;
+    }}
+    .fs-kpi-num {{ font-size: 1.08rem; font-weight: 800; font-family: JetBrains Mono, monospace; }}
+    .fs-kpi-lbl {{ font-size: 0.75rem; opacity: 0.75; margin-top: 2px; }}
+    .fs-mosaic {{
+        display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px;
+    }}
+    @media (max-width: 640px) {{
+        .fs-mosaic {{ grid-template-columns: repeat(2, 1fr); }}
+    }}
+    .fs-tile {{
+        background: rgba(128,128,128,0.07);
+        border: 1px solid rgba(128,128,128,0.20);
+        border-radius: 11px; padding: 9px 10px;
+    }}
+    .fs-tile-top {{ display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }}
+    .fs-tile-sym {{ font-size: 0.80rem; font-weight: 700; line-height: 1.1; }}
+    .fs-tile-ex {{ font-size: 0.67rem; opacity: 0.68; }}
+    .fs-tile-btm {{ display: flex; align-items: center; justify-content: space-between; gap: 4px; }}
+    .fs-tile-pr {{ font-size: 0.78rem; font-weight: 700; font-family: JetBrains Mono, monospace; }}
+    .fs-tile-pct {{ font-size: 0.70rem; font-weight: 700; padding: 1px 6px; border-radius: 5px; font-family: JetBrains Mono, monospace; }}
+    </style>
+    <div class="fs-hero">
+      <div>
+        <div class="fs-live-pill"><span class="fs-dot"></span><span>{html.escape(status_txt)}</span></div>
+        <h1 class="fs-hero-title">Finance<span class="fs-hero-grad">Sight</span></h1>
+        <p class="fs-hero-sub">
+          Institutional quant terminal across <b>{total_count} NSE &amp; US equities</b> — combining live technical charts,
+          chronological 80/20 ML price forecasting, Groq/Gemini AI advisory, and multi-currency paper trading.
+        </p>
+        <div class="fs-kpis">
+          <div class="fs-kpi-pill"><div class="fs-kpi-num">{total_count}+ Stocks</div><div class="fs-kpi-lbl">{nse_count} NSE · {us_count} US</div></div>
+          <div class="fs-kpi-pill"><div class="fs-kpi-num">₹1,00,000</div><div class="fs-kpi-lbl">Demo Paper Margin</div></div>
+          <div class="fs-kpi-pill"><div class="fs-kpi-num">3-Model ML</div><div class="fs-kpi-lbl">Zero Look-Ahead</div></div>
+        </div>
+      </div>
+      <div class="fs-mosaic">{''.join(tiles)}</div>
+    </div>
+    """
+
+
+def page_public_home() -> None:
+    snaps, idx_snaps, usdinr, is_live, stamp = get_market_context()
+    render_ticker_marquee(snaps, idx_snaps, usdinr)
+
+    st.html(_hero_spotlight_html(snaps, is_live, stamp))
+    render_indices_row(idx_snaps, usdinr)
+    st.space("small")
+
+    left_col, right_col = st.columns([1.58, 1.0], gap="large")
+    with left_col:
+        with st.container(border=True):
+            mh_l, mh_r = st.columns([1.4, 1.3], vertical_alignment="center")
+            mh_l.subheader(f"Live Market Movers ({len(STOCK_CATALOG)} Stocks)", icon=":material/trending_up:")
+            home_mkt = mh_r.segmented_control(
+                "Market View",
+                ["Flagship Movers", "NSE Leaders", "US Leaders"],
+                default="Flagship Movers",
+                key="home_movers_tab",
+                label_visibility="collapsed",
+            ) or "Flagship Movers"
+
+            if home_mkt == "NSE Leaders":
+                home_syms = [k for k, v in STOCK_CATALOG.items() if v["exchange"] == "NSE"][:18]
+            elif home_mkt == "US Leaders":
+                home_syms = [k for k, v in STOCK_CATALOG.items() if v["exchange"] != "NSE"][:18]
+            else:
+                home_syms = list(CORE_TICKERS)
+
+            view_snaps = ensure_symbols_live(home_syms, snaps)
+            movers = []
+            for sym in home_syms:
+                meta = get_ticker_meta(sym)
+                sn = view_snaps.get(sym, DEFAULT_STOCKS_SNAPSHOTS.get(sym, {"price": 0.0, "pct": 0.0, "rsi": 50.0, "sparkline": []}))
+                movers.append(
+                    {
+                        "Logo": get_logo_url(sym),
+                        "Ticker": sym,
+                        "Company": meta["name"],
+                        "Exchange": meta["exchange"],
+                        "Price": f"{meta['currency']}{sn['price']:,.2f}",
+                        "Change (%)": round(sn["pct"], 2),
+                        "RSI (14)": round(sn["rsi"], 1),
+                        "20D Trend": sn.get("sparkline", []),
+                    }
                 )
+            mov_df = pd.DataFrame(movers).sort_values("Change (%)", ascending=False)
+            top_movers = pd.concat([mov_df.head(5), mov_df.tail(5)]).drop_duplicates(subset=["Ticker"])
+            st.dataframe(
+                top_movers,
+                column_config={
+                    "Logo": st.column_config.ImageColumn("", width="small"),
+                    "Change (%)": st.column_config.NumberColumn("Day %", format="%.2f%%"),
+                    "20D Trend": st.column_config.LineChartColumn("20D Trend"),
+                },
+                hide_index=True,
+                alt="Top gaining and declining stocks with company logos across NSE and US markets",
+            )
 
-            feed_badge = "🟢 LIVE YAHOO FINANCE DATA" if online_status else "🔴 OFFLINE (FROZEN)"
-            feed_color = "#10b981" if online_status else "#f43f5e"
+            sec_rows = [
+                {"Sector": get_ticker_meta(sym)["sector"], "Change": view_snaps.get(sym, {}).get("pct", 0.0)}
+                for sym in home_syms
+            ]
+            sec_df = pd.DataFrame(sec_rows).groupby("Sector", as_index=False)["Change"].mean().sort_values("Change", ascending=False)
+            sec_chart = (
+                alt.Chart(sec_df)
+                .mark_bar(cornerRadiusEnd=4)
+                .encode(
+                    x=alt.X("Change:Q", title="Avg Day Move (%)"),
+                    y=alt.Y("Sector:N", sort="-x", title=None),
+                    color=alt.condition(alt.datum.Change >= 0, alt.value("#10b981"), alt.value("#ef4444")),
+                    tooltip=["Sector", alt.Tooltip("Change:Q", format=".2f")],
+                )
+                .properties(height=215, title="Live Sector Momentum Snapshot")
+            )
+            st.altair_chart(sec_chart, alt="Average daily percentage move by market sector")
 
-            render_html(f"""
-            <div class="z-section-card" style="margin-top:0; padding:22px 24px;">
-                <div style="display:flex; justify-content:space-between; align-items:center; padding-bottom:12px; margin-bottom:16px; border-bottom:1px solid rgba(56,189,248,0.22);">
-                    <div style="display:flex; align-items:center; gap:10px;">
-                        <span style="height:10px; width:10px; background:{feed_color}; border-radius:50%; display:inline-block;"></span>
-                        <img src="https://www.google.com/s2/favicons?domain=ril.com&sz=128" class="logo-sm">
-                        <span style="font-family:JetBrains Mono,monospace; font-size:0.8rem; font-weight:700; color:#f8fafc;">
-                            FINANCESIGHT • STOCKS LIVE MARKETWATCH & SUPERCHART
-                        </span>
-                    </div>
-                    <span style="background:rgba(56,189,248,0.2); color:#38bdf8; padding:4px 10px; border-radius:6px; font-family:JetBrains Mono,monospace; font-size:0.75rem; font-weight:800;">
-                        {feed_badge}
-                    </span>
-                </div>
+    with right_col:
+        with st.container(border=True):
+            st.subheader("Sign In or Open Free Account", icon=":material/login:")
+            st.caption(f"Start with a **₹1,00,000** paper wallet across **{len(STOCK_CATALOG)} NSE & US equities**.")
+            st.markdown(":green-badge[₹0 Delivery Fees] :blue-badge[5x Intraday MIS] :violet-badge[AI + ML Terminal]")
+            st.space("small")
+            if st.button("1-Click Demo Login (Trader_XYZ)", type="primary", icon=":material/bolt:", width="stretch"):
+                st.session_state.logged_in = True
+                st.session_state.username = "Trader_XYZ"
+                st.session_state.full_name = "Trader_XYZ"
+                st.rerun()
 
-                <div style="display:grid; grid-template-columns: 1.4fr 1.2fr; gap:14px;">
-                    <div class="fs-panel">
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-                            <div style="display:flex; align-items:center; gap:8px;">
-                                <img src="https://www.google.com/s2/favicons?domain=apple.com&sz=128" class="logo-sm">
-                                <img src="https://www.google.com/s2/favicons?domain=nvidia.com&sz=128" class="logo-sm">
-                                <span style="font-weight:800; font-size:0.88rem; color:#ffffff;">Orderflow & Volume Profile</span>
-                            </div>
-                            <span style="color:#34d399; font-family:JetBrains Mono,monospace; font-size:0.84rem; font-weight:800;">
-                                {snapshots['NVDA']['pct']:+.2f}%
-                            </span>
-                        </div>
-
-                        <div style="display:flex; align-items:center; gap:10px; margin:12px 0;">
-                            <div style="flex:1; background:rgba(255,255,255,0.12); height:11px; border-radius:6px; overflow:hidden;">
-                                <div style="width:68%; height:100%; background:linear-gradient(90deg, #eab308 60%, #3b82f6 40%);"></div>
-                            </div>
-                            <span style="font-family:JetBrains Mono,monospace; font-size:0.74rem; width:90px; color:#f8fafc;">POC ${snapshots['AAPL']['price']:,.1f}</span>
-                        </div>
-                        <div style="display:flex; align-items:center; gap:10px; margin:12px 0;">
-                            <div style="flex:1; background:rgba(255,255,255,0.12); height:11px; border-radius:6px; overflow:hidden;">
-                                <div style="width:85%; height:100%; background:linear-gradient(90deg, #eab308 55%, #06b6d4 45%);"></div>
-                            </div>
-                            <span style="font-family:JetBrains Mono,monospace; font-size:0.74rem; color:#38bdf8; width:90px;">VAH ${snapshots['AAPL']['price']*1.015:,.1f}</span>
-                        </div>
-                        <div style="display:flex; align-items:center; gap:10px; margin:12px 0;">
-                            <div style="flex:1; background:rgba(255,255,255,0.12); height:11px; border-radius:6px; overflow:hidden;">
-                                <div style="width:48%; height:100%; background:linear-gradient(90deg, #ef4444 50%, #3b82f6 50%);"></div>
-                            </div>
-                            <span style="font-family:JetBrains Mono,monospace; font-size:0.74rem; color:#fb7185; width:90px;">VAL ${snapshots['AAPL']['price']*0.985:,.1f}</span>
-                        </div>
-                        <div style="display:flex; align-items:center; gap:10px; margin:12px 0;">
-                            <div style="flex:1; background:rgba(255,255,255,0.12); height:11px; border-radius:6px; overflow:hidden;">
-                                <div style="width:76%; height:100%; background:linear-gradient(90deg, #10b981 65%, #3b82f6 35%);"></div>
-                            </div>
-                            <span style="font-family:JetBrains Mono,monospace; font-size:0.74rem; color:#34d399; width:90px;">▲ AI TARGET</span>
-                        </div>
-
-                        <div style="margin-top:16px; padding-top:12px; border-top:1px solid rgba(255,255,255,0.14); display:flex; justify-content:space-between; font-family:JetBrains Mono,monospace; font-size:0.76rem; color:#e2e8f0;">
-                            <span>RELIANCE: <b style="color:#34d399;">₹{snapshots['RELIANCE.NS']['price']:,.2f}</b></span>
-                            <span>JIOFIN: <b style="color:#38bdf8;">₹{snapshots['JIOFIN.NS']['price']:,.2f}</b></span>
-                        </div>
-                    </div>
-
-                    <div class="fs-panel">
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; padding-bottom:6px; border-bottom:1px solid rgba(255,255,255,0.14);">
-                            <span style="font-size:0.76rem; font-weight:800; color:#ffffff;">📋 FINANCESIGHT MARKETWATCH</span>
-                            <span style="font-size:0.7rem; color:#38bdf8; font-family:JetBrains Mono,monospace; font-weight:700;">REAL DATA</span>
-                        </div>
-                        {watch_rows_html}
-                    </div>
-                </div>
-
-                <div style="text-align:center; margin-top:16px;">
-                    <a href="?nav=Products&r={nav_token}" target="_self" style="text-decoration:none; background:rgba(15,23,42,0.92); border:1px solid rgba(56,189,248,0.5); border-radius:999px; padding:10px 24px; display:inline-flex; align-items:center; gap:12px;">
-                        <span style="font-size:1.15rem;">⚡</span>
-                        <div style="text-align:left;">
-                            <div style="font-weight:800; font-size:0.88rem; color:#38bdf8;">Explore all charting, AI forecasting & paper trading tools ›</div>
-                            <div style="font-size:0.74rem; color:#e2e8f0;">NSE & NASDAQ STOCKS • Autonomous AI Agent • Strategy Backtesting</div>
-                        </div>
-                    </a>
-                </div>
-            </div>
-            """)
-
-        with hero_right:
-            render_html("""
-            <div class="z-section-card" style="margin-top:0; padding:20px 24px; margin-bottom:12px;">
-                <span style="background:rgba(56,189,248,0.2); color:#38bdf8; padding:4px 12px; border-radius:999px; font-size:0.75rem; font-weight:700;">
-                    ⚡ FINANCESIGHT WEB TERMINAL • INSTANT ACCESS
-                </span>
-                <h3 class="fs-title" style="margin:10px 0 4px 0;">Sign In to FinanceSight Dashboard</h3>
-                <p class="fs-muted" style="font-size:0.83rem; margin:0;">Includes Orders, Holdings, Positions, Funds, SuperCharts & Agentic AI</p>
-            </div>
-            """)
-
-            auth_tab1, auth_tab2 = st.tabs(["FinanceSight Login", "Open Free Account"])
-
-            with auth_tab1:
-                with st.form("home_login_form", clear_on_submit=False):
-                    login_user = st.text_input("FinanceSight User ID", value="Trader_XYZ")
-                    login_pass = st.text_input("Password", type="password", value="demo123")
-                    login_submitted = st.form_submit_button("Login to FinanceSight", use_container_width=True, type="primary")
-                    if login_submitted:
-                        ok_auth, db_u, db_n = authenticate_user(login_user, login_pass)
-                        if ok_auth:
-                            save_login_session(True, db_u, db_n)
-                            st.session_state.page = "Dashboard"
+            tab_login, tab_signup = st.tabs(["Sign In", "Create Free Account"])
+            with tab_login:
+                with st.form("login_form", border=False):
+                    u_in = st.text_input("User ID", value="Trader_XYZ")
+                    p_in = st.text_input("Password", type="password", value="demo123")
+                    if st.form_submit_button("Login to Workspace", type="primary", width="stretch"):
+                        ok, db_u, db_n = authenticate_user(u_in, p_in)
+                        if ok and db_u:
+                            st.session_state.logged_in = True
+                            st.session_state.username = db_u
+                            st.session_state.full_name = db_n or db_u
                             st.rerun()
                         else:
-                            st.error("❌ Invalid User ID or Password! Please check your credentials or register a new account.")
+                            st.error("Invalid User ID or Password.")
 
-            with auth_tab2:
-                with st.form("home_signup_form", clear_on_submit=False):
-                    new_name = st.text_input("Full Name", placeholder="e.g., Vishal Babu")
-                    new_user = st.text_input("Choose FinanceSight ID", placeholder="e.g., Vishal_01")
-                    new_email = st.text_input("Email ID", placeholder="user@financesight.in")
-                    new_pass = st.text_input("Create Password", type="password")
-                    signup_submitted = st.form_submit_button("Open Account & Claim ₹1,00,000", use_container_width=True, type="primary")
-                    if signup_submitted:
-                        ok_reg, res_msg = register_new_user(new_name, new_user, new_email, new_pass)
+            with tab_signup:
+                with st.form("signup_form", border=False):
+                    su_name = st.text_input("Full Name", placeholder="e.g., Vishal Babu")
+                    su_user = st.text_input("Choose User ID", placeholder="e.g., Vishal_01")
+                    su_email = st.text_input("Email Address", placeholder="user@financesight.in")
+                    su_pass = st.text_input("Create Password (min 6 chars)", type="password")
+                    if st.form_submit_button("Open Account & Claim ₹1,00,000", type="primary", width="stretch"):
+                        ok_reg, res_msg = register_new_user(su_name, su_user, su_email, su_pass)
                         if ok_reg:
-                            save_login_session(True, res_msg, new_name.strip())
-                            st.session_state.page = "Dashboard"
+                            st.session_state.logged_in = True
+                            st.session_state.username = res_msg
+                            st.session_state.full_name = su_name.strip()
                             st.rerun()
                         else:
                             st.warning(res_msg)
 
-        render_html("""
-        <div class="z-section-card">
-            <div style="display:grid; grid-template-columns: 1fr 1.3fr; gap:32px; align-items:center;">
-                <div class="fs-panel" style="padding:28px; text-align:center;">
-                    <div style="font-size:3.2rem; margin-bottom:10px;">📊</div>
-                    <h3 class="fs-title" style="margin-bottom:6px;">All-in-One Market Analysis & Trading Suite</h3>
-                    <p style="color:#38bdf8; font-family:'JetBrains Mono',monospace; font-size:0.9rem; font-weight:700;">Live NSE & NASDAQ STOCKS • Agentic AI • Paper Trading</p>
-                </div>
-                <div>
-                    <h2 class="fs-title" style="font-size:1.75rem; margin-bottom:10px;">Built for practical analysis and risk-free learning</h2>
-                    <p class="fs-muted" style="font-size:0.95rem; margin-bottom:16px;">
-                        FinanceSight brings together real-time market data, quantitative technical indicators, and virtual trade execution in one workspace:
-                    </p>
-                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; color:#38bdf8; font-weight:700; font-size:0.92rem;">
-                        <div>• Live Candlestick & Volume Charts</div>
-                        <div>• 14-Day RSI & Moving Averages</div>
-                        <div>• 7-Day ML Price Forecasting</div>
-                        <div>• Autonomous AI Order Execution</div>
-                        <div>• No-Code Strategy Backtesting</div>
-                        <div>• Virtual Paper Trading Portfolio</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        """)
+    st.space("small")
+    with st.container(border=True):
+        s_l, s_r = st.columns([1.0, 1.4], vertical_alignment="center")
+        with s_l:
+            st.subheader("All-in-One Market Analysis & Trading Suite", icon=":material/analytics:")
+            st.caption("Live NSE & NASDAQ Stocks · Agentic AI · Paper Trading")
+        with s_r:
+            st.markdown("#### Built for practical analysis and risk-free learning")
+            st.write("FinanceSight brings together real-time market data, quantitative technical indicators, and virtual trade execution in one workspace:")
+            g1, g2 = st.columns(2)
+            g1.markdown("- Live Candlestick & Volume Charts\n- 14-Day RSI, MACD & Moving Averages\n- 7-Day Multi-Model ML Forecasting")
+            g2.markdown("- Autonomous AI Order Execution\n- No-Code Strategy Backtesting\n- Multi-Currency Paper Portfolio")
 
-        st_col1, st_col2 = st.columns([1.3, 1.0], gap="large")
-        with st_col1:
-            render_html("""
-            <div class="z-section-card" style="height:100%;">
-                <h2 class="fs-title" style="font-size:1.65rem; margin-bottom:14px;">🛡️ Practical tools you can rely on</h2>
-                <div style="margin-bottom:14px;">
-                    <h4 style="color:#38bdf8; margin:0 0 4px 0;">Data-driven decision making</h4>
-                    <p class="fs-muted" style="font-size:0.88rem; margin:0;">Evaluate global STOCKS using objective technical indicators (20-SMA, 50-EMA, 14-Day RSI) and historical backtest metrics instead of guesswork.</p>
-                </div>
-                <div style="margin-bottom:14px;">
-                    <h4 style="color:#38bdf8; margin:0 0 4px 0;">Risk-free paper trading simulator</h4>
-                    <p class="fs-muted" style="font-size:0.88rem; margin:0;">Practice placing delivery (CNC) and intraday (MIS 5x leverage) orders during market hours using a ₹1,00,000 virtual wallet before risking real capital.</p>
-                </div>
-                <div>
-                    <h4 style="color:#38bdf8; margin:0 0 4px 0;">Agentic AI & backtesting workflow</h4>
-                    <p class="fs-muted" style="font-size:0.88rem; margin:0;">Ask the AI Advisor any question, check your funds, list top benefitting stocks, or place and cancel orders directly from chat.</p>
-                </div>
-            </div>
-            """)
-
-        with st_col2:
-            render_html("""
-            <div class="z-section-card" style="height:100%;">
-                <h2 class="fs-title" style="font-size:1.65rem; margin-bottom:10px;">🏷️ Transparent fee simulation</h2>
-                <p class="fs-muted" style="font-size:0.9rem; margin-bottom:18px;">
-                    Estimate real-world trading costs accurately using standard discount brokerage rates and our built-in tax & breakeven calculator.
-                </p>
-                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:14px; text-align:center;">
-                    <div class="fs-panel" style="border:2px solid #10b981; padding:18px;">
-                        <div style="font-family:'JetBrains Mono',monospace; font-size:2.2rem; font-weight:800; color:#34d399;">₹0</div>
-                        <div class="fs-muted" style="font-size:0.8rem; margin-top:6px;">Standard equity delivery & mutual fund simulation</div>
-                    </div>
-                    <div class="fs-panel" style="border:2px solid #38bdf8; padding:18px;">
-                        <div style="font-family:'JetBrains Mono',monospace; font-size:2.2rem; font-weight:800; color:#38bdf8;">₹20</div>
-                        <div class="fs-muted" style="font-size:0.8rem; margin-top:6px;">Flat intraday (MIS) & F&O order fee model</div>
-                    </div>
-                </div>
-            </div>
-            """)
-
-        render_html("""
-        <div class="z-section-card">
-            <div style="display:grid; grid-template-columns: 1fr 1.4fr; gap:28px; align-items:center;">
-                <div class="fs-panel" style="padding:26px; text-align:center;">
-                    <div style="font-size:3rem;">📚</div>
-                    <h3 class="fs-title" style="margin-top:8px;">FinanceSight Learning Hub</h3>
-                    <p class="fs-muted" style="font-size:0.85rem;">Interactive technical analysis & AI-assisted learning</p>
-                </div>
-                <div>
-                    <h2 class="fs-title" style="font-size:1.65rem; margin-bottom:10px;">Learn market indicators as you trade</h2>
-                    <p class="fs-muted" style="font-size:0.9rem; margin-bottom:12px;">
-                        <b>Interactive Indicator Guides:</b> Understand how candlestick patterns, Moving Averages, Volume bars, and RSI momentum work directly on live stock charts.
-                    </p>
-                    <p class="fs-muted" style="font-size:0.9rem; margin:0;">
-                        <b>FinanceSight AI Advisor:</b> Ask any question about stock trends, top benefitting stocks to invest in, position sizing, or command it to execute and manage trades on your behalf.
-                    </p>
-                </div>
-            </div>
-        </div>
-        """)
-
-        render_financesight_open_account("home")
-
-    elif st.session_state.public_page == "Signup":
-        s_left, s_right = st.columns([1.2, 1.2], gap="large")
-        with s_left:
-            render_html("""
-            <div class="z-section-card">
-                <span style="background:rgba(56,189,248,0.2); color:#38bdf8; padding:5px 12px; border-radius:999px; font-size:0.78rem; font-weight:700;">
-                    INSTANT PAPER TRADING ACCESS
-                </span>
-                <h2 class="fs-title" style="margin:12px 0 10px 0;">Create your free FinanceSight account</h2>
-                <p class="fs-muted" style="font-size:0.95rem; line-height:1.6;">
-                    Set up your account in seconds to track live NSE & NASDAQ STOCKS, test algorithmic strategies, and practice trading with <b>₹1,00,000</b> in virtual margin.
-                </p>
-                <div class="fs-panel" style="margin-top:18px; font-size:0.86rem; line-height:1.8;">
-                    ✅ ₹1,00,000 Virtual Paper Trading Wallet<br>
-                    ✅ Universal AI Advisor (Answers Any Question & Places Orders)<br>
-                    ✅ 7-Day Random Forest ML Price Predictor<br>
-                    ✅ No-Code Strategy Backtester & CSV Exports
-                </div>
-            </div>
-            """)
-        with s_right:
-            st.markdown("### ✨ Create Your FinanceSight Account Now")
-            with st.form("page_signup_form", clear_on_submit=False):
-                su_name = st.text_input("Your Full Name", placeholder="e.g., Vishal Babu")
-                su_user = st.text_input("Choose FinanceSight User ID", placeholder="e.g., Vishal_01")
-                su_email = st.text_input("Email Address", placeholder="user@financesight.in")
-                su_pass = st.text_input("Password", type="password")
-                su_submit = st.form_submit_button("Complete Signup & Open FinanceSight Dashboard", type="primary", use_container_width=True)
-                if su_submit:
-                    ok_reg, res_msg = register_new_user(su_name, su_user, su_email, su_pass)
-                    if ok_reg:
-                        save_login_session(True, res_msg, su_name.strip())
-                        st.session_state.page = "Dashboard"
-                        st.rerun()
-                    else:
-                        st.warning(res_msg)
-
-    elif st.session_state.public_page == "About":
-        render_html("""
-        <div class="z-section-card" style="text-align:center;">
-            <h2 class="fs-title" style="font-size:1.85rem; max-width:800px; margin:0 auto;">
-                Clear, Objective Market Analysis.<br>
-                <span style="color:#38bdf8;">Combining Technical Charting, Machine Learning & Paper Trading.</span>
-            </h2>
-        </div>
-        """)
-
-        ab_c1, ab_c2 = st.columns(2, gap="large")
-        with ab_c1:
-            render_html("""
-            <div class="z-section-card" style="height:100%; font-size:0.94rem; line-height:1.75;">
-                <p><b>FinanceSight</b> is designed to make technical stock analysis, algorithmic backtesting, and portfolio simulation straightforward and accessible across global STOCKS.</p>
-                <p>By integrating live market data with <b>Random Forest price forecasting</b> and <b>Agentic LLaMA 3.3 RAG analysis</b>, the platform helps users evaluate trends, momentum, and risk levels clearly.</p>
-            </div>
-            """)
-        with ab_c2:
-            render_html("""
-            <div class="z-section-card" style="height:100%; font-size:0.94rem; line-height:1.75;">
-                <p>Instead of switching between separate charting websites, calculators, and spreadsheets, FinanceSight brings everything into a single workspace.</p>
-                <p>Users can test trading strategies on historical data, calculate exact statutory charges and breakeven points, and practice order execution during live market hours using a virtual wallet.</p>
-            </div>
-            """)
-
-        render_html("""
-        <div class="z-section-card">
-            <h2 class="fs-title" style="text-align:center; margin-bottom:24px;">👥 Platform Architecture & Engineering</h2>
-            <div style="display:grid; grid-template-columns: 1fr 2fr; gap:28px; align-items:center;">
-                <div class="fs-panel" style="text-align:center; padding:24px; border:2px solid #38bdf8;">
-                    <div style="font-size:3.6rem;">👨‍💻</div>
-                    <h4 class="fs-title" style="margin:10px 0 4px 0;">FinanceSight Core Systems</h4>
-                    <div style="color:#38bdf8; font-size:0.84rem; font-weight:700;">Python, Machine Learning & SQLite Architecture</div>
-                </div>
-                <div style="font-size:0.95rem; line-height:1.75;">
-                    <p>FinanceSight integrates a <b>Multi-Layer SuperChart Terminal, Portfolio Console, No-Code Strategy Backtester, and Universal AI Advisor</b> into a unified web application.</p>
-                    <p>Powered by live <b>Yahoo Finance market streams</b>, <b>Scikit-Learn Random Forest regression</b>, <b>Groq LLaMA 3.3 RAG</b>, and a local <b>SQLite relational database</b> for persistent portfolio and order tracking.</p>
-                </div>
-            </div>
-        </div>
-        """)
-
-    elif st.session_state.public_page == "Products":
-        render_html(f"""
-        <div class="z-section-card" style="text-align:center;">
-            <h1 class="fs-title" style="font-size:2.2rem; margin-bottom:8px;">FinanceSight Products & Modules</h1>
-            <h4 class="fs-muted" style="font-weight:500; margin-bottom:10px;">Integrated tools for charting, price forecasting, backtesting, and paper trading</h4>
-            <a href="?nav=Home&r={nav_token}" target="_self" style="color:#38bdf8; font-weight:700; font-size:0.92rem; text-decoration:none;">Sign in on the Home page to launch the live dashboard →</a>
-        </div>
-        """)
-
-        products_showcase = [
-            ("left", "📈 FinanceSight SuperChart Terminal", "Interactive 3-layer technical charting across NSE & NASDAQ STOCKS with Japanese Candlesticks, 20-Day SMA, 50-Day EMA, Volume bars, 14-Day RSI, and market-hours CNC/MIS order execution.", "Terminal"),
-            ("right", "💿 FinanceSight Portfolio & Ledger", "Centralized portfolio tracker showing live moving mark-to-market P&L, asset allocation donut charts, order history, and 1-click CSV/Excel report downloads.", "Holdings"),
-            ("left", "🤖 Universal LLaMA 3.3 AI Advisor", "Agentic AI stock analyst and general assistant with direct access to your wallet, portfolio, and all STOCKS. Ask it any question, list top benefitting stocks, or buy/sell/cancel orders automatically.", "Advisor"),
-            ("right", "⚡ 7-Day Random Forest ML Predictor", "Trains a live Random Forest regression model on rolling 1-year OHLCV and momentum lag features to project the next 7 trading sessions.", "Terminal"),
-            ("left", "🧪 No-Code Strategy Backtester & Scanner", "Test systematic trading rules (Golden Crossover, RSI Oversold Reversal, Momentum Surge) on historical candles, view the equity curve, and scan all STOCKS live.", "Apps")
-        ]
-
-        for align, p_title, p_desc, target_tab in products_showcase:
-            c_a, c_b = st.columns([1, 1.2] if align == "left" else [1.2, 1], gap="large")
-            visual_col = c_a if align == "left" else c_b
-            text_col = c_b if align == "left" else c_a
-
-            with visual_col:
-                render_html(f"""
-                <div class="z-section-card" style="margin:0; padding:32px; text-align:center;">
-                    <div style="font-size:2.8rem; margin-bottom:8px;">{p_title.split()[0]}</div>
-                    <div class="fs-title" style="font-size:1.15rem;">{p_title}</div>
-                    <div style="color:#38bdf8; font-size:0.8rem; margin-top:6px; font-weight:600;">⚡ Live Module Inside FinanceSight</div>
-                </div>
-                """)
-            with text_col:
-                st.markdown(f"### {p_title}")
-                st.write(p_desc)
-                b_try, b_learn = st.columns(2)
-                if b_try.button(f"Sign In to Open →", key=f"prod_demo_{p_title}", type="primary", use_container_width=True):
-                    st.session_state.public_page = "Home"
-                    st.session_state.auth_notice = f"🔒 Please sign in with your User ID and Password to open {p_title}."
-                    st.rerun()
-                if b_learn.button("View Details →", key=f"prod_learn_{p_title}", use_container_width=True):
-                    st.session_state.public_page = "About"
-                    st.rerun()
-            render_html("<hr style='border:0; border-top:1px solid rgba(56,189,248,0.22); margin:16px 0;'>")
-
-        render_html("""
-        <div style="text-align:center; margin:28px 0 18px 0;">
-            <h2 class="fs-title">🧩 Core Feature Highlights</h2>
-            <p class="fs-muted">Built-in utilities included across the FinanceSight workspace</p>
-        </div>
-        """)
-
-        universe_items = [
-            ("⚡ Strategy Backtester", "Simulate Golden Crossover, RSI Reversal, and Momentum rules with adjustable Stop-Loss and Target sliders."),
-            ("📡 Live STOCKS Scanner", "Scan Indian NSE and US NASDAQ/NYSE STOCKS simultaneously for RSI breakouts and moving average trends."),
-            ("🤖 Agentic AI Execution", "Place, calculate, or cancel trades and ask any general or market question directly in chat."),
-            ("🧮 Brokerage Calculator", "Compute exact STT, GST, exchange transaction fees, stamp duty, and net P&L before placing trades."),
-            ("💼 CNC & MIS Simulation", "Test both 1x delivery holdings and 5x leveraged intraday positions with live M2M P&L."),
-            ("📥 CSV Report Exports", "Download your executed order book, demat holdings, and strategy backtest ledgers as CSV files.")
-        ]
-        for r_idx in range(0, 6, 3):
-            u_cols = st.columns(3)
-            for c_i in range(3):
-                u_name, u_desc = universe_items[r_idx + c_i]
-                with u_cols[c_i]:
-                    render_html(f"""
-                    <div class="z-universe-card">
-                        <h4 style="color:#38bdf8; font-weight:800; margin-bottom:8px;">{u_name}</h4>
-                        <p class="fs-muted" style="font-size:0.84rem; margin:0;">{u_desc}</p>
-                    </div>
-                    """)
-            st.markdown("<br>", unsafe_allow_html=True)
-
-        render_financesight_open_account("products")
-
-    elif st.session_state.public_page == "Pricing":
-        render_html("""
-        <div class="z-section-card" style="text-align:center;">
-            <h1 class="fs-title" style="font-size:2.1rem;">Fee Structure & Brokerage Calculator</h1>
-            <p class="fs-muted" style="font-size:0.95rem;">Simulate standard Indian discount broking charges (₹0 delivery and flat ₹20 intraday) and calculate exact statutory taxes.</p>
-        </div>
-        """)
-
-        pr1, pr2, pr3 = st.columns(3)
-        with pr1:
-            render_kpi("Equity Delivery Simulation", "₹0", "Zero brokerage modeled on long-term CNC equity delivery trades.", "kpi-emerald", "#34d399")
-        with pr2:
-            render_kpi("Intraday & F&O Simulation", "₹20", "Flat ₹20 or 0.03% (whichever is lower) per executed intraday order.", "kpi-cyan", "#38bdf8")
-        with pr3:
-            render_kpi("Virtual Paper Wallet", "₹1,00,000", "Free instant virtual margin credited to every user account for practice.", "kpi-violet", "#c084fc")
-
-        st.markdown("### 🧮 Interactive FinanceSight Brokerage & Statutory Charges Calculator")
-        calc_c1, calc_c2, calc_c3, calc_c4 = st.columns(4)
-        c_trade_type = calc_c1.selectbox("Segment", ["Equity Delivery (CNC)", "Equity Intraday (MIS)", "F&O Futures"])
-        c_buy_p = calc_c2.number_input("Buy Price (₹)", min_value=1.0, value=1500.0, step=10.0)
-        c_sell_p = calc_c3.number_input("Sell Price (₹)", min_value=1.0, value=1545.0, step=10.0)
-        c_qty = calc_c4.number_input("Quantity (Shares)", min_value=1, value=100, step=10)
-
-        turnover = (c_buy_p + c_sell_p) * c_qty
-        gross_pnl = (c_sell_p - c_buy_p) * c_qty
-        if "Delivery" in c_trade_type:
-            brokerage = 0.0
-            stt = turnover * 0.001
-        else:
-            brokerage = min(20.0, (c_buy_p * c_qty) * 0.0003) + min(20.0, (c_sell_p * c_qty) * 0.0003)
-            stt = (c_sell_p * c_qty) * 0.00025
-        exch_txn = turnover * 0.0000325
-        sebi_fee = turnover * 0.000001
-        gst = 0.18 * (brokerage + exch_txn + sebi_fee)
-        stamp_duty = (c_buy_p * c_qty) * 0.00015
-        total_charges = brokerage + stt + exch_txn + sebi_fee + gst + stamp_duty
-        net_pnl = gross_pnl - total_charges
-
-        bc1, bc2, bc3, bc4 = st.columns(4)
-        with bc1:
-            render_kpi("Total Turnover", f"₹{turnover:,.2f}", f"Brokerage: ₹{brokerage:.2f}", "kpi-cyan", "#38bdf8")
-        with bc2:
-            render_kpi("Total Taxes & Charges", f"₹{total_charges:,.2f}", f"STT: ₹{stt:.2f} | GST: ₹{gst:.2f}", "kpi-violet", "#c084fc")
-        with bc3:
-            render_kpi("Breakeven Per Share", f"₹{(total_charges/c_qty):.2f}", "Points needed to cover taxes", "kpi-white", "#60a5fa")
-        with bc4:
-            render_kpi("Net Realized Profit / Loss", f"₹{net_pnl:,.2f}", f"Gross P&L: ₹{gross_pnl:+.2f}", "kpi-emerald" if net_pnl >= 0 else "kpi-violet", "#34d399" if net_pnl >= 0 else "#fb7185")
-
-        render_financesight_open_account("pricing")
-
-    elif st.session_state.public_page == "Support":
-        render_html(f"""
-        <div class="z-support-hero">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
-                <h3 style="margin:0; font-weight:800; color:#ffffff;">🎧 FinanceSight Help & Support Center</h3>
-                <span style="background:rgba(255,255,255,0.2); padding:5px 14px; border-radius:999px; font-size:0.82rem; font-weight:700; color:#ffffff;">Support Desk</span>
-            </div>
-            <div style="display:grid; grid-template-columns: 1.4fr 1fr; gap:28px;">
-                <div>
-                    <h2 style="font-weight:800; font-size:1.6rem; margin-bottom:12px; color:#ffffff;">Browse platform guides or submit a support ticket below</h2>
-                    <div style="background:#0f172a; color:#f8fafc; border:1px solid #38bdf8; padding:12px 18px; border-radius:10px; font-size:0.9rem; margin-bottom:12px;">
-                        🔍 Quick links to platform modules and user guides:
-                    </div>
-                    <div style="font-size:0.82rem; color:#e2e8f0;">
-                        <a href="?nav=Signup&r={nav_token}" target="_self" style="color:#ffffff; text-decoration:underline;">Create an account</a> &nbsp;•&nbsp;
-                        <a href="?nav=Terminal&r={nav_token}" target="_self" style="color:#ffffff; text-decoration:underline;">Open SuperChart</a> &nbsp;•&nbsp;
-                        <a href="?nav=Pricing&r={nav_token}" target="_self" style="color:#ffffff; text-decoration:underline;">Brokerage calculator</a> &nbsp;•&nbsp;
-                        <a href="?nav=Advisor&r={nav_token}" target="_self" style="color:#ffffff; text-decoration:underline;">Ask AI Advisor</a>
-                    </div>
-                </div>
-                <div>
-                    <h4 style="font-weight:800; margin-bottom:10px; color:#ffffff;">📌 Platform Highlights</h4>
-                    <ol style="font-size:0.88rem; line-height:1.8; color:#f1f5f9;">
-                        <li>Orders are validated against official market trading hours (Mon–Fri)</li>
-                        <li>Live portfolio holdings and positions move dynamically with stock prices</li>
-                    </ol>
-                </div>
-            </div>
-        </div>
-        """)
-
-        st.subheader("📋 Browse Help Topics by Module")
-        ticket_topics = [
-            ("➕ Account & Login", f"?nav=Signup&r={nav_token}", ["Creating a New User Account", "Logging In with User ID & Password", "Managing Profile & Credentials", "Virtual Margin Overview", "Platform Navigation Guide"]),
-            ("📊 Charting & Indicators", f"?nav=Terminal&r={nav_token}", ["Reading Japanese Candlesticks", "Using 20-SMA & 50-EMA Lines", "Understanding 14-Day RSI", "Volume Bar Color Coding", "Refreshing Live Market Data"]),
-            ("⚡ Paper Trading Orders", f"?nav=Positions&r={nav_token}", ["Market Hours Order Validation", "CNC Delivery vs MIS Intraday (5x)", "Tracking Live Moving M2M P&L", "1-Click Position Square-Off", "Exporting Order Book to CSV"]),
-            ("💳 Virtual Funds & Wallet", f"?nav=Funds&r={nav_token}", ["Adding Virtual Cash via UPI Simulator", "Withdrawing Funds to Linked Bank", "Checking Available Margin", "Viewing Funding History Ledger", "Margin Release on Square-Off"]),
-            ("🤖 Agentic AI Advisor", f"?nav=Advisor&r={nav_token}", ["Asking General & Market Questions", "Placing & Cancelling Orders via Chat", "Asking 'List Top Benefitting Stocks'", "Calculating Trade Margin & Taxes", "Math & Live Time Queries"]),
-            ("🧪 Strategy Backtesting", f"?nav=Apps&r={nav_token}", ["SMA 20 Golden Crossover Logic", "RSI < 35 Oversold Reversal Rule", "Setting Stop-Loss & Target Sliders", "Reading the Backtest Equity Curve", "Downloading Backtest Reports"])
-        ]
-        for row_i in range(0, 6, 3):
-            t_cols = st.columns(3)
-            for col_i in range(3):
-                t_head, t_href, t_links = ticket_topics[row_i + col_i]
-                links_html = "".join([f"<a href='{t_href}' target='_self' style='display:block; color:#38bdf8; font-size:0.84rem; margin:6px 0; font-weight:600; text-decoration:none;'>• {lnk}</a>" for lnk in t_links])
-                with t_cols[col_i]:
-                    render_html(f"""
-                    <div class="stock-card" style="height:100%;">
-                        <h4 class="fs-title" style="margin-bottom:12px;">{t_head}</h4>
-                        {links_html}
-                    </div>
-                    """)
-
-        st.markdown("---")
-        st.markdown("#### 🎫 Submit a Support Ticket")
-        tk_c1, tk_c2, tk_c3 = st.columns(3)
-        tk_cat = tk_c1.selectbox("Topic Category", [t[0] for t in ticket_topics])
-        tk_email = tk_c2.text_input("Your Email", value="user@financesight.in")
-        tk_subj = tk_c3.text_input("Issue Summary", placeholder="e.g., Question about backtest CSV export")
-        if st.button("✅ Create Support Ticket", type="primary"):
-            if tk_subj:
-                c = conn.cursor()
-                t_id = f"FS-{np.random.randint(10000, 99999)}"
-                c.execute("INSERT INTO support_tickets (ticket_id, timestamp, category, subject, email, status) VALUES (?, ?, ?, ?, ?, 'OPEN')",
-                          (t_id, datetime.now().strftime("%Y-%m-%d %H:%M"), tk_cat, tk_subj, tk_email))
-                conn.commit()
-                st.success(f"🎉 Ticket **{t_id}** logged in the database!")
-        tk_df = pd.read_sql_query("SELECT ticket_id, timestamp, category, subject, email, status FROM support_tickets ORDER BY id DESC LIMIT 5", conn)
-        if not tk_df.empty:
-            st.dataframe(tk_df, use_container_width=True, hide_index=True)
-
-    render_financesight_footer()
-    st.stop()
-
-if not online_status:
-    st.warning("⚠️ **Offline Mode:** Internet connection is disconnected. Showing last cached market close prices without live updates.")
-
-ticker_items_html = ""
-for sym in core_tickers:
-    data = snapshots.get(sym, {"price": 100.0, "pct": 0.0})
-    cur = STOCK_CATALOG.get(sym, {}).get("currency", "₹")
-    logo = get_logo_url(sym)
-    arrow = "▲" if data["pct"] >= 0 else "▼"
-    color = "#10b981" if data["pct"] >= 0 else "#f43f5e"
-    ticker_items_html += (
-        f'<span class="ticker-item">'
-        f'<img src="{logo}" class="ticker-logo">'
-        f'<b>{sym.replace(".NS","")}</b> '
-        f'<span style="color:#0284c7; font-weight:700;">{cur}{data["price"]:,.2f}</span> '
-        f'<span style="color:{color}; font-weight:800;">{arrow} {data["pct"]:+.2f}%</span>'
-        f'</span>'
-    )
-
-render_html(f"""
-<div class="ticker-wrap">
-    <div class="ticker-move">
-        {ticker_items_html} {ticker_items_html}
-    </div>
-</div>
-""")
-
-fs_pages = [
-    ("DASHBOARD", "Dashboard"),
-    ("ORDERS", "Orders"),
-    ("HOLDINGS", "Holdings"),
-    ("POSITIONS", "Positions"),
-    ("FUNDS", "Funds"),
-    ("SUPERCHART", "Terminal"),
-    ("AI ADVISOR", "Advisor"),
-    ("APPS", "Apps")
-]
-
-nav_buttons_html = ""
-for label_caps, p_key in fs_pages:
-    active_cls = "active" if st.session_state.page == p_key else ""
-    svg_icon = NAV_SVGS[p_key]
-    nav_buttons_html += f'<a href="?nav={p_key}&r={nav_token}" target="_self" class="fs-nav-btn {active_cls}">{svg_icon}<span>{label_caps}</span></a>'
-
-nav_buttons_html += f'<a href="?nav=Logout&r={nav_token}" target="_self" class="fs-nav-btn">{NAV_SVGS["Logout"]}<span>LOGOUT</span></a>'
-
-render_html(f"""
-<div class="fs-topbar-wrap">
-    <div class="fs-brand-box">
-        <a href="?nav=Home&r=dash_{nav_token}" target="_self" class="fs-logo-link" title="Go to FinanceSight Home">
-            {FINANCESIGHT_LOGO_SVG}
-            <span><span style="color:#387ed1;">FINANCE</span>SIGHT</span>
-        </a>
-    </div>
-    <div class="fs-nav-links-wrap">
-        {nav_buttons_html}
-    </div>
-</div>
-""")
-
-user_bal = get_user_balance(st.session_state.username)
-st.sidebar.markdown(
-    f'<a href="?nav=Home&r=sb_{nav_token}" target="_self" style="text-decoration:none; display:flex; align-items:center; gap:10px; margin-bottom:8px;" title="Go to FinanceSight Home">'
-    f'{FINANCESIGHT_LOGO_SVG}'
-    f'<div><div class="fs-title" style="font-size:1.05rem;">{st.session_state.full_name}</div>'
-    f'<div class="fs-muted" style="font-size:0.75rem;">ID: @{st.session_state.username} • <b>FINANCESIGHT</b></div></div></a>',
-    unsafe_allow_html=True
-)
-
-st.sidebar.markdown(
-    f'<div class="kpi-box kpi-cyan" style="padding:14px; margin-bottom:12px;">'
-    f'<div class="kpi-title">💳 Available FinanceSight Margin</div>'
-    f'<div class="kpi-val" style="color:#0284c7;">₹{user_bal:,.2f}</div>'
-    f'<div style="font-size:0.72rem; color:#10b981; margin-top:3px; font-weight:700;">● CNC Delivery (1x) & MIS Intraday (5x)</div></div>',
-    unsafe_allow_html=True
-)
-
-if st.sidebar.button("Refresh Live Market Data", use_container_width=True):
-    st.cache_data.clear()
-    if online_status:
-        fresh_s = fetch_market_snapshots(core_tickers)
-        if fresh_s:
-            st.session_state.last_valid_snapshots.update(fresh_s)
-    st.rerun()
-
-st.sidebar.subheader("📋 Marketwatch (STOCKS)")
-catalog_options = [f"{k} — {v['name']}" for k, v in STOCK_CATALOG.items()]
-current_idx = list(STOCK_CATALOG.keys()).index(st.session_state.selected_ticker) if st.session_state.selected_ticker in STOCK_CATALOG else 0
-chosen_option = st.sidebar.selectbox("Search Stocks", catalog_options, index=current_idx)
-chosen_sym = chosen_option.split(" — ")[0]
-if chosen_sym != st.session_state.selected_ticker:
-    st.session_state.selected_ticker = chosen_sym
-    ensure_live_snapshot(chosen_sym)
-    st.rerun()
-
-mw_snap = ensure_live_snapshot(st.session_state.selected_ticker)
-mw_cur = STOCK_CATALOG.get(st.session_state.selected_ticker, {}).get("currency", "₹")
-mkt_open_flag, mkt_status_txt = check_market_trading_hours(st.session_state.selected_ticker)
-st.sidebar.markdown(f"**Selected:** `{st.session_state.selected_ticker}` ({mw_cur}{mw_snap['price']:,.2f})")
-st.sidebar.caption(f"{'🟢' if mkt_open_flag else '🔴'} {mkt_status_txt}")
-mw_prod = st.sidebar.radio("Product", ["CNC (Delivery)", "MIS (Intraday 5x)"], horizontal=True)
-mw_qty = st.sidebar.number_input("Qty", min_value=1, max_value=10000, value=10, step=1)
-st.session_state.allow_after_hours = st.sidebar.checkbox("Allow Demo Orders Outside Market Hours", value=st.session_state.allow_after_hours)
-
-sb_b1, sb_b2 = st.sidebar.columns(2)
-if sb_b1.button("🟦 BUY (B)", use_container_width=True, type="primary"):
-    ok, msg = execute_trade(st.session_state.username, st.session_state.selected_ticker, "BUY", mw_qty, mw_snap["price"], mw_prod)
-    if ok:
-        st.sidebar.success(msg)
-        st.rerun()
-    else:
-        st.sidebar.error(msg)
-if sb_b2.button("🟧 SELL (S)", use_container_width=True):
-    ok, msg = execute_trade(st.session_state.username, st.session_state.selected_ticker, "SELL", mw_qty, mw_snap["price"], mw_prod)
-    if ok:
-        st.sidebar.success(msg)
-        st.rerun()
-    else:
-        st.sidebar.error(msg)
-
-st.sidebar.markdown("---")
-st.sidebar.caption(f"📌 **Watchlist Feed ({'🟢 Live' if online_status else '🔴 Offline'})**")
-for w_sym in ["RELIANCE.NS", "JIOFIN.NS", "TCS.NS", "HDFCBANK.NS", "ZOMATO.NS", "AAPL", "NVDA", "TSLA"]:
-    w_s = snapshots.get(w_sym, {"price": 0.0, "pct": 0.0})
-    w_c = "#10b981" if w_s["pct"] >= 0 else "#f43f5e"
-    w_arr = "▲" if w_s["pct"] >= 0 else "▼"
-    st.sidebar.markdown(
-        f"<div style='display:flex; justify-content:space-between; font-family:JetBrains Mono,monospace; font-size:0.78rem; padding:4px 0; border-bottom:1px solid rgba(128,128,128,0.2);'>"
-        f"<span><b>{w_sym.replace('.NS','')}</b></span>"
-        f"<span style='color:{w_c}; font-weight:700;'>{w_s['price']:,.2f} ({w_arr}{w_s['pct']:+.2f}%)</span></div>",
-        unsafe_allow_html=True
-    )
-
-if st.session_state.page == "Dashboard":
-    port_df = pd.read_sql_query("SELECT ticker, shares, avg_price FROM portfolio WHERE username = ?", conn, params=(st.session_state.username,))
-    pos_df = pd.read_sql_query("SELECT ticker, product_type, shares, avg_price FROM positions WHERE username = ?", conn, params=(st.session_state.username,))
-    held_tickers = list(set(port_df["ticker"].tolist() + pos_df["ticker"].tolist()))
-    refresh_held_tickers_live(held_tickers)
-
-    tot_inv = (port_df["shares"] * port_df["avg_price"]).sum() if not port_df.empty else 0.0
-    tot_cur = sum(
-        row["shares"] * st.session_state.last_valid_snapshots.get(row["ticker"], {}).get("price", row["avg_price"])
-        for _, row in port_df.iterrows()
-    ) if not port_df.empty else 0.0
-    tot_pnl = tot_cur - tot_inv
-    pnl_pct = (tot_pnl / tot_inv * 100) if tot_inv > 0 else 0.0
-
-    h_c1, h_c2, h_c3, h_c4 = st.columns(4)
-    with h_c1:
-        render_kpi("Equity Margin Available", f"₹{user_bal:,.2f}", "Opening Balance: ₹1,00,000", "kpi-white", "#2563eb")
-    with h_c2:
-        render_kpi("Live Invested Value", f"₹{tot_cur:,.2f}", f"Initial Cost: ₹{tot_inv:,.2f} ({len(port_df)} stocks)", "kpi-cyan", "#0284c7")
-    with h_c3:
-        render_kpi("Live Unrealized P&L", f"₹{tot_pnl:+,.2f}", f"{'▲' if tot_pnl >= 0 else '▼'} {pnl_pct:+.2f}% Live Move", "kpi-emerald" if tot_pnl >= 0 else "kpi-violet", "#10b981" if tot_pnl >= 0 else "#f43f5e")
-    with h_c4:
-        nse_open_now, _ = check_market_trading_hours("RELIANCE.NS")
-        render_kpi("Market Session", "MARKET OPEN" if nse_open_now else "MARKET CLOSED", "Mon–Fri 9:15 AM – 3:30 PM IST", "kpi-emerald" if nse_open_now else "kpi-violet", "#10b981" if nse_open_now else "#f43f5e")
-
-    f_col1, f_col2 = st.columns([2.2, 1.2])
-    with f_col1:
-        st.subheader("🏢 FinanceSight STOCKS Marketwatch (Click to Launch SuperChart or AI)")
-    with f_col2:
-        market_filter = st.selectbox(
-            "Filter Exchange",
-            ["⭐ Featured Top STOCKS", "🇮🇳 All Indian NSE STOCKS", "🇺🇸 All US NASDAQ/NYSE STOCKS", "🌐 All Global STOCKS"],
-            label_visibility="collapsed"
+    p_col1, p_col2 = st.columns([1.3, 1.0], gap="medium")
+    with p_col1.container(border=True, height="stretch"):
+        st.subheader("Practical tools you can rely on", icon=":material/shield:")
+        st.markdown(
+            "**Data-driven decision making**  \n"
+            "Evaluate global equities using objective technical indicators (20-SMA, 50-EMA, Bollinger Bands, Wilder RSI, MACD) and historical backtest metrics.\n\n"
+            "**Risk-free paper trading simulator**  \n"
+            "Practice CNC delivery and 5× leveraged MIS intraday orders—including pending Limit orders—using a ₹1,00,000 virtual wallet.\n\n"
+            "**Agentic AI & backtesting workflow**  \n"
+            "Ask the AI Advisor to compare stocks, check pivots, inspect your portfolio, or execute orders directly from chat."
         )
 
-    if "Featured" in market_filter:
-        grid_tickers = ["RELIANCE.NS", "JIOFIN.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "SBIN.NS", "ZOMATO.NS", "HAL.NS", "AAPL", "NVDA", "TSLA", "MSFT"]
-    elif "Indian" in market_filter:
-        grid_tickers = [k for k, v in STOCK_CATALOG.items() if v["exchange"] == "NSE"]
-    elif "US" in market_filter:
-        grid_tickers = [k for k, v in STOCK_CATALOG.items() if v["exchange"] != "NSE"]
-    else:
-        grid_tickers = list(STOCK_CATALOG.keys())
+    with p_col2.container(border=True, height="stretch"):
+        st.subheader("Transparent fee simulation", icon=":material/sell:")
+        st.write("Estimate real-world trading costs accurately using standard discount brokerage rates and our built-in tax & breakeven calculator.")
+        f1, f2 = st.columns(2)
+        f1.metric("CNC Delivery", "₹0", "Zero equity delivery brokerage", delta_color="off", border=True, height="stretch")
+        f2.metric("Intraday & F&O", "₹20", "Flat ₹20 / 0.03% order cap", delta_color="off", border=True, height="stretch")
 
-    for row_start in range(0, len(grid_tickers), 3):
-        cols = st.columns(3)
-        for col_idx in range(3):
-            if row_start + col_idx < len(grid_tickers):
-                sym = grid_tickers[row_start + col_idx]
-                meta = STOCK_CATALOG[sym]
-                snap = snapshots.get(sym, {"price": 0.0, "pct": 0.0, "rsi": 50.0, "above_sma": True})
-                logo_url = get_logo_url(sym)
-                badge_cls = "badge-up" if snap["pct"] >= 0 else "badge-down"
-                arrow = "▲" if snap["pct"] >= 0 else "▼"
-                ai_tag = "🟢 ▲ BULLISH" if snap["above_sma"] and snap["rsi"] < 68 else ("🔴 ▼ BEARISH" if not snap["above_sma"] else "🟡 NEUTRAL")
-
-                with cols[col_idx]:
-                    render_html(f"""
-                    <div class="stock-card">
-                        <div class="company-header">
-                            <img src="{logo_url}" class="company-logo" alt="{meta['name']}">
-                            <div>
-                                <div class="fs-title" style="font-size:1.02rem;">{meta['name']}</div>
-                                <div style="font-size:0.76rem; color:#0284c7; font-weight:700;">{meta['exchange']}: {sym.replace('.NS','')} • {meta['sector']}</div>
-                            </div>
-                        </div>
-                        <div style="display:flex; justify-content:space-between; align-items:baseline; margin-top:8px;">
-                            <div class="mono-price">{meta['currency']}{snap['price']:,.2f}</div>
-                            <span class="{badge_cls}">{arrow} {snap['pct']:+.2f}%</span>
-                        </div>
-                        <div class="fs-muted" style="margin-top:12px; padding-top:10px; border-top:1px solid rgba(128,128,128,0.2); display:flex; justify-content:space-between; font-size:0.78rem;">
-                            <span>RSI (14): <b>{snap['rsi']:.1f}</b></span>
-                            <span style="font-weight:700;">{ai_tag}</span>
-                        </div>
-                    </div>
-                    """)
-                    
-                    c_btn1, c_btn2 = st.columns(2)
-                    if c_btn1.button(f"SUPERCHART", key=f"dash_chart_{sym}", use_container_width=True):
-                        ensure_live_snapshot(sym)
-                        navigate_to("Terminal", sym)
-                        st.rerun()
-                    if c_btn2.button(f"ASK AI ADVISOR", key=f"dash_ai_{sym}", use_container_width=True):
-                        ensure_live_snapshot(sym)
-                        navigate_to("Advisor", sym)
-                        st.rerun()
-
-elif st.session_state.page == "Orders":
-    st.subheader("📜 FinanceSight Executed Orders & Tradebook")
-    tx_df = pd.read_sql_query(
-        "SELECT id, timestamp, ticker, action, shares, price, total FROM transactions WHERE username = ? ORDER BY id DESC",
-        conn, params=(st.session_state.username,)
-    )
-    if tx_df.empty:
-        st.info("You haven't placed any orders yet. Use the left sidebar **BUY (B) / SELL (S)** panel or the **AI Advisor** during market hours!")
-    else:
-        st.dataframe(tx_df, use_container_width=True, hide_index=True)
-        c_ord1, c_ord2 = st.columns([1.4, 2.6])
-        with c_ord1:
-            if st.button("🔄 Cancel Last Executed Order", use_container_width=True):
-                ok_c, msg_c = cancel_last_user_order(st.session_state.username)
-                if ok_c:
-                    st.success(msg_c)
-                    st.rerun()
-                else:
-                    st.warning(msg_c)
-        with c_ord2:
-            csv_tx = tx_df.to_csv(index=False).encode("utf-8")
-            st.download_button(
-                label="📥 Export Order Book to Excel (CSV)",
-                data=csv_tx,
-                file_name="financesight_orders.csv",
-                mime="text/csv"
+    with st.container(border=True):
+        l1, l2 = st.columns([1.0, 1.5], vertical_alignment="center")
+        with l1:
+            st.subheader("FinanceSight Learning Hub", icon=":material/menu_book:")
+            st.caption("Interactive technical analysis & AI-assisted learning")
+        with l2:
+            st.markdown(
+                "**Interactive Indicator Guides:** Understand Candlesticks, Moving Averages, Bollinger Bands, Volume, and Wilder RSI directly on live stock charts.\n\n"
+                "**FinanceSight AI Advisor:** Query live stock fundamentals, pivot levels, multi-stock comparisons, and position sizing in plain English."
             )
 
-elif st.session_state.page == "Holdings":
-    st.subheader("💼 FinanceSight CNC Equity Holdings (Moves Live with Market Price)")
-    port_df = pd.read_sql_query("SELECT ticker, shares, avg_price FROM portfolio WHERE username = ?", conn, params=(st.session_state.username,))
-    
-    if port_df.empty:
-        st.info("Your Holdings are currently empty. Place a **CNC (Delivery) BUY** order during market hours to build your portfolio!")
+    with st.container(border=True):
+        st.markdown("### Start Exploring with a FinanceSight Account", text_alignment="center")
+        st.markdown(
+            "Access live NSE & NASDAQ stocks, 7-day leak-free ML forecasting, autonomous AI order execution, and a ₹1,00,000 virtual trading wallet.",
+            text_alignment="center",
+        )
+        _, cta_c, _ = st.columns([1.2, 1.4, 1.2])
+        if cta_c.button("Launch Demo Workspace (₹1,00,000 Margin)", type="primary", icon=":material/rocket_launch:", width="stretch", key="cta_demo_home"):
+            st.session_state.logged_in = True
+            st.session_state.username = "Trader_XYZ"
+            st.session_state.full_name = "Trader_XYZ"
+            st.rerun()
+
+    render_public_footer()
+
+
+def page_public_products() -> None:
+    st.title("Platform Modules & Capabilities", icon=":material/layers:")
+    st.caption("Integrated quantitative charting, machine learning forecasting, strategy backtesting, and paper trading.")
+    modules = [
+        (":material/candlestick_chart:", "SuperChart Terminal & Fundamentals", "Multi-panel Plotly candlestick charts (`1mo`–`5y`), SMA-20, EMA-50, Bollinger Bands, Wilder RSI, MACD, company fundamentals, and normalized Peer Comparison."),
+        (":material/psychology:", "3-Model ML Forecasting Suite", "Stationary next-day return prediction using Random Forest, Gradient Boosting & Ridge Regression evaluated on an 80/20 chronological split with RMSE, MAE, MAPE, R², Directional Accuracy, and Feature Importance."),
+        (":material/science:", "No-Code Strategy Backtester", "Simulate SMA Crossover, RSI Reversal, Bollinger Mean Reversion & MACD strategies with mark-to-market equity curves, Buy & Hold benchmark, Alpha, Sharpe Ratio, and Max Drawdown."),
+        (":material/account_balance_wallet:", "Multi-Currency Paper Trading", "Place CNC (1x) and MIS (5x) Market & real Pending Limit orders across NSE (`₹`) and US (`$`) stocks with live `USD/INR` FX conversion and market-hours validation."),
+        (":material/smart_toy:", "Agentic AI Advisor (Groq + Quant RAG)", "Multi-turn AI analyst with multi-stock comparison, live pivot points, news catalysts, portfolio inspection, and strict command-driven trade execution."),
+        (":material/calculate:", "Statutory Fee & Tax Simulator", "Exact Indian brokerage, STT, SEBI turnover fee, stamp duty, GST, and breakeven calculation."),
+    ]
+    for i in range(0, len(modules), 2):
+        c1, c2 = st.columns(2, gap="medium")
+        for col, (ico, title, desc) in zip([c1, c2], modules[i : i + 2]):
+            with col.container(border=True, height="stretch"):
+                st.subheader(title, icon=ico)
+                st.write(desc)
+    render_public_footer()
+
+
+def page_public_fees() -> None:
+    st.title("Transparent Fee Structure & Calculator", icon=":material/receipt_long:")
+    k1, k2, k3 = st.columns(3)
+    k1.metric("CNC Equity Delivery", "₹0", "Zero brokerage on delivery trades", delta_color="off", border=True, height="stretch")
+    k2.metric("MIS Intraday & F&O", "₹20", "Flat ₹20 or 0.03% per executed leg", delta_color="off", border=True, height="stretch")
+    k3.metric("Virtual Trading Capital", "₹1,00,000", "Instant simulated margin on signup", delta_color="off", border=True, height="stretch")
+    st.space("small")
+    render_brokerage_calculator_widget("pub_calc")
+    render_public_footer()
+
+
+def page_public_about() -> None:
+    st.title("System Architecture & Methodology", icon=":material/architecture:")
+    st.markdown(
+        "FinanceSight unifies live financial market feeds, time-series machine learning, systematic strategy backtesting, "
+        "and a persistent SQLite paper-trading ledger inside a multi-page Streamlit architecture."
+    )
+    with st.container(border=True):
+        st.subheader("End-to-End Architecture Diagram", icon=":material/hub:")
+        st.mermaid_chart(
+            """
+            flowchart LR
+                UI["Streamlit Multi-Page UI<br/>(st.navigation & Fragments)"] --> DATA["Paginated Yahoo Finance Engine<br/>(345+ Equities + 4 Indices + USDINR=X)"]
+                UI --> ML["ML Evaluation Suite<br/>(RF + GBR + Ridge on Stationary Returns)"]
+                UI --> BT["Quantitative Backtester<br/>(Mark-to-Market + Sharpe + Drawdown)"]
+                UI --> DB[("SQLite WAL Ledger<br/>Users, Holdings, Positions, Limit Orders")]
+                UI --> AI["Agentic AI Advisor<br/>(Groq / Gemini + Quant RAG & News)"]
+            """,
+            alt="System architecture flowchart connecting Streamlit UI, Yahoo Finance data engine, ML suite, backtester, SQLite ledger, and AI advisor",
+        )
+    c1, c2 = st.columns(2)
+    with c1.container(border=True, height="stretch"):
+        st.subheader("ML Design Highlights", icon=":material/model_training:")
+        st.markdown(
+            "- **Stationary Target:** Predicts 1-day percentage returns rather than raw price levels so tree ensembles never flatline near all-time highs.\n"
+            "- **Temporal Validation:** Strict chronological 80/20 split (`shuffle=False`) eliminates look-ahead leakage.\n"
+            "- **Explainability:** Exposes out-of-sample RMSE, MAE, MAPE, R², Directional Accuracy, and feature importances."
+        )
+    with c2.container(border=True, height="stretch"):
+        st.subheader("Trading & Security Engineering", icon=":material/security:")
+        st.markdown(
+            "- **PBKDF2 Password Hashing:** Salted `PBKDF2-HMAC-SHA256` authentication with per-session isolation.\n"
+            "- **Multi-Currency Accounting:** Live `USD/INR` FX conversion aligns US equity trades with INR wallet margin.\n"
+            "- **Real Limit Order Book:** Pending limit orders reserve margin/shares and fill automatically when market prices cross."
+        )
+    render_public_footer()
+
+
+def page_public_support() -> None:
+    st.title("Help & Support Center", icon=":material/support_agent:")
+    with st.form("support_ticket_form"):
+        c1, c2, c3 = st.columns(3)
+        tk_cat = c1.selectbox(
+            "Topic",
+            ["Account & Login", "SuperChart & Indicators", "Paper Trading & Limit Orders", "ML Forecasting", "AI Advisor"],
+        )
+        tk_email = c2.text_input("Email", value="user@financesight.in")
+        tk_subj = c3.text_input("Issue Summary", placeholder="Describe your question or bug...")
+        if st.form_submit_button("Submit Support Ticket", type="primary"):
+            if not tk_subj.strip():
+                st.warning("Please enter an issue summary.")
+            else:
+                t_id = f"FS-{int(datetime.now().timestamp()) % 100000}"
+                with db_conn() as conn:
+                    conn.execute(
+                        "INSERT INTO support_tickets (ticket_id, timestamp, category, subject, email, status) VALUES (?, ?, ?, ?, ?, 'OPEN')",
+                        (t_id, get_ist_now().strftime("%Y-%m-%d %H:%M"), tk_cat, tk_subj.strip(), tk_email.strip()),
+                    )
+                st.success(f"Ticket `{t_id}` logged successfully!")
+
+    with db_conn() as conn:
+        tk_df = pd.read_sql_query(
+            "SELECT ticket_id AS Ticket, timestamp AS Created, category AS Category, subject AS Summary, status AS Status FROM support_tickets ORDER BY id DESC LIMIT 10",
+            conn,
+        )
+    if not tk_df.empty:
+        st.subheader("Recent Support Tickets")
+        st.dataframe(tk_df, hide_index=True, alt="Recent support tickets submitted by users")
+    render_public_footer()
+
+
+def _jump_to_page(page_key: str, ticker: str | None = None) -> None:
+    if ticker:
+        st.session_state.selected_ticker = ticker
+    target_page = st.session_state["_page_map"].get(page_key)
+    if target_page is not None:
+        st.switch_page(target_page)
+
+
+def _shift_page_cb(key_name: str, delta: int) -> None:
+    st.session_state[key_name] = max(0, int(st.session_state.get(key_name, 0)) + delta)
+
+
+def _toggle_wl_cb(username: str, sym: str) -> None:
+    now_watched = toggle_watchlist(username, sym)
+    st.toast(f"{'Added' if now_watched else 'Removed'} {sym} {'to' if now_watched else 'from'} Watchlist.")
+
+
+def _clear_chat_cb() -> None:
+    st.session_state.ai_chat_history = []
+
+
+@st.fragment
+def _dashboard_marketwatch_fragment() -> None:
+    snaps, _, usdinr, is_live, _ = get_market_context()
+    user_wl = get_user_watchlist(st.session_state.username)
+    all_sectors = ["All Sectors"] + sorted({v["sector"] for v in STOCK_CATALOG.values()})
+
+    f1, f2, f3 = st.columns([1.4, 1.0, 1.3], vertical_alignment="bottom")
+    q_filter = f1.text_input("Search Marketwatch", type="search", placeholder="Search 345+ tickers, companies, or sectors...", key="dash_search")
+    sec_filter = f2.selectbox("Sector", all_sectors, key="dash_sector_filter")
+    ex_filter = f3.segmented_control(
+        "Exchange",
+        ["Featured", "NSE", "US", "Watchlist", "All"],
+        default="Featured",
+        key="dash_ex_filter",
+    ) or "Featured"
+
+    if ex_filter == "Featured":
+        candidates = list(CORE_TICKERS)
+    elif ex_filter == "NSE":
+        candidates = [k for k, v in STOCK_CATALOG.items() if v["exchange"] == "NSE"]
+    elif ex_filter == "US":
+        candidates = [k for k, v in STOCK_CATALOG.items() if v["exchange"] != "NSE"]
+    elif ex_filter == "Watchlist":
+        candidates = [LEGACY_TICKER_REMAP.get(s, s) for s in (user_wl if user_wl else CORE_TICKERS[:6])]
     else:
-        refresh_held_tickers_live(port_df["ticker"].tolist())
-        port_df["LTP (Live Price)"] = port_df["ticker"].apply(lambda s: st.session_state.last_valid_snapshots.get(s, {}).get("price", float(port_df.loc[port_df["ticker"] == s, "avg_price"].iloc[0])))
-        port_df["Initial Cost (₹)"] = port_df["shares"] * port_df["avg_price"]
-        port_df["Live Invested Value (₹)"] = port_df["shares"] * port_df["LTP (Live Price)"]
-        port_df["Live P&L (₹)"] = port_df["Live Invested Value (₹)"] - port_df["Initial Cost (₹)"]
-        port_df["Net Change (%)"] = (port_df["Live P&L (₹)"] / port_df["Initial Cost (₹)"]) * 100
+        candidates = list(STOCK_CATALOG.keys())
 
-        tot_inv = port_df["Initial Cost (₹)"].sum()
-        tot_cur = port_df["Live Invested Value (₹)"].sum()
-        tot_pnl = tot_cur - tot_inv
+    if sec_filter != "All Sectors":
+        base_pool = list(STOCK_CATALOG.keys()) if ex_filter == "Featured" else candidates
+        candidates = [s for s in base_pool if STOCK_CATALOG.get(s, {}).get("sector") == sec_filter]
 
-        pc1, pc2, pc3, pc4 = st.columns(4)
-        with pc1:
-            render_kpi("Total Account Net Worth", f"₹{(user_bal + tot_cur):,.2f}", "Cash + Live Holdings", "kpi-white", "#2563eb")
-        with pc2:
-            render_kpi("Initial Cost Basis", f"₹{tot_inv:,.2f}", f"{len(port_df)} Active Stocks", "kpi-cyan", "#0284c7")
-        with pc3:
-            render_kpi("Live Invested Value", f"₹{tot_cur:,.2f}", "Moves Up/Down with Stock LTP", "kpi-violet", "#8b5cf6")
-        with pc4:
-            render_kpi("Live Unrealized P&L", f"₹{tot_pnl:+,.2f}", f"{'▲' if tot_pnl >= 0 else '▼'} {(tot_pnl/tot_inv)*100:+.2f}% ROI", "kpi-emerald" if tot_pnl >= 0 else "kpi-violet", "#10b981" if tot_pnl >= 0 else "#f43f5e")
+    if q_filter.strip():
+        ql = q_filter.strip().lower()
+        search_pool = list(STOCK_CATALOG.keys()) if ex_filter == "Featured" and sec_filter == "All Sectors" else candidates
+        candidates = [
+            s for s in search_pool
+            if ql in s.lower()
+            or ql in STOCK_CATALOG.get(s, {}).get("name", "").lower()
+            or ql in STOCK_CATALOG.get(s, {}).get("sector", "").lower()
+            or ql in STOCK_CATALOG.get(s, {}).get("exchange", "").lower()
+        ]
 
-        d_col1, d_col2 = st.columns([1.8, 1.2])
-        with d_col1:
-            st.markdown("##### 📂 Live Holdings Breakdown")
-            st.dataframe(port_df.round(2), use_container_width=True, hide_index=True)
-            csv_hold = port_df.round(2).to_csv(index=False).encode("utf-8")
-            st.download_button("📥 Download Holdings Statement (CSV)", data=csv_hold, file_name="financesight_holdings.csv", mime="text/csv")
-        with d_col2:
-            pie_fig = go.Figure(data=[go.Pie(labels=port_df["ticker"], values=port_df["Live Invested Value (₹)"], hole=0.52)])
-            pie_fig.update_layout(title="Live Holdings Allocation", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=340, margin=dict(l=10, r=10, t=40, b=10))
-            st.plotly_chart(pie_fig, use_container_width=True)
+    if not candidates:
+        st.info("No matching stocks found for that filter.")
+        return
 
-elif st.session_state.page == "Positions":
-    st.subheader("⚡ FinanceSight Open Positions (MIS Intraday 5x & CNC Delivery)")
-    pos_df = pd.read_sql_query("SELECT ticker, product_type, shares, avg_price FROM positions WHERE username = ?", conn, params=(st.session_state.username,))
-    
-    if pos_df.empty:
-        st.info("No open positions right now. Place an **MIS (Intraday 5x)** or **CNC** order during market hours to track live moving M2M Positions!")
-    else:
-        refresh_held_tickers_live(pos_df["ticker"].tolist())
-        pos_df["LTP (Live Price)"] = pos_df["ticker"].apply(lambda s: st.session_state.last_valid_snapshots.get(s, {}).get("price", float(pos_df.loc[pos_df["ticker"] == s, "avg_price"].iloc[0])))
-        pos_df["Initial Cost (₹)"] = pos_df["shares"] * pos_df["avg_price"]
-        pos_df["Live Position Value (₹)"] = pos_df["shares"] * pos_df["LTP (Live Price)"]
-        pos_df["M2M P&L (₹)"] = (pos_df["LTP (Live Price)"] - pos_df["avg_price"]) * pos_df["shares"]
-        pos_df["Return (%)"] = ((pos_df["LTP (Live Price)"] - pos_df["avg_price"]) / pos_df["avg_price"]) * 100
+    page_size = 24
+    total_items = len(candidates)
+    total_pages = max(1, (total_items + page_size - 1) // page_size)
+    filter_sig = f"{ex_filter}|{sec_filter}|{q_filter.strip().lower()}"
+    if st.session_state.get("_dash_sig") != filter_sig:
+        st.session_state["_dash_sig"] = filter_sig
+        st.session_state["dash_page"] = 0
+    cur_page = min(max(0, int(st.session_state.get("dash_page", 0))), total_pages - 1)
 
-        tot_m2m = pos_df["M2M P&L (₹)"].sum()
-        tot_pos_val = pos_df["Live Position Value (₹)"].sum()
-        p_c1, p_c2 = st.columns(2)
-        with p_c1:
-            render_kpi("Live Open Positions Value", f"₹{tot_pos_val:,.2f}", f"{len(pos_df)} Active Positions", "kpi-cyan", "#0284c7")
-        with p_c2:
-            render_kpi("Total Open Positions M2M P&L", f"₹{tot_m2m:+,.2f}", "Real-Time Mark-to-Market", "kpi-emerald" if tot_m2m >= 0 else "kpi-violet", "#10b981" if tot_m2m >= 0 else "#f43f5e")
-        st.dataframe(pos_df.round(2), use_container_width=True, hide_index=True)
+    start_i = cur_page * page_size
+    page_syms = candidates[start_i : start_i + page_size]
 
-        st.markdown("##### ⚡ 1-Click Position Square-Off (Exit at Market)")
-        sq_cols = st.columns(min(4, len(pos_df)))
-        for idx, row in pos_df.iterrows():
-            col_target = sq_cols[idx % len(sq_cols)]
-            if col_target.button(f"🔴 Square Off {row['ticker']} ({row['product_type']})", key=f"sq_{idx}", use_container_width=True):
-                ok, msg = execute_trade(st.session_state.username, row["ticker"], "SELL", int(row["shares"]), float(row["LTP (Live Price)"]), row["product_type"])
-                if ok:
-                    st.success(msg)
-                    st.rerun()
-                else:
-                    st.error(msg)
+    nav_l, nav_c, nav_r = st.columns([2.2, 0.9, 0.9], vertical_alignment="center")
+    nav_l.caption(
+        f"Showing **{start_i + 1}–{min(start_i + page_size, total_items)}** of **{total_items}** stocks "
+        f"(Catalog: {len(STOCK_CATALOG)} · {'Live Yahoo Data' if is_live else 'Cached Baseline'} · FX: ₹{usdinr:.2f}/$)"
+    )
+    if total_pages > 1:
+        nav_c.button(
+            "Previous",
+            icon=":material/chevron_left:",
+            disabled=cur_page == 0,
+            width="stretch",
+            key="dash_prev",
+            on_click=_shift_page_cb,
+            args=("dash_page", -1),
+        )
+        nav_r.button(
+            f"Next ({cur_page + 1}/{total_pages})",
+            icon=":material/chevron_right:",
+            disabled=cur_page >= total_pages - 1,
+            width="stretch",
+            key="dash_next",
+            on_click=_shift_page_cb,
+            args=("dash_page", 1),
+        )
 
-elif st.session_state.page == "Funds":
-    st.subheader("💳 FinanceSight Virtual Funds & Margin Gateway")
-    f_tab1, f_tab2 = st.tabs(["➕ Add Virtual Funds (UPI / NetBanking Simulator)", "🏦 Withdraw Funds (Bank Settlement Simulator)"])
+    snaps = ensure_symbols_live(page_syms, snaps)
 
-    with f_tab1:
-        dep_col1, dep_col2 = st.columns([1.4, 1.6])
-        with dep_col1:
-            render_kpi("Available Cash Margin", f"₹{user_bal:,.2f}", "Zero Gateway Charges • Instant Credit", "kpi-white", "#2563eb")
-            preset = st.radio("Quick Top-Up Amount", ["₹10,000", "₹25,000", "₹50,000", "₹1,00,000"], horizontal=True)
-            preset_map = {"₹10,000": 10000.0, "₹25,000": 25000.0, "₹50,000": 50000.0, "₹1,00,000": 100000.0}
-            dep_amount = st.number_input("Enter Deposit Amount (₹)", min_value=500.0, max_value=10000000.0, value=preset_map.get(preset, 25000.0), step=1000.0)
-            pay_method = st.selectbox("Payment Mode", ["📱 Instant UPI (GPay / PhonePe / Paytm)", "🏦 NetBanking (HDFC / SBI / ICICI)", "💳 RuPay / Visa Debit Card"])
-            pay_ref = st.text_input("UPI ID / Reference", value=f"{st.session_state.username}@okaxis")
-            if st.button("✅ Authorize & Add Funds Instantly", type="primary", use_container_width=True):
-                ok, msg = update_funds(st.session_state.username, dep_amount, "DEPOSIT", pay_method, pay_ref)
-                if ok:
-                    st.success(msg)
-                    st.rerun()
-        with dep_col2:
-            st.markdown("##### 🧾 Recent Funding & Banking Ledger")
-            f_df = pd.read_sql_query("SELECT timestamp, type, method, reference, amount, status FROM funding_history WHERE username = ? ORDER BY id DESC", conn, params=(st.session_state.username,))
-            st.dataframe(f_df, use_container_width=True, hide_index=True)
+    for row_start in range(0, len(page_syms), 3):
+        cols = st.columns(3)
+        for col_i in range(3):
+            idx = row_start + col_i
+            if idx >= len(page_syms):
+                continue
+            sym = page_syms[idx]
+            meta = get_ticker_meta(sym)
+            sn = snaps.get(sym, DEFAULT_STOCKS_SNAPSHOTS.get(sym, {"price": 0.0, "pct": 0.0, "rsi": 50.0, "above_sma": True, "sparkline": []}))
+            is_watched = sym in user_wl
+            sig_badge = ":green-badge[Bullish]" if sn.get("above_sma", True) and sn.get("rsi", 50.0) < 68 else (":orange-badge[Overbought]" if sn.get("rsi", 50.0) >= 68 else ":red-badge[Bearish]")
 
-    with f_tab2:
-        w_col1, w_col2 = st.columns([1.4, 1.6])
-        with w_col1:
-            render_kpi("Withdrawable Balance", f"₹{user_bal:,.2f}", "Instant Bank Settlement", "kpi-emerald", "#10b981")
-            bank_name = st.selectbox("Linked Bank", ["State Bank of India (SBI)", "HDFC Bank", "ICICI Bank", "Axis Bank", "Punjab National Bank"])
-            acc_num = st.text_input("Account Number", value="XXXX-XXXX-8821")
-            ifsc_code = st.text_input("IFSC Code", value="SBIN0004821")
-            w_amount = st.number_input("Withdrawal Amount (₹)", min_value=100.0, max_value=max(100.0, float(user_bal)), value=min(5000.0, max(100.0, float(user_bal))), step=500.0)
-            if st.button("🏦 Initiate Instant Bank Payout", type="primary", use_container_width=True):
-                ok, msg = update_funds(st.session_state.username, w_amount, "WITHDRAW", bank_name, f"A/C {acc_num[-4:]} ({ifsc_code})")
-                if ok:
-                    st.success(msg)
-                    st.rerun()
-                else:
-                    st.error(msg)
-        with w_col2:
-            st.markdown("##### 📜 Complete Payout History")
-            f_df = pd.read_sql_query("SELECT timestamp, type, method, reference, amount, status FROM funding_history WHERE username = ? ORDER BY id DESC", conn, params=(st.session_state.username,))
-            st.dataframe(f_df, use_container_width=True, hide_index=True)
+            with cols[col_i].container(border=True, height="stretch"):
+                hdr_l, hdr_r = st.columns([4.0, 1.0], vertical_alignment="center")
+                hdr_l.html(
+                    f'<div style="display:flex;align-items:center;gap:10px;">'
+                    f'{stock_icon_html(sym, size=34, radius=9)}'
+                    f'<div style="min-width:0;">'
+                    f'<div style="font-weight:700;font-size:0.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{html.escape(meta["name"])}</div>'
+                    f'<div style="font-size:0.74rem;opacity:0.74;font-family:JetBrains Mono,monospace;">{html.escape(sym)} · {meta["exchange"]} · {html.escape(meta["sector"])}</div>'
+                    f'</div></div>'
+                )
+                star_icon = ":material/star:" if is_watched else ":material/star_border:"
+                hdr_r.button(
+                    "",
+                    icon=star_icon,
+                    key=f"wl_{sym}",
+                    help="Toggle Watchlist",
+                    on_click=_toggle_wl_cb,
+                    args=(st.session_state.username, sym),
+                )
 
-elif st.session_state.page == "Terminal":
-    ticker = st.session_state.selected_ticker
-    meta = STOCK_CATALOG.get(ticker, {"name": ticker, "sector": "Global Equity", "domain": "google.com", "exchange": "MKT", "currency": "₹"})
+                st.metric(
+                    label="Last Price",
+                    value=f"{meta['currency']}{sn['price']:,.2f}",
+                    delta=f"{sn['pct']:+.2f}%",
+                    chart_data=sn.get("sparkline") or None,
+                    chart_type="line",
+                    label_visibility="collapsed",
+                )
+                st.markdown(f"RSI(14): `{sn['rsi']:.1f}` &nbsp; {sig_badge}")
+                b1, b2 = st.columns(2)
+                if b1.button("SuperChart", icon=":material/candlestick_chart:", key=f"go_chart_{sym}", width="stretch"):
+                    _jump_to_page("Terminal", sym)
+                if b2.button("AI Advisor", icon=":material/smart_toy:", key=f"go_ai_{sym}", width="stretch"):
+                    _jump_to_page("Advisor", sym)
+
+
+def page_dashboard() -> None:
+    snaps, idx_snaps, usdinr, _, stamp = get_market_context()
+    render_ticker_marquee(snaps, idx_snaps, usdinr)
+
+    acct_pre = get_user_account_summary(st.session_state.username, snaps, usdinr)
+    need_syms = set(acct_pre["pend_df"]["ticker"].tolist() if not acct_pre["pend_df"].empty else [])
+    need_syms.update(acct_pre["port_df"]["ticker"].tolist() if not acct_pre["port_df"].empty else [])
+    need_syms.update(acct_pre["pos_df"]["ticker"].tolist() if not acct_pre["pos_df"].empty else [])
+    snaps = ensure_symbols_live(list(need_syms), snaps)
+
+    filled = sync_pending_orders(st.session_state.username, snaps, usdinr, st.session_state.allow_after_hours)
+    for msg in filled:
+        st.toast(msg, icon=":material/check_circle:")
+
+    acct = get_user_account_summary(st.session_state.username, snaps, usdinr)
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("Available Margin", f"₹{acct['balance']:,.2f}", f"Net Worth: ₹{acct['balance'] + acct['tot_cur']:,.2f}", delta_color="off", border=True, height="stretch")
+    k2.metric("Live Holdings Value", f"₹{acct['tot_cur']:,.2f}", f"Cost: ₹{acct['tot_inv']:,.2f}", delta_color="off", border=True, height="stretch")
+    pnl_pct = (acct["tot_pnl"] / acct["tot_inv"] * 100.0) if acct["tot_inv"] > 0 else 0.0
+    k3.metric("Unrealized P&L", f"₹{acct['tot_pnl']:+,.2f}", f"{pnl_pct:+.2f}% ROI", border=True, height="stretch")
+    nse_open, _ = check_market_trading_hours("RELIANCE.NS")
+    k4.metric("NSE Market Status", "OPEN" if nse_open else "CLOSED", stamp, delta_color="off", border=True, height="stretch")
+
+    st.space("small")
+    render_indices_row(idx_snaps, usdinr)
+    st.space("small")
+    _dashboard_marketwatch_fragment()
+
+
+@st.fragment
+def _superchart_workspace_fragment(ticker: str, period: str, df: pd.DataFrame) -> None:
+    meta = get_ticker_meta(ticker)
     currency = meta["currency"]
-    logo_url = get_logo_url(ticker)
 
-    df = fetch_stock_history(ticker, "1y") if online_status else None
-    if df is None or len(df) < 35:
-        st.error("⚠️ Live historical chart data requires an active internet connection. Please reconnect and click 'Refresh Live Market Data'.")
-        st.stop()
+    terminal_view = st.segmented_control(
+        "Terminal View",
+        ["SuperChart", "ML Forecast & Evaluation", "Peer Comparison"],
+        default="SuperChart",
+        key="terminal_view",
+        label_visibility="collapsed",
+    ) or "SuperChart"
+
+    if terminal_view == "SuperChart":
+        with st.container(border=True):
+            ctrl1, ctrl2, ctrl3 = st.columns([1.2, 2.0, 1.1])
+            chart_style = ctrl1.segmented_control("Style", ["Candlestick", "Line"], default="Candlestick", key="sc_style") or "Candlestick"
+            overlays = ctrl2.pills(
+                "Overlays",
+                ["20 SMA", "50 EMA", "Bollinger Bands"],
+                selection_mode="multi",
+                default=["20 SMA", "50 EMA"],
+                key="sc_overlays",
+            )
+            oscillator = ctrl3.segmented_control("Oscillator", ["RSI (14)", "MACD"], default="RSI (14)", key="sc_osc") or "RSI (14)"
+
+            fig = make_subplots(
+                rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.04, row_heights=[0.60, 0.16, 0.24]
+            )
+            if chart_style == "Candlestick":
+                fig.add_trace(
+                    go.Candlestick(
+                        x=df.index, open=df["Open"], high=df["High"], low=df["Low"], close=df["Close"],
+                        name="Price", increasing_line_color="#10b981", decreasing_line_color="#ef4444",
+                    ),
+                    row=1, col=1,
+                )
+            else:
+                fig.add_trace(
+                    go.Scatter(x=df.index, y=df["Close"], name="Close", line=dict(color="#3b82f6", width=2.2)),
+                    row=1, col=1,
+                )
+
+            if "20 SMA" in overlays:
+                fig.add_trace(go.Scatter(x=df.index, y=df["SMA_20"], name="20 SMA", line=dict(color="#0ea5e9", width=1.6)), row=1, col=1)
+            if "50 EMA" in overlays:
+                fig.add_trace(go.Scatter(x=df.index, y=df["EMA_50"], name="50 EMA", line=dict(color="#f59e0b", width=1.6, dash="dot")), row=1, col=1)
+            if "Bollinger Bands" in overlays:
+                fig.add_trace(go.Scatter(x=df.index, y=df["BB_Upper"], name="BB Upper", line=dict(color="rgba(139,92,246,0.55)", width=1.2)), row=1, col=1)
+                fig.add_trace(go.Scatter(x=df.index, y=df["BB_Lower"], name="BB Lower", fill="tonexty", fillcolor="rgba(139,92,246,0.08)", line=dict(color="rgba(139,92,246,0.55)", width=1.2)), row=1, col=1)
+
+            v_colors = ["#10b981" if c >= o else "#ef4444" for c, o in zip(df["Close"], df["Open"])]
+            fig.add_trace(go.Bar(x=df.index, y=df["Volume"], name="Volume", marker_color=v_colors), row=2, col=1)
+
+            if oscillator == "RSI (14)":
+                fig.add_trace(go.Scatter(x=df.index, y=df["RSI"], name="RSI (14)", line=dict(color="#8b5cf6", width=1.8)), row=3, col=1)
+                fig.add_hline(y=70, line_dash="dash", line_color="#ef4444", row=3, col=1)
+                fig.add_hline(y=30, line_dash="dash", line_color="#10b981", row=3, col=1)
+            else:
+                hist_colors = ["#10b981" if h >= 0 else "#ef4444" for h in df["MACD_Hist"]]
+                fig.add_trace(go.Bar(x=df.index, y=df["MACD_Hist"], name="MACD Hist", marker_color=hist_colors), row=3, col=1)
+                fig.add_trace(go.Scatter(x=df.index, y=df["MACD"], name="MACD", line=dict(color="#3b82f6", width=1.6)), row=3, col=1)
+                fig.add_trace(go.Scatter(x=df.index, y=df["MACD_Signal"], name="Signal", line=dict(color="#f59e0b", width=1.4)), row=3, col=1)
+
+            fig.update_layout(
+                height=610,
+                xaxis_rangeslider_visible=False,
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                margin=dict(l=10, r=10, t=24, b=10),
+                legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="right", x=1),
+            )
+            fig.update_yaxes(gridcolor="rgba(128,128,128,0.16)")
+            fig.update_xaxes(gridcolor="rgba(128,128,128,0.10)")
+            st.plotly_chart(fig, theme="streamlit", alt=f"Multi-panel price, volume, and {oscillator} chart for {ticker}")
+
+    elif terminal_view == "ML Forecast & Evaluation":
+        with st.container(border=True):
+            df_1y = df if period in {"1y", "2y", "5y"} else fetch_stock_history(ticker, "1y")
+            if df_1y is None or len(df_1y) < 80:
+                st.warning("At least 80 trading sessions are needed to run the 80/20 ML evaluation suite.")
+            else:
+                with st.spinner("Training & evaluating Random Forest, Gradient Boosting, and Ridge Regression..."):
+                    ml_res = run_ml_forecast_suite(ticker, str(df_1y.index[-1]), len(df_1y), df_1y)
+                if not ml_res:
+                    st.warning("Not enough clean indicator rows to fit the ML suite.")
+                else:
+                    tgt_7d = ml_res["target_7d"]
+                    diff_pct = ((tgt_7d - ml_res["last_close"]) / ml_res["last_close"]) * 100.0
+                    best_row = ml_res["eval_df"].iloc[0]
+
+                    mc1, mc2, mc3, mc4 = st.columns(4)
+                    mc1.metric("Best Out-of-Sample Model", ml_res["best_model"], f"Dir. Acc: {best_row['Directional Accuracy (%)']}%", delta_color="off", border=True, height="stretch")
+                    mc2.metric("7-Day Projected Price", f"{currency}{tgt_7d:,.2f}", f"{diff_pct:+.2f}%", border=True, height="stretch")
+                    mc3.metric("Test Set MAPE", f"{best_row['MAPE (%)']}%", f"RMSE: {currency}{best_row['RMSE']:,.2f}", delta_color="off", border=True, height="stretch")
+                    mc4.metric("Out-of-Sample R²", f"{best_row['R² Score']:.4f}", "Chronological 80/20 Split", delta_color="off", border=True, height="stretch")
+
+                    p_fig = go.Figure()
+                    hist_tail = df_1y.tail(55)
+                    p_fig.add_trace(go.Scatter(x=hist_tail.index, y=hist_tail["Close"], name="Historical Close", line=dict(color="#3b82f6", width=2.2)))
+                    p_fig.add_trace(
+                        go.Scatter(
+                            x=ml_res["test_dates"], y=ml_res["test_pred"],
+                            name="Test Set Predicted (Unseen 20%)", line=dict(color="#f59e0b", width=1.8, dash="dot"),
+                        )
+                    )
+                    f_x = [hist_tail.index[-1]] + ml_res["forecast_dates"]
+                    f_y = [ml_res["last_close"]] + ml_res["forecast_prices"]
+                    f_up = [ml_res["last_close"]] + ml_res["forecast_upper"]
+                    f_lo = [ml_res["last_close"]] + ml_res["forecast_lower"]
+                    p_fig.add_trace(go.Scatter(x=f_x + f_x[::-1], y=f_up + f_lo[::-1], fill="toself", fillcolor="rgba(16,185,129,0.14)", line=dict(width=0), name="±1σ Uncertainty Band"))
+                    p_fig.add_trace(go.Scatter(x=f_x, y=f_y, name="7-Day Forecast", mode="lines+markers", line=dict(color="#10b981" if diff_pct >= 0 else "#ef4444", width=2.6, dash="dash")))
+                    p_fig.update_layout(height=390, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", margin=dict(l=10, r=10, t=24, b=10))
+                    st.plotly_chart(p_fig, theme="streamlit", alt=f"7-day ML forecast and unseen test predictions for {ticker}")
+
+                    c_ev, c_fi = st.columns([1.3, 1.0])
+                    with c_ev:
+                        st.markdown("**Out-of-Sample Model Comparison (20% Chronological Test Set)**")
+                        st.dataframe(ml_res["eval_df"], hide_index=True, alt="Model accuracy comparison across RMSE, MAE, MAPE, R2, and directional accuracy")
+                    with c_fi:
+                        st.markdown("**Top Predictive Features (%)**")
+                        fi_chart = (
+                            alt.Chart(ml_res["feature_importance"].head(8))
+                            .mark_bar(cornerRadiusEnd=4, color="#3b82f6")
+                            .encode(x="Importance:Q", y=alt.Y("Feature:N", sort="-x"))
+                            .properties(height=230)
+                        )
+                        st.altair_chart(fi_chart, alt="Top predictive technical feature importances")
+
+                    with st.expander("Methodology & Leak-Free Design Notes"):
+                        st.markdown(
+                            "- Predicts **stationary 1-day percentage returns** instead of raw price levels so tree ensembles never flatline near all-time highs.\n"
+                            "- Evaluates **Random Forest**, **Gradient Boosting**, and **Ridge Regression** on a chronological **80/20 split** (`shuffle=False`) to eliminate look-ahead leakage.\n"
+                            "- Iteratively recomputes rolling lag returns, 20-SMA ratio, 50-EMA ratio, Wilder RSI, Bollinger %B, and volatility at each forecast step."
+                        )
+
+    elif terminal_view == "Peer Comparison":
+        with st.container(border=True):
+            same_ex = [k for k, v in STOCK_CATALOG.items() if v["exchange"] == meta["exchange"]]
+            default_peers = [ticker] + [s for s in same_ex if s != ticker][:3]
+            peers_sel = st.multiselect(
+                "Compare Normalized Performance",
+                options=list(STOCK_CATALOG.keys()),
+                default=default_peers,
+                max_selections=6,
+                key="peer_multiselect",
+            )
+            if len(peers_sel) < 2:
+                st.info("Select at least 2 stocks to compare normalized relative returns.")
+            else:
+                p_df = fetch_peer_closes(tuple(peers_sel), period if period in {"1mo", "3mo", "6mo", "1y", "2y"} else "6mo")
+                if p_df is None or p_df.empty:
+                    st.warning("Unable to load peer comparison data right now.")
+                else:
+                    norm_df = (p_df.div(p_df.bfill().iloc[0]) - 1.0) * 100.0
+                    melted = norm_df.reset_index().melt(id_vars=[norm_df.index.name or "Date"], var_name="Ticker", value_name="Return (%)")
+                    date_col = melted.columns[0]
+                    peer_chart = (
+                        alt.Chart(melted)
+                        .mark_line()
+                        .encode(x=alt.X(f"{date_col}:T", title="Date"), y=alt.Y("Return (%):Q", title="Cumulative Return (%)"), color="Ticker:N")
+                        .properties(height=380, title=f"Normalized Cumulative Return Comparison ({period})")
+                    )
+                    st.altair_chart(peer_chart, alt="Normalized cumulative percentage return across selected peer equities")
+
+
+def page_superchart() -> None:
+    _, _, usdinr, _, _ = get_market_context()
+    ticker = st.session_state.selected_ticker
+    meta = get_ticker_meta(ticker)
+    currency = meta["currency"]
+    fx = get_fx_rate_for_ticker(ticker, usdinr)
+
+    top_l, top_r = st.columns([2.2, 1.5], vertical_alignment="bottom")
+    all_syms = list(STOCK_CATALOG.keys())
+    cur_idx = all_syms.index(ticker) if ticker in all_syms else 0
+    picked = top_l.selectbox(
+        "Active Equity",
+        all_syms,
+        index=cur_idx,
+        format_func=lambda s: f"{s} — {STOCK_CATALOG[s]['name']} ({STOCK_CATALOG[s]['exchange']})",
+        key="terminal_ticker_pick",
+    )
+    if picked != ticker:
+        st.session_state.selected_ticker = picked
+        st.rerun()
+
+    period = top_r.segmented_control(
+        "Timeframe",
+        ["1mo", "3mo", "6mo", "1y", "2y", "5y"],
+        default="1y",
+        key="terminal_period",
+    ) or "1y"
+
+    chart_slot = st.container()
+    with chart_slot.skeleton(height=320):
+        df = fetch_stock_history(ticker, period)
+    if df is None or len(df) < 20:
+        chart_slot.error(f"Could not fetch live candles for `{ticker}`. Click Refresh Market Data in the sidebar or try another ticker.")
+        return
 
     latest_c = float(df["Close"].iloc[-1])
     prev_c = float(df["Close"].iloc[-2])
     chg = latest_c - prev_c
-    pct = (chg / prev_c) * 100
+    pct = (chg / prev_c * 100.0) if prev_c else 0.0
     rsi_val = float(df["RSI"].iloc[-1])
     sma20_val = float(df["SMA_20"].iloc[-1])
     ema50_val = float(df["EMA_50"].iloc[-1])
     high_52 = float(df["High"].max())
     low_52 = float(df["Low"].min())
 
-    render_html(f"""
-    <div class="stock-card" style="display:flex; justify-content:space-between; align-items:center; padding:22px 26px;">
-        <div style="display:flex; align-items:center; gap:18px;">
-            <img src="{logo_url}" class="company-logo-lg">
-            <div>
-                <span style="background:rgba(6,182,212,0.18); color:#0284c7; padding:4px 10px; border-radius:6px; font-size:0.75rem; font-weight:700;">
-                    {meta['exchange']} • {meta['sector']}
-                </span>
-                <h2 class="fs-title" style="margin:6px 0 2px 0;">{meta['name']} ({ticker.replace('.NS','')})</h2>
-                <div class="fs-muted" style="font-size:0.84rem; font-family:'JetBrains Mono',monospace;">
-                    52W Low: {currency}{low_52:,.2f} • 52W High: {currency}{high_52:,.2f} • 20-SMA: {currency}{sma20_val:,.2f}
-                </div>
-            </div>
-        </div>
-        <div style="text-align:right;">
-            <div class="mono-price" style="font-size:2.1rem; color:#0284c7;">{currency}{latest_c:,.2f}</div>
-            <span class="{'badge-up' if pct >= 0 else 'badge-down'}" style="font-size:0.95rem;">
-                {'▲' if pct >= 0 else '▼'} {chg:+.2f} ({pct:+.2f}%)
-            </span>
-        </div>
-    </div>
-    """)
-
-    main_col, trade_col = st.columns([2.7, 1.1])
-
-    with main_col:
-        sub_t1, sub_t2, sub_t3 = st.tabs(["📊 FinanceSight SuperChart", "🤖 7-Day AI Price Forecast", "🧠 Universal AI Advisor"])
-        
-        with sub_t1:
-            fig = make_subplots(
-                rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.03,
-                row_heights=[0.62, 0.18, 0.20]
+    with chart_slot:
+        with st.container(border=True):
+            h1, h2, h3, h4, h5 = st.columns([2.1, 1.1, 1.0, 1.0, 1.0], vertical_alignment="center")
+            h1.html(
+                f'<div style="display:flex;align-items:center;gap:12px;">'
+                f'{stock_icon_html(ticker, size=44, radius=11)}'
+                f'<div>'
+                f'<div style="font-size:1.18rem;font-weight:800;line-height:1.2;">{html.escape(meta["name"])} '
+                f'<span style="font-size:0.86rem;font-family:JetBrains Mono,monospace;opacity:0.75;">({html.escape(ticker)})</span></div>'
+                f'<div style="font-size:0.80rem;opacity:0.75;">{meta["exchange"]} · {html.escape(meta["sector"])} · FX ₹{fx:.2f}</div>'
+                f'</div></div>'
             )
-            fig.add_trace(go.Candlestick(
-                x=df.index, open=df["Open"], high=df["High"], low=df["Low"], close=df["Close"],
-                name="Price", increasing_line_color="#10b981", decreasing_line_color="#f43f5e"
-            ), row=1, col=1)
-            fig.add_trace(go.Scatter(x=df.index, y=df["SMA_20"], name="20 SMA", line=dict(color="#0284c7", width=1.8)), row=1, col=1)
-            fig.add_trace(go.Scatter(x=df.index, y=df["EMA_50"], name="50 EMA", line=dict(color="#f59e0b", width=1.8, dash="dot")), row=1, col=1)
+            h2.metric("Spot Price", f"{currency}{latest_c:,.2f}", f"{chg:+.2f} ({pct:+.2f}%)")
+            h3.metric("14-Day RSI", f"{rsi_val:.1f}", "Overbought" if rsi_val >= 70 else ("Oversold" if rsi_val <= 30 else "Neutral"), delta_color="off")
+            h4.metric("Period High", f"{currency}{high_52:,.2f}")
+            h5.metric("Period Low", f"{currency}{low_52:,.2f}")
 
-            v_colors = ["#10b981" if c >= o else "#f43f5e" for c, o in zip(df["Close"], df["Open"])]
-            fig.add_trace(go.Bar(x=df.index, y=df["Volume"], name="Volume", marker_color=v_colors), row=2, col=1)
+            fund_exp = st.expander("Company Fundamentals & Latest News", on_change="rerun")
+            if fund_exp.open:
+                with fund_exp:
+                    funds = fetch_stock_fundamentals(ticker)
+                    if funds:
+                        f_items = {
+                            "Market Cap": format_large_number(funds.get("marketCap"), currency),
+                            "Trailing P/E": f"{funds['trailingPE']:.2f}" if funds.get("trailingPE") else "N/A",
+                            "EPS (TTM)": f"{currency}{funds['trailingEps']:.2f}" if funds.get("trailingEps") else "N/A",
+                            "Beta": f"{funds['beta']:.2f}" if funds.get("beta") else "N/A",
+                            "Analyst View": str(funds.get("recommendationKey") or "N/A").upper(),
+                        }
+                        f_cols = st.columns(len(f_items))
+                        for col, (fk, fv) in zip(f_cols, f_items.items()):
+                            col.caption(f"**{fk}:** `{fv}`")
+                    news = fetch_stock_news_headlines(ticker, meta["name"])
+                    if news:
+                        for n in news:
+                            st.caption(f"- [{n['title']}]({n['link']}) *({n['pubDate']})*")
 
-            fig.add_trace(go.Scatter(x=df.index, y=df["RSI"], name="RSI (14)", line=dict(color="#8b5cf6", width=2)), row=3, col=1)
-            fig.add_hline(y=70, line_dash="dash", line_color="#f43f5e", row=3, col=1)
-            fig.add_hline(y=30, line_dash="dash", line_color="#10b981", row=3, col=1)
+        main_col, order_col = st.columns([2.65, 1.1], gap="medium")
+        with main_col:
+            _superchart_workspace_fragment(ticker, period, df)
 
-            fig.update_layout(
-                height=620, xaxis_rangeslider_visible=False,
-                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                margin=dict(l=15, r=15, t=20, b=15),
-                legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="right", x=1)
+        with order_col:
+            with st.container(border=True):
+                st.subheader("Order Window", icon=":material/bolt:")
+                is_open_t, status_t = check_market_trading_hours(ticker)
+                st.badge("Market Open" if is_open_t else "Market Closed", color="green" if is_open_t else "red")
+                st.caption(status_t)
+
+                prod_mode = st.segmented_control(
+                    "Product Type",
+                    ["CNC (Delivery)", "MIS (Intraday 5x)"],
+                    default="CNC (Delivery)",
+                    key="term_prod",
+                ) or "CNC (Delivery)"
+                ord_type = st.segmented_control(
+                    "Order Type",
+                    ["MARKET", "LIMIT"],
+                    default="MARKET",
+                    key="term_otype",
+                ) or "MARKET"
+                qty = st.number_input("Quantity", min_value=1, max_value=100000, value=10, step=1, key="term_qty")
+                lim_p = (
+                    st.number_input(f"Limit Price ({currency})", min_value=0.01, value=round(latest_c, 2), step=0.5, key="term_lim")
+                    if ord_type == "LIMIT"
+                    else latest_c
+                )
+                eff_p = lim_p if ord_type == "LIMIT" else latest_c
+                req_margin_inr = qty * eff_p * fx * (0.20 if "MIS" in prod_mode else 1.0)
+                user_bal = get_user_balance(st.session_state.username)
+
+                st.table(
+                    {
+                        "Spot Price": f"{currency}{latest_c:,.2f}",
+                        "FX Conversion": f"₹{fx:.2f} / $" if currency == "$" else "1.00 (INR)",
+                        "Required Margin": f"₹{req_margin_inr:,.2f}",
+                        "Available Cash": f"₹{user_bal:,.2f}",
+                    },
+                    border="horizontal",
+                )
+                st.session_state.allow_after_hours = st.toggle(
+                    "Allow Demo Orders Outside Market Hours",
+                    value=st.session_state.allow_after_hours,
+                    key="term_after_hrs",
+                )
+
+                ob1, ob2 = st.columns(2)
+                if ob1.button("BUY", type="primary", width="stretch", key="term_buy"):
+                    ok, msg = execute_trade(
+                        st.session_state.username, ticker, "BUY", int(qty), latest_c, prod_mode,
+                        order_type=ord_type, limit_price=lim_p if ord_type == "LIMIT" else None,
+                        usdinr_rate=usdinr, allow_after_hours=st.session_state.allow_after_hours,
+                    )
+                    if ok:
+                        st.toast(msg, icon=":material/check_circle:")
+                        st.rerun()
+                    else:
+                        st.error(msg)
+                if ob2.button("SELL", width="stretch", key="term_sell"):
+                    ok, msg = execute_trade(
+                        st.session_state.username, ticker, "SELL", int(qty), latest_c, prod_mode,
+                        order_type=ord_type, limit_price=lim_p if ord_type == "LIMIT" else None,
+                        usdinr_rate=usdinr, allow_after_hours=st.session_state.allow_after_hours,
+                    )
+                    if ok:
+                        st.toast(msg, icon=":material/check_circle:")
+                        st.rerun()
+                    else:
+                        st.error(msg)
+
+            bull_pts = sum([latest_c > sma20_val, latest_c > ema50_val, 35 < rsi_val < 68])
+            verdict = "STRONG BUY" if bull_pts == 3 else ("BUY / HOLD" if bull_pts == 2 else "SELL / CAUTION")
+            st.metric("Technical Signal", verdict, f"20-SMA: {currency}{sma20_val:,.2f} | 50-EMA: {currency}{ema50_val:,.2f}", delta_color="off", border=True)
+
+
+def page_orders() -> None:
+    snaps, _, usdinr, _, _ = get_market_context()
+    st.title("Order Book & Trade Ledger", icon=":material/receipt:")
+
+    acct_pre = get_user_account_summary(st.session_state.username, snaps, usdinr)
+    if not acct_pre["pend_df"].empty:
+        snaps = ensure_symbols_live(acct_pre["pend_df"]["ticker"].tolist(), snaps)
+
+    filled = sync_pending_orders(st.session_state.username, snaps, usdinr, st.session_state.allow_after_hours)
+    for msg in filled:
+        st.toast(msg, icon=":material/check_circle:")
+
+    acct = get_user_account_summary(st.session_state.username, snaps, usdinr)
+
+    with st.container(border=True):
+        h1, h2 = st.columns([2.5, 1.0], vertical_alignment="center")
+        h1.subheader("Pending Limit Orders", icon=":material/schedule:")
+        if h2.button("Check & Fill Triggered Limits", icon=":material/sync:", width="stretch"):
+            st.rerun()
+
+        if acct["pend_df"].empty:
+            st.caption("No open limit orders queued right now. Place a LIMIT order from SuperChart or the sidebar.")
+        else:
+            pend_disp = acct["pend_df"].copy()
+            pend_disp.insert(0, "Logo", pend_disp["ticker"].map(get_logo_url))
+            st.dataframe(
+                pend_disp,
+                column_config={"Logo": st.column_config.ImageColumn("", width="small")},
+                hide_index=True,
+                alt="Open pending limit orders with company icons",
             )
-            st.plotly_chart(fig, use_container_width=True)
+            c_sel, c_btn = st.columns([2, 1], vertical_alignment="bottom")
+            cancel_id = c_sel.selectbox("Cancel Pending Order ID", acct["pend_df"]["id"].tolist(), key="cancel_pend_id")
+            if c_btn.button("Cancel Selected Limit Order", type="secondary", width="stretch"):
+                ok_c, msg_c = cancel_pending_order(st.session_state.username, int(cancel_id))
+                if ok_c:
+                    st.toast(msg_c)
+                    st.rerun()
+                else:
+                    st.error(msg_c)
 
-        with sub_t2:
-            ml_df = df[["Close", "SMA_20", "EMA_50", "RSI"]].dropna().copy()
-            for l in range(1, 6):
-                ml_df[f"Lag_{l}"] = ml_df["Close"].shift(l)
-            ml_df.dropna(inplace=True)
+    st.space("small")
+    with st.container(border=True):
+        st.subheader("Executed Tradebook", icon=":material/history:")
+        if acct["tx_df"].empty:
+            st.info("No executed trades yet. Place a paper trade from the sidebar, SuperChart, or AI Advisor.")
+        else:
+            tx_disp = acct["tx_df"].copy()
+            tx_disp.insert(0, "Logo", tx_disp["ticker"].map(get_logo_url))
+            st.dataframe(
+                tx_disp,
+                column_config={
+                    "Logo": st.column_config.ImageColumn("", width="small"),
+                    "price": st.column_config.NumberColumn("Fill Price", format="%.2f"),
+                    "inr_total": st.column_config.NumberColumn("INR Value (₹)", format="₹%.2f"),
+                },
+                hide_index=True,
+                alt="Executed trades ledger with company icons",
+            )
+            b1, b2 = st.columns(2)
+            if b1.button("Reverse Last Executed Order", icon=":material/undo:", width="stretch"):
+                ok_r, msg_r = reverse_last_executed_order(st.session_state.username)
+                if ok_r:
+                    st.toast(msg_r)
+                    st.rerun()
+                else:
+                    st.warning(msg_r)
+            b2.download_button(
+                "Export Tradebook CSV",
+                data=acct["tx_df"].to_csv(index=False).encode("utf-8"),
+                file_name="financesight_orders.csv",
+                mime="text/csv",
+                icon=":material/download:",
+                width="stretch",
+            )
 
-            f_cols = ["SMA_20", "EMA_50", "RSI", "Lag_1", "Lag_2", "Lag_3", "Lag_4", "Lag_5"]
-            rf = RandomForestRegressor(n_estimators=120, random_state=42)
-            rf.fit(ml_df[f_cols].values, ml_df["Close"].values)
 
-            f_dates, f_preds = [], []
-            curr_d = ml_df.index[-1]
-            lags = list(ml_df["Close"].values[-5:])
-            c_sma, c_ema, c_rsi = sma20_val, ema50_val, rsi_val
+def page_holdings() -> None:
+    snaps, _, usdinr, _, _ = get_market_context()
+    st.title("CNC Demat Holdings", icon=":material/business_center:")
+    acct = get_user_account_summary(st.session_state.username, snaps, usdinr)
+    if not acct["port_df"].empty:
+        snaps = ensure_symbols_live(acct["port_df"]["ticker"].tolist(), snaps)
+        acct = get_user_account_summary(st.session_state.username, snaps, usdinr)
 
-            for _ in range(7):
-                curr_d += timedelta(days=1)
-                while curr_d.weekday() >= 5:
-                    curr_d += timedelta(days=1)
-                vec = np.array([[c_sma, c_ema, c_rsi, lags[-1], lags[-2], lags[-3], lags[-4], lags[-5]]])
-                p_val = float(rf.predict(vec)[0])
-                f_dates.append(curr_d)
-                f_preds.append(p_val)
-                lags.append(p_val)
-                c_sma = (c_sma * 19 + p_val) / 20
+    if acct["port_df"].empty:
+        st.info("Your CNC Holdings are currently empty. Place a CNC (Delivery) BUY order to build your portfolio.")
+        return
 
-            target_7d = f_preds[-1]
-            diff_pct = ((target_7d - latest_c) / latest_c) * 100
-            mc1, mc2, mc3 = st.columns(3)
-            with mc1:
-                render_kpi("Current Close Price", f"{currency}{latest_c:,.2f}", "Live Spot Price", "kpi-cyan", "#0284c7")
-            with mc2:
-                render_kpi("7-Day AI Projected Price", f"{currency}{target_7d:,.2f}", f"{'▲' if diff_pct >= 0 else '▼'} {diff_pct:+.2f}% Expected Move", "kpi-white", "#2563eb")
-            with mc3:
-                verdict_txt = "STRONG BUY ▲" if diff_pct > 1.2 else ("ACCUMULATE ▲" if diff_pct > 0 else "HOLD / CAUTION ▼")
-                render_kpi("AI Model Verdict", verdict_txt, "Random Forest Ensemble", "kpi-emerald" if diff_pct >= 0 else "kpi-violet", "#10b981")
+    port_df = acct["port_df"]
+    roi_pct = (acct["tot_pnl"] / acct["tot_inv"] * 100.0) if acct["tot_inv"] > 0 else 0.0
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("Account Net Worth", f"₹{acct['balance'] + acct['tot_cur']:,.2f}", "Cash + Live Holdings", delta_color="off", border=True, height="stretch")
+    k2.metric("Initial Cost (INR)", f"₹{acct['tot_inv']:,.2f}", f"{len(port_df)} Stocks", delta_color="off", border=True, height="stretch")
+    k3.metric("Live Value (INR)", f"₹{acct['tot_cur']:,.2f}", f"FX: ₹{usdinr:.2f}/$", delta_color="off", border=True, height="stretch")
+    k4.metric("Unrealized P&L", f"₹{acct['tot_pnl']:+,.2f}", f"{roi_pct:+.2f}% ROI", border=True, height="stretch")
 
-            p_fig = go.Figure()
-            hist_60 = df.tail(55)
-            p_fig.add_trace(go.Scatter(x=hist_60.index, y=hist_60["Close"], name="Historical Close", line=dict(color="#0284c7", width=2.5)))
-            p_fig.add_trace(go.Scatter(
-                x=[hist_60.index[-1]] + f_dates, y=[latest_c] + f_preds,
-                name="7-Day ML Projection", mode="lines+markers",
-                line=dict(color="#10b981" if diff_pct >= 0 else "#f43f5e", width=3, dash="dash")
-            ))
-            p_fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=400, margin=dict(l=15, r=15, t=20, b=15))
-            st.plotly_chart(p_fig, use_container_width=True)
+    c1, c2 = st.columns([1.65, 1.15])
+    with c1.container(border=True, height="stretch"):
+        st.subheader("Holdings Breakdown")
+        display_df = port_df[["ticker", "Sector", "shares", "currency", "avg_price", "LTP", "Cost (₹)", "Live Value (₹)", "Live P&L (₹)", "Return (%)"]].copy()
+        display_df.insert(0, "Logo", display_df["ticker"].map(get_logo_url))
+        st.dataframe(
+            display_df,
+            column_config={
+                "Logo": st.column_config.ImageColumn("", width="small"),
+                "avg_price": st.column_config.NumberColumn("Avg Price", format="%.2f"),
+                "LTP": st.column_config.NumberColumn("Live LTP", format="%.2f"),
+                "Cost (₹)": st.column_config.NumberColumn("Cost (₹)", format="₹%.2f"),
+                "Live Value (₹)": st.column_config.NumberColumn("Live Value (₹)", format="₹%.2f"),
+                "Live P&L (₹)": st.column_config.NumberColumn("P&L (₹)", format="₹%.2f"),
+                "Return (%)": st.column_config.NumberColumn("Return %", format="%.2f%%"),
+            },
+            hide_index=True,
+            alt="Holdings table with company icons, live valuation and unrealized profit or loss",
+        )
+        st.download_button(
+            "Download Holdings Statement (CSV)",
+            data=display_df.drop(columns=["Logo"]).to_csv(index=False).encode("utf-8"),
+            file_name="financesight_holdings.csv",
+            mime="text/csv",
+            icon=":material/download:",
+        )
 
-        with sub_t3:
-            q_input = st.text_input("Ask anything...", placeholder="Ask anything...")
-            if st.button("🧠 Submit to AI Advisor", type="primary") and q_input:
-                ans, engine_label, _, _ = ask_universal_ai_advisor(st.session_state.username, q_input)
-                st.caption(engine_label)
-                st.markdown(ans)
+    with c2.container(border=True, height="stretch"):
+        st.subheader("Portfolio Allocation by Stock")
+        pie = go.Figure(data=[go.Pie(labels=port_df["ticker"], values=port_df["Live Value (₹)"], hole=0.52)])
+        pie.update_layout(height=340, paper_bgcolor="rgba(0,0,0,0)", margin=dict(l=10, r=10, t=20, b=10))
+        st.plotly_chart(pie, theme="streamlit", alt="Donut chart of live portfolio allocation by ticker")
 
-    with trade_col:
-        is_open_t, status_t = check_market_trading_hours(ticker)
-        render_html(f"""
-        <div class="kpi-box kpi-white" style="margin-bottom:14px;">
-            <div class="fs-title" style="font-size:1.05rem;">⚡ FinanceSight Order Window</div>
-            <div style="font-size:0.76rem; color:{'#10b981' if is_open_t else '#f43f5e'}; font-weight:700; margin-top:4px;">
-                {'🟢 ' + status_t if is_open_t else '🔴 ' + status_t}
-            </div>
-        </div>
-        """)
 
-        prod_mode = st.radio("FinanceSight Product", ["CNC (Delivery)", "MIS (Intraday 5x)"], horizontal=True)
-        order_type = st.radio("Order Type", ["MARKET", "LIMIT"], horizontal=True)
-        qty = st.number_input("Quantity (Shares)", min_value=1, max_value=10000, value=10, step=1)
-        exec_price = st.number_input("Limit Price", value=float(round(latest_c, 2))) if order_type == "LIMIT" else latest_c
-        
-        req_margin = (qty * exec_price) * (0.20 if "MIS" in prod_mode else 1.0)
-        render_html(f"""
-        <div class="fs-panel" style="padding:14px; border:1px solid #06b6d4; margin:10px 0; font-family:'JetBrains Mono',monospace; font-size:0.86rem;">
-            <div style="display:flex; justify-content:space-between;"><span>Req. Margin:</span><b>₹{req_margin:,.2f}</b></div>
-            <div style="display:flex; justify-content:space-between; margin-top:6px;"><span>Avail. Cash:</span><b style="color:#10b981;">₹{user_bal:,.2f}</b></div>
-        </div>
-        """)
+def page_positions() -> None:
+    snaps, _, usdinr, _, _ = get_market_context()
+    st.title("Open Positions (CNC & MIS 5x)", icon=":material/monitoring:")
+    acct = get_user_account_summary(st.session_state.username, snaps, usdinr)
+    if not acct["pos_df"].empty:
+        snaps = ensure_symbols_live(acct["pos_df"]["ticker"].tolist(), snaps)
+        acct = get_user_account_summary(st.session_state.username, snaps, usdinr)
 
-        ob1, ob2 = st.columns(2)
-        if ob1.button("🟦 BUY", use_container_width=True, type="primary"):
-            ok, msg = execute_trade(st.session_state.username, ticker, "BUY", qty, exec_price, prod_mode)
+    if acct["pos_df"].empty:
+        st.info("No open positions right now. Place a CNC or MIS (5x Intraday) order to track live mark-to-market P&L.")
+        return
+
+    pos_df = acct["pos_df"]
+    p1, p2 = st.columns(2)
+    p1.metric("Live Open Exposure (INR)", f"₹{acct['tot_pos_val']:,.2f}", f"{len(pos_df)} Active Positions", delta_color="off", border=True, height="stretch")
+    p2.metric("Total M2M P&L (INR)", f"₹{acct['tot_m2m']:+,.2f}", "Real-Time Mark-to-Market", border=True, height="stretch")
+
+    pos_disp = pos_df[["ticker", "product_type", "shares", "currency", "avg_price", "LTP", "Live Value (₹)", "M2M P&L (₹)", "Return (%)"]].copy()
+    pos_disp.insert(0, "Logo", pos_disp["ticker"].map(get_logo_url))
+    st.dataframe(
+        pos_disp,
+        column_config={"Logo": st.column_config.ImageColumn("", width="small")},
+        hide_index=True,
+        alt="Open delivery and intraday positions with company logos and mark-to-market profit or loss",
+    )
+
+    st.subheader("1-Click Position Square-Off")
+    sq_cols = st.columns(min(4, len(pos_df)))
+    for i, (_, r) in enumerate(pos_df.iterrows()):
+        sym = LEGACY_TICKER_REMAP.get(r["ticker"], r["ticker"])
+        if sq_cols[i % len(sq_cols)].button(
+            f"Square Off {sym} ({r['product_type']})",
+            key=f"sq_{sym}_{r['product_type']}",
+            type="primary",
+            width="stretch",
+        ):
+            prod = "MIS (Intraday 5x)" if r["product_type"] == "MIS" else "CNC (Delivery)"
+            ok, msg = execute_trade(
+                st.session_state.username, sym, "SELL", int(r["shares"]), float(r["LTP"]), prod,
+                usdinr_rate=usdinr, allow_after_hours=st.session_state.allow_after_hours,
+            )
             if ok:
-                st.success(msg)
+                st.toast(msg, icon=":material/check_circle:")
                 st.rerun()
             else:
                 st.error(msg)
-        if ob2.button("🟧 SELL", use_container_width=True):
-            ok, msg = execute_trade(st.session_state.username, ticker, "SELL", qty, exec_price, prod_mode)
-            if ok:
-                st.success(msg)
-                st.rerun()
+
+
+def page_funds() -> None:
+    st.title("Virtual Wallet & Margin Gateway", icon=":material/account_balance_wallet:")
+    user_bal = get_user_balance(st.session_state.username)
+    st.metric("Available Cash Margin", f"₹{user_bal:,.2f}", "Zero Gateway Charges • Simulated Wallet", delta_color="off", border=True)
+
+    t_dep, t_wit, t_reset = st.tabs(["Deposit Virtual Cash", "Withdraw to Bank", "Reset Demo Account"])
+    with t_dep:
+        c1, c2 = st.columns([1.2, 1.5])
+        with c1.container(border=True):
+            preset = st.segmented_control("Quick Amount", ["₹10,000", "₹25,000", "₹50,000", "₹1,00,000"], default="₹25,000", key="dep_preset") or "₹25,000"
+            p_map = {"₹10,000": 10000.0, "₹25,000": 25000.0, "₹50,000": 50000.0, "₹1,00,000": 100000.0}
+            dep_amt = st.number_input("Deposit Amount (₹)", min_value=500.0, max_value=10000000.0, value=p_map[preset], step=1000.0)
+            pay_mode = st.selectbox("Payment Mode", ["Instant UPI (GPay / PhonePe)", "NetBanking (SBI / HDFC / ICICI)", "RuPay / Visa Debit Card"])
+            pay_ref = st.text_input("Reference / UPI ID", value=f"{st.session_state.username}@okaxis")
+            if st.button("Add Virtual Funds", type="primary", width="stretch"):
+                ok, msg = update_funds(st.session_state.username, dep_amt, "DEPOSIT", pay_mode, pay_ref)
+                if ok:
+                    st.toast(msg)
+                    st.rerun()
+                else:
+                    st.error(msg)
+
+        with c2.container(border=True):
+            st.subheader("Funding Ledger")
+            with db_conn() as conn:
+                f_df = pd.read_sql_query(
+                    "SELECT timestamp AS Time, type AS Type, method AS Method, reference AS Reference, amount AS Amount, status AS Status FROM funding_history WHERE LOWER(username) = LOWER(?) ORDER BY id DESC",
+                    conn, params=(st.session_state.username,),
+                )
+            st.dataframe(f_df, hide_index=True, alt="Virtual wallet deposit and withdrawal history")
+
+    with t_wit:
+        with st.container(border=True):
+            if user_bal < 100.0:
+                st.warning("Available cash margin is below ₹100.00 minimum withdrawal.")
             else:
-                st.error(msg)
+                b_name = st.selectbox("Linked Bank", ["State Bank of India (SBI)", "HDFC Bank", "ICICI Bank", "Axis Bank"])
+                acc_num = st.text_input("Account Number", value="XXXX-XXXX-8821")
+                ifsc = st.text_input("IFSC Code", value="SBIN0004821")
+                w_amt = st.number_input(
+                    "Withdrawal Amount (₹)",
+                    min_value=100.0, max_value=float(user_bal),
+                    value=min(5000.0, float(user_bal)), step=500.0,
+                )
+                if st.button("Withdraw Virtual Cash", type="primary"):
+                    ok, msg = update_funds(st.session_state.username, w_amt, "WITHDRAW", b_name, f"A/C {acc_num[-4:]} ({ifsc})")
+                    if ok:
+                        st.toast(msg)
+                        st.rerun()
+                    else:
+                        st.error(msg)
 
-        st.markdown("---")
-        bull_count = sum([latest_c > sma20_val, latest_c > ema50_val, 35 < rsi_val < 68])
-        verdict = "STRONG BUY ▲" if bull_count == 3 else ("BUY / HOLD ▲" if bull_count == 2 else "SELL / AVOID ▼")
-        render_kpi("Technical Rating", verdict, f"14-Day RSI: {rsi_val:.1f}", "kpi-cyan", "#0284c7")
+    with t_reset:
+        with st.container(border=True):
+            st.warning("Resetting your demo account clears all Holdings, Open Positions, Pending Limit Orders, and Tradebook entries, and restores your wallet to **₹1,00,000.00**.")
+            confirm_reset = st.checkbox("Yes, reset my entire paper-trading portfolio to ₹1,00,000.00", key="confirm_reset_chk")
+            if st.button("Reset Wallet & Portfolio", type="primary", disabled=not confirm_reset):
+                ok, msg = reset_user_wallet(st.session_state.username)
+                if ok:
+                    st.toast(msg)
+                    st.rerun()
 
-elif st.session_state.page == "Advisor":
-    custom_q = st.chat_input("Ask anything...")
 
-    render_html(f"""
-    <div class="stock-card" style="border-left:5px solid #10b981; padding:22px 28px; margin-bottom:16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px;">
-        <div style="display:flex; align-items:center; gap:18px;">
-            <div style="width:60px; height:60px; border-radius:16px; background:#0f172a; display:flex; align-items:center; justify-content:center; border:2px solid #10b981;">
-                {FINANCESIGHT_LOGO_SVG}
-            </div>
-            <div>
-                <span style="background:rgba(16,185,129,0.18); color:#10b981; padding:4px 12px; border-radius:999px; font-size:0.78rem; font-weight:700;">
-                    🤖 AGENTIC AI ADVISOR • ACCESS TO YOUR FUNDS (₹{user_bal:,.2f}), ORDERS & STOCKS
-                </span>
-                <h2 class="fs-title" style="margin:8px 0 4px 0;">🧠 FinanceSight Universal AI Advisor — All Global & Indian STOCKS</h2>
-                <p class="fs-muted" style="margin:0; font-size:0.9rem;">
-                    Universal AI intelligence across all Indian (NSE) & US (NASDAQ/NYSE) STOCKS, live portfolio execution, and general queries.
-                </p>
-            </div>
-        </div>
-    </div>
-    """)
+@st.fragment
+def _ai_advisor_chat_fragment() -> None:
+    snaps, _, usdinr, _, _ = get_market_context()
+    groq_key = resolve_secret("GROQ_API_KEY", st.session_state.get("user_groq_api_key", ""))
+    gemini_key = resolve_secret("GEMINI_API_KEY", st.session_state.get("user_gemini_api_key", ""))
 
-    st.markdown("##### ⚡ 1-Click Universal AI Actions & Stock Screener")
-    q_col1, q_col2, q_col3, q_col4, q_col5 = st.columns([1.25, 1.2, 1.2, 1.25, 0.85])
-    selected_prompt = None
-    if q_col1.button("🎯 Top Benefitting STOCKS", use_container_width=True):
-        selected_prompt = "List top benefitting stocks to invest in across all Indian and US stocks."
-    if q_col2.button("🇮🇳 Top Indian NSE Picks", use_container_width=True):
-        selected_prompt = "List top benefitting Indian NSE stocks to invest in."
-    if q_col3.button("🇺🇸 Top US Tech Picks", use_container_width=True):
-        selected_prompt = "List top benefitting US technology and AI stocks to invest in."
-    if q_col4.button("💼 Check My Funds & Positions", use_container_width=True):
-        selected_prompt = "Check my funds, portfolio holdings, and open positions."
-    if q_col5.button("🗑️ Clear Chat", use_container_width=True):
-        st.session_state.ai_chat_history = []
-        st.rerun()
+    if groq_key.startswith("gsk_"):
+        status_txt = ":green-badge[Groq LLaMA 3.3 + Quant RAG Active]"
+    elif gemini_key:
+        status_txt = ":green-badge[Gemini 2.5 Flash + Quant RAG Active]"
+    else:
+        status_txt = ":blue-badge[Local Quant RAG Engine Active]"
 
-    active_question = selected_prompt or custom_q
+    acct = get_user_account_summary(st.session_state.username, snaps, usdinr)
 
-    if active_question:
-        reply, source_badge, card_title, card_logo = ask_universal_ai_advisor(
-            st.session_state.username, active_question
-        )
-        st.session_state.ai_chat_history.insert(0, {
-            "question": active_question,
-            "answer": reply,
-            "badge": source_badge,
-            "stock": card_title,
-            "logo": card_logo
-        })
+    top_l, top_r = st.columns([3.0, 1.0], vertical_alignment="center")
+    top_l.markdown(f"{status_txt} &nbsp; Available Margin: **`₹{acct['balance']:,.2f}`** &nbsp; Holdings: **`₹{acct['tot_cur']:,.2f}`**")
+    top_r.button("Clear Chat", icon=":material/delete_sweep:", width="stretch", on_click=_clear_chat_cb, key="clear_ai_chat")
 
-    for item in st.session_state.ai_chat_history:
-        render_html(f"""
-        <div class="stock-card" style="border-left:4px solid #10b981; display:flex; align-items:center; gap:14px;">
-            <img src="{item.get('logo', 'https://www.google.com/s2/favicons?domain=google.com&sz=128')}" class="company-logo">
-            <div>
-                <div style="font-size:0.78rem; color:#0284c7; font-weight:700;">{item['stock']} • {item['badge']}</div>
-                <div class="fs-title" style="margin-top:3px; font-size:1.02rem;">🙋‍♂️ You asked: "{item['question']}"</div>
-            </div>
-        </div>
-        """)
-        st.markdown(item["answer"])
-        st.markdown("---")
+    SUGGESTIONS = {
+        ":material/leaderboard: Top benefitting stocks": "List top benefitting stocks to invest in across Indian NSE and US markets.",
+        ":material/compare_arrows: Compare TCS vs Infosys": "Compare TCS and Infosys on returns, RSI, pivots, and ML target.",
+        ":material/newspaper: Latest news & analysis": f"Latest news and full technical analysis for {st.session_state.selected_ticker}.",
+        ":material/account_balance_wallet: Check my portfolio": "Check my funds, portfolio holdings, and open positions.",
+    }
 
-elif st.session_state.page == "Apps":
-    render_html("""
-    <div class="stock-card" style="border-left:5px solid #8b5cf6; padding:22px 28px; margin-bottom:20px;">
-        <span style="background:rgba(139,92,246,0.18); color:#8b5cf6; padding:4px 12px; border-radius:999px; font-size:0.78rem; font-weight:700;">
-            FINANCESIGHT APPS • v4 ALGO ENGINE
-        </span>
-        <h2 class="fs-title" style="margin:8px 0 4px 0;">🧩 FinanceSight Integrated Apps — Strategy Backtester & STOCKS Scanner</h2>
-        <p class="fs-muted" style="margin:0; font-size:0.9rem;">
-            Build algorithmic trading rules without coding, backtest them on historical candles, and scan all NSE & NASDAQ STOCKS.
-        </p>
-    </div>
-    """)
+    prompt = st.chat_input(
+        "Ask about any stock, compare two stocks, request news, or command e.g. 'Buy 5 Reliance'...",
+        submit_mode="disable",
+    )
+    if not st.session_state.ai_chat_history:
+        chips = st.empty()
+        picked = chips.pills("Suggested prompts", list(SUGGESTIONS.keys()), label_visibility="collapsed")
+        if picked:
+            prompt = SUGGESTIONS[picked]
+        if prompt:
+            chips.empty()
 
-    st_tab1, st_tab2 = st.tabs(["🧪 No-Code Strategy Backtester", "📡 Live STOCKS Market Scanner"])
-
-    with st_tab1:
-        b_col1, b_col2, b_col3, b_col4 = st.columns(4)
-        bt_symbol = b_col1.selectbox("1️⃣ Select Stock", list(STOCK_CATALOG.keys()), index=list(STOCK_CATALOG.keys()).index(st.session_state.selected_ticker))
-        bt_strategy = b_col2.selectbox("2️⃣ Entry Condition (Algorithm)", [
-            "SMA 20 Golden Crossover (Trend Follow)",
-            "RSI < 35 Oversold Reversal (Mean Reversion)",
-            "Price > 20 SMA + RSI > 50 (Momentum Surge)"
-        ])
-        stop_loss_pct = b_col3.slider("3️⃣ Stop-Loss (%)", 1.0, 10.0, 3.0, 0.5)
-        target_pct = b_col4.slider("4️⃣ Target Profit (%)", 2.0, 20.0, 6.0, 0.5)
-
-        bt_raw = fetch_stock_history(bt_symbol, "1y") if online_status else None
-        if bt_raw is None or bt_raw.empty:
-            st.warning("⚠️ Historical backtesting requires an active internet connection to fetch 1-year OHLC candles.")
-            st.stop()
-        bt_df = bt_raw.dropna().copy()
-        capital = 100000.0
-        equity_curve = [capital]
-        trades_log = []
-        in_position = False
-        entry_price = 0.0
-        entry_date = None
-
-        for i in range(1, len(bt_df)):
-            row = bt_df.iloc[i]
-            prev = bt_df.iloc[i - 1]
-            date_str = bt_df.index[i].strftime("%d %b %Y")
-
-            if not in_position:
-                cond1 = "Golden" in bt_strategy and (prev["Close"] <= prev["SMA_20"] and row["Close"] > row["SMA_20"])
-                cond2 = "Oversold" in bt_strategy and (row["RSI"] < 35)
-                cond3 = "Momentum" in bt_strategy and (row["Close"] > row["SMA_20"] and row["RSI"] > 50 and prev["RSI"] <= 50)
-                if cond1 or cond2 or cond3:
-                    in_position = True
-                    entry_price = float(row["Close"])
-                    entry_date = date_str
+    for turn in st.session_state.ai_chat_history:
+        with st.chat_message("user"):
+            st.markdown(turn["question"])
+        with st.chat_message("assistant", avatar=":material/smart_toy:"):
+            logo_src = turn.get("logo")
+            if logo_src:
+                st.html(
+                    f'<div style="display:inline-flex;align-items:center;gap:8px;padding:3px 10px;'
+                    f'border-radius:8px;border:1px solid rgba(128,128,128,0.22);margin-bottom:6px;">'
+                    f'<span style="width:20px;height:20px;border-radius:5px;background:#fff;padding:1px;display:inline-flex;align-items:center;justify-content:center;">'
+                    f'<img src="{logo_src}" style="width:100%;height:100%;object-fit:contain;"/></span>'
+                    f'<span style="font-size:0.78rem;font-weight:700;">{html.escape(turn["stock"])}</span>'
+                    f'<span style="font-size:0.74rem;opacity:0.72;">· {html.escape(turn["badge"])}</span></div>'
+                )
             else:
-                change_pct = ((float(row["Close"]) - entry_price) / entry_price) * 100
-                if change_pct >= target_pct or change_pct <= -stop_loss_pct or i == len(bt_df) - 1:
-                    in_position = False
-                    pnl_amt = capital * (change_pct / 100)
-                    capital += pnl_amt
-                    trades_log.append({
-                        "Entry Date": entry_date,
-                        "Exit Date": date_str,
-                        "Entry Price": f"₹{entry_price:,.2f}",
-                        "Exit Price": f"₹{float(row['Close']):,.2f}",
-                        "Return (%)": f"{'▲' if change_pct >= 0 else '▼'} {change_pct:+.2f}%",
-                        "Net P&L (₹)": round(pnl_amt, 2),
-                        "Outcome": "WIN ✅" if change_pct > 0 else "LOSS ❌"
-                    })
-            equity_curve.append(capital)
+                st.caption(f"{turn['stock']} · {turn['badge']}")
+            st.markdown(turn["answer"])
 
-        total_ret = ((capital - 100000.0) / 100000.0) * 100
-        wins = sum(1 for t in trades_log if "WIN" in t["Outcome"])
-        win_rate = (wins / len(trades_log) * 100) if trades_log else 0.0
+    if prompt:
+        with st.chat_message("user"):
+            st.markdown(prompt)
+        with st.chat_message("assistant", avatar=":material/smart_toy:"):
+            with st.status(":shimmer[Analyzing live market data, pivots & portfolio state...]", type="compact") as status:
+                reply, badge, title, logo_url, steps = ask_universal_ai_advisor(
+                    st.session_state.username,
+                    prompt,
+                    snaps,
+                    usdinr,
+                    groq_api_key=groq_key,
+                    gemini_api_key=gemini_key,
+                    allow_after_hours=st.session_state.allow_after_hours,
+                    chat_history=st.session_state.ai_chat_history,
+                )
+                for s in steps:
+                    st.write(f"- {s}")
+                status.update(label=f"Completed via {badge}", state="complete")
+            if logo_url:
+                st.html(
+                    f'<div style="display:inline-flex;align-items:center;gap:8px;padding:3px 10px;'
+                    f'border-radius:8px;border:1px solid rgba(128,128,128,0.22);margin-bottom:6px;">'
+                    f'<span style="width:20px;height:20px;border-radius:5px;background:#fff;padding:1px;display:inline-flex;align-items:center;justify-content:center;">'
+                    f'<img src="{logo_url}" style="width:100%;height:100%;object-fit:contain;"/></span>'
+                    f'<span style="font-size:0.78rem;font-weight:700;">{html.escape(title)}</span>'
+                    f'<span style="font-size:0.74rem;opacity:0.72;">· {html.escape(badge)}</span></div>'
+                )
+            st.markdown(reply)
 
-        k1, k2, k3, k4 = st.columns(4)
-        with k1:
-            render_kpi("Final Backtest Capital", f"₹{capital:,.2f}", f"{'▲' if total_ret >= 0 else '▼'} {total_ret:+.2f}% Net Return", "kpi-emerald" if total_ret >= 0 else "kpi-violet", "#10b981")
-        with k2:
-            render_kpi("Total Signals Triggered", f"{len(trades_log)} Trades", "1-Year Historical Sample", "kpi-cyan", "#0284c7")
-        with k3:
-            render_kpi("Strategy Win Rate", f"{win_rate:.1f}%", f"{wins} Winning Trades", "kpi-white", "#2563eb")
-        with k4:
-            render_kpi("Risk-Reward Ratio", f"1 : {target_pct/stop_loss_pct:.1f}", f"SL: {stop_loss_pct}% | TP: {target_pct}%", "kpi-violet", "#8b5cf6")
-
-        eq_fig = go.Figure()
-        eq_fig.add_trace(go.Scatter(
-            x=bt_df.index, y=equity_curve, mode="lines", fill="tozeroy",
-            name="Strategy Equity", line=dict(color="#0284c7", width=2.8),
-            fillcolor="rgba(2, 132, 199, 0.14)"
-        ))
-        eq_fig.update_layout(
-            title="📈 FinanceSight Backtest Equity Curve (Initial Capital: ₹1,00,000)",
-            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=370
+        st.session_state.ai_chat_history.append(
+            {"question": prompt, "answer": reply, "badge": badge, "stock": title, "logo": logo_url}
         )
-        st.plotly_chart(eq_fig, use_container_width=True)
 
-        if trades_log:
-            st.markdown("##### 📜 Simulated Backtest Trade Ledger")
-            st.dataframe(pd.DataFrame(trades_log), use_container_width=True, hide_index=True)
-            csv_bt = pd.DataFrame(trades_log).to_csv(index=False).encode("utf-8")
-            st.download_button(
-                label="📥 Download Backtest Trade Report (CSV/Excel)",
-                data=csv_bt,
-                file_name=f"{bt_symbol}_financesight_backtest.csv",
-                mime="text/csv"
-            )
 
-    with st_tab2:
-        st.subheader("📡 Real-Time STOCKS Market Scanner (NSE & NASDAQ/NYSE)")
-        scan_rows = []
+def page_ai_advisor() -> None:
+    st.title("FinanceSight Universal AI Advisor", icon=":material/smart_toy:")
+    _ai_advisor_chat_fragment()
+
+
+@st.fragment
+def _algo_scanner_fragment() -> None:
+    snaps, _, _, _, _ = get_market_context()
+
+    apps_view = st.segmented_control(
+        "Algo & Scanner View",
+        ["No-Code Strategy Backtester", "Live Multi-Market Scanner"],
+        default="No-Code Strategy Backtester",
+        key="apps_view",
+        label_visibility="collapsed",
+    ) or "No-Code Strategy Backtester"
+
+    if apps_view == "No-Code Strategy Backtester":
+        c1, c2, c3, c4 = st.columns([1.4, 1.8, 0.9, 0.9])
+        all_syms = list(STOCK_CATALOG.keys())
+        cur_i = all_syms.index(st.session_state.selected_ticker) if st.session_state.selected_ticker in all_syms else 0
+        bt_sym = c1.selectbox(
+            "Equity (345+ Stocks)",
+            all_syms,
+            index=cur_i,
+            format_func=lambda s: f"{s} — {STOCK_CATALOG[s]['name']} ({STOCK_CATALOG[s]['exchange']})",
+            key="bt_sym",
+        )
+        bt_strat = c2.selectbox("Strategy Rule", BACKTEST_STRATEGIES, key="bt_strat")
+        sl_pct = c3.slider("Stop-Loss (%)", 1.0, 10.0, 3.0, 0.5, key="bt_sl")
+        tp_pct = c4.slider("Take-Profit (%)", 2.0, 25.0, 6.0, 0.5, key="bt_tp")
+
+        bt_tf = st.segmented_control("Backtest Horizon", ["6mo", "1y", "2y"], default="1y", key="bt_tf") or "1y"
+        meta = get_ticker_meta(bt_sym)
+        cur = meta["currency"]
+
+        st.html(
+            f'<div style="display:flex;align-items:center;gap:10px;margin:4px 0 8px 0;">'
+            f'{stock_icon_html(bt_sym, size=34, radius=9)}'
+            f'<div><div style="font-weight:800;font-size:1.0rem;">{html.escape(meta["name"])} '
+            f'<span style="opacity:0.7;font-family:JetBrains Mono,monospace;">({html.escape(bt_sym)})</span></div>'
+            f'<div style="font-size:0.78rem;opacity:0.72;">{meta["exchange"]} · {html.escape(meta["sector"])} · {bt_strat}</div></div></div>'
+        )
+
+        raw_hist = fetch_stock_history(bt_sym, bt_tf)
+        if raw_hist is None or len(raw_hist) < 55:
+            st.warning("Unable to load enough historical candles for this backtest window.")
+        else:
+            res = run_backtest_cached(bt_sym, str(raw_hist.index[-1]), raw_hist, bt_strat, 100000.0, sl_pct, tp_pct, cur)
+            if res.get("empty"):
+                st.warning("Not enough indicator bars for the selected window.")
+            else:
+                k1, k2, k3, k4, k5 = st.columns(5)
+                k1.metric("Final Capital", f"{cur}{res['final_capital']:,.0f}", f"{res['total_ret']:+.2f}%", border=True, height="stretch")
+                k2.metric("Buy & Hold", f"{res['bh_ret']:+.2f}%", f"Alpha: {res['alpha']:+.2f}%", border=True, height="stretch")
+                k3.metric("Sharpe Ratio", f"{res['sharpe']:.2f}", f"Max DD: {res['max_drawdown']:.2f}%", delta_color="off", border=True, height="stretch")
+                k4.metric("Win Rate", f"{res['win_rate']:.1f}%", f"{res['wins_count']}/{len(res['trades_log'])} Wins", delta_color="off", border=True, height="stretch")
+                k5.metric("Profit Factor", f"{res['profit_factor']:.2f}", f"R:R 1:{tp_pct/sl_pct:.1f}", delta_color="off", border=True, height="stretch")
+
+                eq_fig = go.Figure()
+                eq_fig.add_trace(go.Scatter(x=res["eq_series"].index, y=res["eq_series"].values, name="Strategy Equity", fill="tozeroy", line=dict(color="#3b82f6", width=2.4), fillcolor="rgba(59,130,246,0.12)"))
+                eq_fig.add_trace(go.Scatter(x=res["bh_series"].index, y=res["bh_series"].values, name="Buy & Hold Benchmark", line=dict(color="#94a3b8", width=1.8, dash="dot")))
+                eq_fig.update_layout(title=f"Mark-to-Market Equity Curve vs. Buy & Hold ({cur}100,000 Base)", height=360, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", margin=dict(l=10, r=10, t=36, b=10))
+                st.plotly_chart(eq_fig, theme="streamlit", alt=f"Strategy equity curve versus buy and hold benchmark for {bt_sym}")
+
+                sig_fig = go.Figure()
+                bt_df = res["bt_df"]
+                sig_fig.add_trace(go.Scatter(x=bt_df.index, y=bt_df["Close"], name="Close Price", line=dict(color="#0ea5e9", width=1.8)))
+                buys = [p for p in res["signal_points"] if p["type"] == "BUY"]
+                sells = [p for p in res["signal_points"] if p["type"] == "SELL"]
+                if buys:
+                    sig_fig.add_trace(go.Scatter(x=[p["date"] for p in buys], y=[p["price"] for p in buys], mode="markers", name="Entry (BUY)", marker=dict(symbol="triangle-up", size=11, color="#10b981")))
+                if sells:
+                    sig_fig.add_trace(go.Scatter(x=[p["date"] for p in sells], y=[p["price"] for p in sells], mode="markers", name="Exit (SELL)", marker=dict(symbol="triangle-down", size=11, color="#ef4444")))
+                sig_fig.update_layout(title=f"Trade Signals on Price Chart ({bt_sym})", height=320, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", margin=dict(l=10, r=10, t=36, b=10))
+                st.plotly_chart(sig_fig, theme="streamlit", alt=f"Buy entry and sell exit markers plotted over price history for {bt_sym}")
+
+                if res["trades_log"]:
+                    t_df = pd.DataFrame(res["trades_log"])
+                    st.dataframe(t_df, hide_index=True, alt="Backtest simulated trades ledger")
+                    st.download_button(
+                        "Download Backtest Trades (CSV)",
+                        data=t_df.to_csv(index=False).encode("utf-8"),
+                        file_name=f"{bt_sym}_backtest.csv",
+                        mime="text/csv",
+                        icon=":material/download:",
+                    )
+                else:
+                    st.info("No entry signals triggered in this timeframe under the current strategy rules.")
+
+    elif apps_view == "Live Multi-Market Scanner":
+        sc1, sc2, sc3 = st.columns([1.4, 1.1, 1.1], vertical_alignment="bottom")
+        scan_q = sc1.text_input("Search Scanner", type="search", placeholder="Ticker, company, or sector...", key="scan_q")
+        scan_sec = sc2.selectbox("Sector", ["All Sectors"] + sorted({v["sector"] for v in STOCK_CATALOG.values()}), key="scan_sec")
+        ex_sel = sc3.segmented_control("Filter Exchange", ["All", "NSE", "US"], default="All", key="scan_ex") or "All"
+
+        filtered_syms = []
+        ql = scan_q.strip().lower()
         for sym, meta in STOCK_CATALOG.items():
-            snap = snapshots.get(sym, {"price": 100.0, "pct": 0.0, "rsi": 50.0, "above_sma": True})
-            status = "🟢 ▲ BULLISH BREAKOUT" if snap["above_sma"] and snap["rsi"] > 52 else ("🔵 ▲ OVERSOLD BOUNCE" if snap["rsi"] < 42 else "🔴 ▼ BEARISH / NEUTRAL")
-            scan_rows.append({
-                "Symbol": sym,
-                "Company": meta["name"],
-                "Exchange": meta["exchange"],
-                "Sector": meta["sector"],
-                "Live Price": f"{meta.get('currency','₹')}{snap['price']:,.2f}",
-                "Day Change": f"{'▲' if snap['pct'] >= 0 else '▼'} {snap['pct']:+.2f}%",
-                "RSI (14)": round(snap["rsi"], 1),
-                "Scanner Signal": status
-            })
-        st.dataframe(pd.DataFrame(scan_rows), use_container_width=True, hide_index=True)
+            if ex_sel == "NSE" and meta["exchange"] != "NSE":
+                continue
+            if ex_sel == "US" and meta["exchange"] == "NSE":
+                continue
+            if scan_sec != "All Sectors" and meta["sector"] != scan_sec:
+                continue
+            if ql and (ql not in sym.lower() and ql not in meta["name"].lower() and ql not in meta["sector"].lower()):
+                continue
+            filtered_syms.append(sym)
+
+        scan_page_size = 30
+        total_scan = len(filtered_syms)
+        max_scan_pages = max(1, (total_scan + scan_page_size - 1) // scan_page_size)
+        scan_sig = f"{ex_sel}|{scan_sec}|{ql}"
+        if st.session_state.get("_scan_sig") != scan_sig:
+            st.session_state["_scan_sig"] = scan_sig
+            st.session_state["scan_page"] = 0
+        s_page = min(max(0, int(st.session_state.get("scan_page", 0))), max_scan_pages - 1)
+        s_start = s_page * scan_page_size
+        vis_syms = filtered_syms[s_start : s_start + scan_page_size]
+
+        sn_l, sn_c, sn_r = st.columns([2.2, 0.9, 0.9], vertical_alignment="center")
+        sn_l.caption(f"Showing **{s_start + 1 if total_scan else 0}–{min(s_start + scan_page_size, total_scan)}** of **{total_scan}** matching stocks (Live page fetch)")
+        if max_scan_pages > 1:
+            sn_c.button(
+                "Previous",
+                icon=":material/chevron_left:",
+                disabled=s_page == 0,
+                width="stretch",
+                key="scan_prev",
+                on_click=_shift_page_cb,
+                args=("scan_page", -1),
+            )
+            sn_r.button(
+                f"Next ({s_page + 1}/{max_scan_pages})",
+                icon=":material/chevron_right:",
+                disabled=s_page >= max_scan_pages - 1,
+                width="stretch",
+                key="scan_next",
+                on_click=_shift_page_cb,
+                args=("scan_page", 1),
+            )
+
+        full_snaps = ensure_symbols_live(vis_syms, snaps) if vis_syms else snaps
+        scan_rows = []
+        for sym in vis_syms:
+            meta = STOCK_CATALOG[sym]
+            sn = full_snaps.get(sym, DEFAULT_STOCKS_SNAPSHOTS.get(sym, {"price": 100.0, "pct": 0.0, "rsi": 50.0, "above_sma": True, "sparkline": []}))
+            sig = "Bullish Breakout" if sn.get("above_sma", True) and sn.get("rsi", 50.0) > 52 else ("Oversold Bounce" if sn.get("rsi", 50.0) < 42 else "Bearish / Neutral")
+            scan_rows.append(
+                {
+                    "Logo": get_logo_url(sym),
+                    "Symbol": sym,
+                    "Company": meta["name"],
+                    "Exchange": meta["exchange"],
+                    "Sector": meta["sector"],
+                    "Price": f"{meta['currency']}{sn['price']:,.2f}",
+                    "Day %": round(sn["pct"], 2),
+                    "RSI (14)": round(sn["rsi"], 1),
+                    "20D Trend": sn.get("sparkline", []),
+                    "Signal": [sig],
+                }
+            )
+        st.dataframe(
+            pd.DataFrame(scan_rows),
+            column_config={
+                "Logo": st.column_config.ImageColumn("", width="small"),
+                "Day %": st.column_config.NumberColumn("Day %", format="%.2f%%"),
+                "RSI (14)": st.column_config.ProgressColumn("RSI (14)", min_value=0, max_value=100, format="%.1f"),
+                "20D Trend": st.column_config.LineChartColumn("20D Sparkline"),
+                "Signal": st.column_config.MultiselectColumn("Signal", options=["Bullish Breakout", "Oversold Bounce", "Bearish / Neutral"], color=["green", "blue", "red"]),
+            },
+            hide_index=True,
+            alt="Live technical scanner with company icons across 345+ NSE and US equities",
+        )
+
+
+def page_algo_scanner() -> None:
+    st.title("Strategy Backtester & Market Scanner", icon=":material/science:")
+    _algo_scanner_fragment()
+
+
+def page_fee_calculator() -> None:
+    st.title("Brokerage & Statutory Tax Calculator", icon=":material/calculate:")
+    render_brokerage_calculator_widget("auth_calc")
+
+
+def render_sidebar() -> None:
+    snaps, _, usdinr, is_live, _ = get_market_context()
+    user_bal = get_user_balance(st.session_state.username)
+
+    with st.sidebar:
+        st.markdown(f"### :material/person: {st.session_state.full_name}")
+        st.caption(f"`@{st.session_state.username}` · {'Live Feed' if is_live else 'Cached Baseline'}")
+        st.metric("Available Margin", f"₹{user_bal:,.2f}", f"USD/INR ₹{usdinr:.2f}", delta_color="off", border=True)
+
+        c_ref, c_out = st.columns(2)
+        if c_ref.button("Refresh", icon=":material/refresh:", width="stretch"):
+            fetch_core_market_snapshots.clear()
+            fetch_ticker_batch.clear()
+            fetch_extended_market_snapshots.clear()
+            fetch_stock_history.clear()
+            st.toast("Market cache cleared — fetching live prices.")
+            st.rerun()
+        if c_out.button("Logout", icon=":material/logout:", width="stretch"):
+            st.session_state.logged_in = False
+            st.session_state.username = ""
+            st.session_state.full_name = ""
+            st.session_state.ai_chat_history = []
+            st.rerun()
+
+        st.space("small")
+        st.subheader("Quick Order Ticket", icon=":material/bolt:")
+        all_syms = list(STOCK_CATALOG.keys())
+        cur_idx = all_syms.index(st.session_state.selected_ticker) if st.session_state.selected_ticker in all_syms else 0
+        sb_sym = st.selectbox(
+            f"Select Ticker ({len(all_syms)} Stocks)",
+            all_syms,
+            index=cur_idx,
+            format_func=lambda s: f"{s.replace('.NS', '')} — {STOCK_CATALOG[s]['name']}",
+            key="sb_ticker_pick",
+        )
+        if sb_sym != st.session_state.selected_ticker:
+            st.session_state.selected_ticker = sb_sym
+            st.rerun()
+
+        snaps = ensure_symbols_live([sb_sym], snaps)
+        meta = get_ticker_meta(sb_sym)
+        sn = snaps.get(sb_sym, DEFAULT_STOCKS_SNAPSHOTS.get(sb_sym, {"price": 100.0, "pct": 0.0}))
+        is_open, mkt_txt = check_market_trading_hours(sb_sym)
+        mv_clr = "#10b981" if sn["pct"] >= 0 else "#ef4444"
+        st.html(
+            f'<div style="display:flex;align-items:center;gap:9px;padding:7px 9px;border-radius:10px;'
+            f'border:1px solid rgba(128,128,128,0.22);margin:4px 0 6px 0;">'
+            f'{stock_icon_html(sb_sym, size=30, radius=7)}'
+            f'<div style="min-width:0;flex:1;">'
+            f'<div style="font-size:0.82rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{html.escape(meta["name"])}</div>'
+            f'<div style="font-size:0.74rem;font-family:JetBrains Mono,monospace;">'
+            f'<b>{meta["currency"]}{sn["price"]:,.2f}</b> <span style="color:{mv_clr};font-weight:700;">{sn["pct"]:+.2f}%</span> · {meta["exchange"]}</div>'
+            f'</div></div>'
+        )
+        st.caption(f"{'🟢' if is_open else '🔴'} {mkt_txt}")
+
+        sb_prod = st.segmented_control("Product", ["CNC (Delivery)", "MIS (Intraday 5x)"], default="CNC (Delivery)", key="sb_prod") or "CNC (Delivery)"
+        sb_qty = st.number_input("Qty", min_value=1, max_value=100000, value=5, step=1, key="sb_qty")
+        st.session_state.allow_after_hours = st.toggle(
+            "Allow Demo Orders Outside Hours",
+            value=st.session_state.allow_after_hours,
+            key="sb_after_hrs",
+        )
+
+        b1, b2 = st.columns(2)
+        if b1.button("BUY", type="primary", width="stretch", key="sb_buy"):
+            ok, msg = execute_trade(
+                st.session_state.username, sb_sym, "BUY", int(sb_qty), float(sn["price"]), sb_prod,
+                usdinr_rate=usdinr, allow_after_hours=st.session_state.allow_after_hours,
+            )
+            if ok:
+                st.toast(msg, icon=":material/check_circle:")
+                st.rerun()
+            else:
+                st.error(msg)
+        if b2.button("SELL", width="stretch", key="sb_sell"):
+            ok, msg = execute_trade(
+                st.session_state.username, sb_sym, "SELL", int(sb_qty), float(sn["price"]), sb_prod,
+                usdinr_rate=usdinr, allow_after_hours=st.session_state.allow_after_hours,
+            )
+            if ok:
+                st.toast(msg, icon=":material/check_circle:")
+                st.rerun()
+            else:
+                st.error(msg)
+
+        with st.popover("AI API Key Settings", icon=":material/key:", width="stretch"):
+            st.caption("Session-only override if keys are not configured in Streamlit Secrets.")
+            entered_groq = st.text_input(
+                "Groq API Key",
+                value=st.session_state.get("user_groq_api_key", ""),
+                type="password",
+                placeholder="gsk_...",
+                key="sb_groq_key_input",
+            )
+            entered_gemini = st.text_input(
+                "Gemini API Key (Optional)",
+                value=st.session_state.get("user_gemini_api_key", ""),
+                type="password",
+                placeholder="AIza...",
+                key="sb_gemini_key_input",
+            )
+            st.session_state.user_groq_api_key = entered_groq.strip()
+            st.session_state.user_gemini_api_key = entered_gemini.strip()
+
+
+def run_app() -> None:
+    st.set_page_config(
+        page_title="FinanceSight | Market Analytics, AI Forecasting & Paper Trading",
+        page_icon=":material/monitoring:",
+        layout="wide",
+        initial_sidebar_state="expanded",
+    )
+    st.logo(FINANCESIGHT_LOGO_SVG, icon_image=FINANCESIGHT_ICON_SVG, size="large")
+
+    ensure_db_initialized()
+
+    st.session_state.setdefault("logged_in", False)
+    st.session_state.setdefault("username", "")
+    st.session_state.setdefault("full_name", "")
+    st.session_state.setdefault("selected_ticker", "RELIANCE.NS")
+    st.session_state.setdefault("ai_chat_history", [])
+    st.session_state.setdefault("allow_after_hours", False)
+    st.session_state.setdefault("user_groq_api_key", "")
+    st.session_state.setdefault("user_gemini_api_key", "")
+
+    snaps, idx_snaps, usdinr, is_live, stamp = fetch_core_market_snapshots()
+    st.session_state["_mkt_snaps"] = snaps
+    st.session_state["_idx_snaps"] = idx_snaps
+    st.session_state["_usdinr"] = usdinr
+    st.session_state["_is_live"] = is_live
+    st.session_state["_mkt_stamp"] = stamp
+
+    if not st.session_state.logged_in:
+        p_home = st.Page(page_public_home, title="Home", icon=":material/home:", url_path="home", default=True)
+        p_prod = st.Page(page_public_products, title="Products", icon=":material/layers:", url_path="products")
+        p_fees = st.Page(page_public_fees, title="Brokerage & Fees", icon=":material/calculate:", url_path="fees")
+        p_about = st.Page(page_public_about, title="Architecture & About", icon=":material/architecture:", url_path="about")
+        p_supp = st.Page(page_public_support, title="Support", icon=":material/support_agent:", url_path="support")
+
+        st.session_state["_pub_page_map"] = {
+            "home": p_home,
+            "products": p_prod,
+            "fees": p_fees,
+            "about": p_about,
+            "support": p_supp,
+        }
+        nav = st.navigation([p_home, p_prod, p_fees, p_about, p_supp], position="top")
+        nav.run()
+    else:
+        p_dash = st.Page(page_dashboard, title="Dashboard", icon=":material/dashboard:", url_path="dashboard", default=True)
+        p_term = st.Page(page_superchart, title="SuperChart", icon=":material/candlestick_chart:", url_path="superchart")
+        p_adv = st.Page(page_ai_advisor, title="AI Advisor", icon=":material/smart_toy:", url_path="advisor")
+        p_ord = st.Page(page_orders, title="Orders", icon=":material/receipt:", url_path="orders")
+        p_hold = st.Page(page_holdings, title="Holdings", icon=":material/business_center:", url_path="holdings")
+        p_pos = st.Page(page_positions, title="Positions", icon=":material/monitoring:", url_path="positions")
+        p_fund = st.Page(page_funds, title="Funds", icon=":material/account_balance_wallet:", url_path="funds")
+        p_apps = st.Page(page_algo_scanner, title="Algo & Scanner", icon=":material/science:", url_path="scanner")
+        p_calc = st.Page(page_fee_calculator, title="Fee Calculator", icon=":material/calculate:", url_path="calculator")
+
+        st.session_state["_page_map"] = {
+            "Dashboard": p_dash,
+            "Terminal": p_term,
+            "Advisor": p_adv,
+            "Orders": p_ord,
+            "Holdings": p_hold,
+            "Positions": p_pos,
+            "Funds": p_fund,
+            "Apps": p_apps,
+            "Calculator": p_calc,
+        }
+
+        render_sidebar()
+        nav = st.navigation(
+            {
+                "": [p_dash, p_term, p_adv],
+                "Trading": [p_ord, p_hold, p_pos, p_fund],
+                "Analytics": [p_apps, p_calc],
+            },
+            position="top",
+        )
+        nav.run()
+
+
+if get_script_run_ctx() is not None:
+    run_app()
