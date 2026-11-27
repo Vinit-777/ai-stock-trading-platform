@@ -1,0 +1,17 @@
+# Secrets & Local Environment
+.streamlit/secrets.toml
+.env
+*.env
+
+# Local SQLite databases (recreated cleanly on cloud deploy)
+*.db
+*.db-wal
+*.db-shm
+
+# Python caches & virtual environments
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+.pytest_cache/
+.DS_Store
