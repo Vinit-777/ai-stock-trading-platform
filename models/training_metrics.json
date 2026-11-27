@@ -1,0 +1,128 @@
+{
+  "dataset_source": "Yahoo Finance Daily OHLCV (3-Year Multi-Market Panel)",
+  "period": "3y",
+  "tickers_trained": 345,
+  "total_rows": 242370,
+  "train_rows": 193983,
+  "test_rows": 48387,
+  "date_start": "2023-12-27",
+  "date_end": "2026-10-29",
+  "split_date": "2026-04-07",
+  "feature_columns": [
+    "ret_1d",
+    "ret_5d",
+    "ret_20d",
+    "ret_60d",
+    "sma20_dist",
+    "ema50_dist",
+    "trend_spread",
+    "rsi_14",
+    "macd_hist_norm",
+    "bb_pctb",
+    "atr_pct",
+    "ann_vol_20",
+    "ann_vol_60",
+    "drawdown_60d",
+    "trend_efficiency_20d",
+    "win_ratio_20d",
+    "vol_ratio"
+  ],
+  "class_distribution": {
+    "High Risk (0)": 87187,
+    "Moderate (1)": 91335,
+    "Healthy (2)": 63848
+  },
+  "label_definitions": {
+    "Healthy (2)": "Forward 20D volatility <= 27% annualized, max drawdown <= 5.5%, and return >= -1%",
+    "Moderate (1)": "Balanced risk/return swings without severe turbulence or steep drawdowns",
+    "High Risk (0)": "Forward 20D volatility >= 37% annualized OR max drawdown <= -9.5%"
+  },
+  "best_classifier": "LogisticRegression",
+  "classifier_benchmarks": [
+    {
+      "Model": "LogisticRegression",
+      "Test Accuracy (%)": 51.66,
+      "Macro F1 (%)": 50.39,
+      "Weighted F1 (%)": 51.88,
+      "ROC-AUC (%)": 72.49
+    },
+    {
+      "Model": "RandomForest",
+      "Test Accuracy (%)": 51.8,
+      "Macro F1 (%)": 49.96,
+      "Weighted F1 (%)": 51.53,
+      "ROC-AUC (%)": 72.46
+    },
+    {
+      "Model": "HistGradientBoosting",
+      "Test Accuracy (%)": 51.76,
+      "Macro F1 (%)": 49.62,
+      "Weighted F1 (%)": 51.45,
+      "ROC-AUC (%)": 72.34
+    }
+  ],
+  "confusion_matrix_labels": [
+    "High Risk",
+    "Moderate",
+    "Healthy"
+  ],
+  "confusion_matrix": [
+    [
+      12319,
+      4354,
+      2114
+    ],
+    [
+      4777,
+      7616,
+      7508
+    ],
+    [
+      1077,
+      3561,
+      5061
+    ]
+  ],
+  "feature_importance_pct": {
+    "ann_vol_60": 38.17,
+    "atr_pct": 27.73,
+    "ann_vol_20": 14.1,
+    "drawdown_60d": 5.35,
+    "ret_60d": 3.19,
+    "trend_spread": 2.71,
+    "ema50_dist": 2.61,
+    "ret_20d": 1.15,
+    "macd_hist_norm": 0.91,
+    "sma20_dist": 0.72,
+    "rsi_14": 0.71,
+    "vol_ratio": 0.62,
+    "trend_efficiency_20d": 0.53,
+    "ret_1d": 0.45,
+    "ret_5d": 0.39,
+    "bb_pctb": 0.33,
+    "win_ratio_20d": 0.32
+  },
+  "best_regressor": "RidgeRegression",
+  "regressor_benchmarks": [
+    {
+      "Model": "RidgeRegression",
+      "Test RMSE": 0.3516,
+      "Test MAE": 0.2441,
+      "Directional Hit Rate (%)": 75.26
+    },
+    {
+      "Model": "HistGradientBoostingRegressor",
+      "Test RMSE": 0.3502,
+      "Test MAE": 0.2464,
+      "Directional Hit Rate (%)": 74.45
+    },
+    {
+      "Model": "RandomForestRegressor",
+      "Test RMSE": 0.3523,
+      "Test MAE": 0.2478,
+      "Directional Hit Rate (%)": 74.17
+    }
+  ],
+  "trained_at_utc": "2026-11-27 19:18 UTC",
+  "training_seconds": 101.83
+}
