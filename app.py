@@ -9,6 +9,7 @@ import hmac
 import json
 import operator
 import os
+from pathlib import Path
 import re
 import sqlite3
 import urllib.parse
@@ -18,6 +19,7 @@ import xml.etree.ElementTree as ET
 from zoneinfo import ZoneInfo
 
 import altair as alt
+import joblib
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
@@ -25,6 +27,8 @@ from plotly.subplots import make_subplots
 import streamlit as st
 from streamlit.runtime.scriptrunner import get_script_run_ctx
 import yfinance as yf
+
+MODELS_DIR = Path(__file__).resolve().parent / "models"
 
 _pandas4_warn = getattr(pd.errors, "Pandas4Warning", None)
 if _pandas4_warn is not None:
@@ -1376,6 +1380,475 @@ def build_stationary_ml_frame(df: pd.DataFrame) -> pd.DataFrame:
     return feat.replace([np.inf, -np.inf], np.nan).dropna()
 
 
+HEALTH_FEATURE_COLS = [
+    "ret_1d", "ret_5d", "ret_20d", "ret_60d",
+    "sma20_dist", "ema50_dist", "trend_spread",
+    "rsi_14", "macd_hist_norm", "bb_pctb",
+    "atr_pct", "ann_vol_20", "ann_vol_60",
+    "drawdown_60d", "trend_efficiency_20d", "win_ratio_20d", "vol_ratio",
+]
+
+
+def build_health_feature_frame(df: pd.DataFrame, include_targets: bool = False) -> pd.DataFrame:
+    feat = pd.DataFrame(index=df.index)
+    close = df["Close"].astype(float)
+    high = df["High"].astype(float) if "High" in df else close
+    vol = df["Volume"].astype(float).replace(0.0, np.nan)
+    vol_ma = vol.rolling(20).mean().replace(0.0, np.nan)
+
+    ret_1d = close.pct_change(1)
+    abs_step = close.diff().abs().rolling(20).sum().replace(0.0, np.nan)
+    net_step = (close - close.shift(20)).abs()
+    roll_high_60 = high.rolling(60, min_periods=20).max()
+
+    feat["ret_1d"] = ret_1d
+    feat["ret_5d"] = close.pct_change(5)
+    feat["ret_20d"] = close.pct_change(20)
+    feat["ret_60d"] = close.pct_change(60).fillna(feat["ret_20d"])
+    feat["sma20_dist"] = (close / df["SMA_20"]) - 1.0
+    feat["ema50_dist"] = (close / df["EMA_50"]) - 1.0
+    feat["trend_spread"] = (df["SMA_20"] / df["EMA_50"]) - 1.0
+    feat["rsi_14"] = df["RSI"].astype(float)
+    feat["macd_hist_norm"] = df["MACD_Hist"] / close
+    feat["bb_pctb"] = df["BB_PctB"].astype(float)
+    feat["atr_pct"] = (df["ATR_14"] / close).fillna(0.02)
+    feat["ann_vol_20"] = ret_1d.rolling(20).std().fillna(ret_1d.rolling(10).std()) * np.sqrt(252.0)
+    feat["ann_vol_60"] = ret_1d.rolling(60, min_periods=20).std().fillna(feat["ann_vol_20"]) * np.sqrt(252.0)
+    feat["drawdown_60d"] = ((close / roll_high_60) - 1.0).fillna(0.0)
+    feat["trend_efficiency_20d"] = (net_step / abs_step).fillna(0.25).clip(0.0, 1.0)
+    feat["win_ratio_20d"] = (ret_1d > 0).astype(float).rolling(20, min_periods=10).mean().fillna(0.5)
+    feat["vol_ratio"] = (vol / vol_ma).fillna(1.0).clip(0.2, 5.0)
+
+    if include_targets:
+        fwd_ret_20d = (close.shift(-20) / close) - 1.0
+        fwd_vol_20d = ret_1d.rolling(20).std().shift(-20) * np.sqrt(252.0)
+        fwd_low_20d = close.rolling(20).min().shift(-20)
+        fwd_mdd_20d = (fwd_low_20d / close) - 1.0
+        feat["fwd_ret_20d"] = fwd_ret_20d
+        feat["fwd_vol_20d"] = fwd_vol_20d
+        feat["fwd_mdd_20d"] = fwd_mdd_20d
+        feat["fwd_suitability"] = np.clip(
+            (fwd_ret_20d * 2.5) - (fwd_vol_20d * 1.4) + (0.6 * (1.0 + fwd_mdd_20d)),
+            -2.0,
+            2.0,
+        )
+        conditions = [
+            (fwd_vol_20d >= 0.37) | (fwd_mdd_20d <= -0.095),
+            (fwd_vol_20d <= 0.27) & (fwd_mdd_20d > -0.055) & (fwd_ret_20d >= -0.01),
+        ]
+        feat["health_class"] = np.select(conditions, [0, 2], default=1).astype(int)
+
+    return feat.replace([np.inf, -np.inf], np.nan).dropna()
+
+
+@st.cache_resource(show_spinner=False)
+def load_trained_ml_artifacts() -> dict:
+    res: dict = {"loaded": False, "health": None, "basket": None, "metrics": {}}
+    try:
+        m_path = MODELS_DIR / "training_metrics.json"
+        if m_path.exists():
+            res["metrics"] = json.loads(m_path.read_text(encoding="utf-8"))
+        h_path = MODELS_DIR / "traffic_light_model.joblib"
+        b_path = MODELS_DIR / "smart_basket_model.joblib"
+        if h_path.exists() and b_path.exists():
+            res["health"] = joblib.load(h_path)
+            res["basket"] = joblib.load(b_path)
+            res["loaded"] = True
+    except Exception:
+        res["loaded"] = False
+    return res
+
+
+@st.cache_data(ttl="15m", max_entries=16, refresh_mode="background", show_spinner=False)
+def fetch_basket_candidate_histories(tickers_tuple: tuple[str, ...]) -> dict[str, pd.DataFrame]:
+    syms = [LEGACY_TICKER_REMAP.get(s, s) for s in tickers_tuple if LEGACY_TICKER_REMAP.get(s, s) in STOCK_CATALOG]
+    out: dict[str, pd.DataFrame] = {}
+    if not syms:
+        return out
+    try:
+        raw = yf.download(syms, period="1y", group_by="ticker", threads=True, progress=False)
+        if raw is None or raw.empty:
+            return out
+        top_cols = set(raw.columns.get_level_values(0)) if isinstance(raw.columns, pd.MultiIndex) else set()
+        for sym in syms:
+            sub = raw[sym].dropna(subset=["Close", "High", "Low"]).copy() if sym in top_cols else (raw.dropna(subset=["Close"]).copy() if len(syms) == 1 else None)
+            if sub is not None and len(sub) >= 65:
+                out[sym] = enrich_technical_indicators(sub)
+    except Exception:
+        pass
+    return out
+
+
+def compute_traffic_light_health(
+    sym: str,
+    df_hist: pd.DataFrame | None = None,
+    snap: dict | None = None,
+) -> dict:
+    resolved = LEGACY_TICKER_REMAP.get(sym, sym)
+    meta = get_ticker_meta(resolved)
+    sn = snap or DEFAULT_STOCKS_SNAPSHOTS.get(resolved, {"price": 100.0, "pct": 0.0, "rsi": 50.0, "above_sma": True})
+    df = df_hist if df_hist is not None else fetch_stock_history(resolved, "1y")
+
+    artifacts = load_trained_ml_artifacts()
+    price = float(sn.get("price", 100.0))
+    pct = float(sn.get("pct", 0.0))
+    rsi_14 = float(sn.get("rsi", 50.0))
+    ret_20d = 0.02 if sn.get("above_sma", True) else -0.02
+    sma20_dist = 0.015 if sn.get("above_sma", True) else -0.015
+    ann_vol = 0.26
+    drawdown_60d = -0.04
+    suitability = 0.25 if sn.get("above_sma", True) else -0.15
+    probs = np.array([0.22, 0.34, 0.44])
+    model_used = "Quant Baseline Fallback"
+
+    if df is not None and len(df) >= 30:
+        close = df["Close"].astype(float)
+        price = float(close.iloc[-1])
+        prev_c = float(close.iloc[-2]) if len(close) >= 2 else price
+        pct = ((price - prev_c) / prev_c * 100.0) if prev_c else 0.0
+        feat_df = build_health_feature_frame(df, include_targets=False)
+        if not feat_df.empty:
+            last_row = feat_df.iloc[-1]
+            ret_20d = float(last_row["ret_20d"])
+            sma20_dist = float(last_row["sma20_dist"])
+            rsi_14 = float(last_row["rsi_14"])
+            ann_vol = float(last_row["ann_vol_20"])
+            drawdown_60d = float(last_row["drawdown_60d"])
+
+            if artifacts.get("loaded") and artifacts["health"] and artifacts["basket"]:
+                try:
+                    h_bundle = artifacts["health"]
+                    b_bundle = artifacts["basket"]
+                    cols = h_bundle.get("feature_cols", HEALTH_FEATURE_COLS)
+                    x_vec = np.nan_to_num(np.array([[float(last_row[c]) for c in cols]]), nan=0.0, posinf=0.0, neginf=0.0)
+                    probs = np.asarray(h_bundle["model"].predict_proba(x_vec)[0], dtype=float)
+                    suitability = float(b_bundle["model"].predict(x_vec)[0])
+                    model_used = f"{h_bundle['model_name']} + {b_bundle['model_name']} (3Y Trained ML)"
+                except Exception:
+                    pass
+            else:
+                h_score_tmp = np.clip((0.02 if sma20_dist >= 0 else -0.02) + (0.30 - ann_vol), -0.4, 0.4)
+                probs = np.array([max(0.1, 0.35 - h_score_tmp), 0.30, max(0.1, 0.35 + h_score_tmp)])
+                probs = probs / probs.sum()
+    else:
+        base_p = 0.52 if (sn.get("above_sma", True) and 40 <= rsi_14 <= 66) else (0.20 if rsi_14 >= 70 or not sn.get("above_sma", True) else 0.36)
+        probs = np.array([max(0.12, 0.65 - base_p), 0.35, base_p])
+        probs = probs / probs.sum()
+
+    score = int(round(np.clip(probs[2] * 100.0 + probs[1] * 55.0 + probs[0] * 12.0, 5.0, 99.0)))
+    if score >= 66:
+        label, color, badge_clr = "Healthy", "#10b981", "green"
+        pill = "🟢 Healthy · Beginner Friendly"
+    elif score >= 45:
+        label, color, badge_clr = "Moderate", "#f59e0b", "orange"
+        pill = "🟡 Moderate · Watch & Hold"
+    else:
+        label, color, badge_clr = "High Risk", "#ef4444", "red"
+        pill = "🔴 High Risk · Volatile / Caution"
+
+    if sma20_dist >= 0.0 and ret_20d >= 0.015:
+        trend_plain = f"Steady Uptrend — Price has climbed {ret_20d*100:+.1f}% over the last month and sits above its trend line."
+    elif sma20_dist >= -0.01:
+        trend_plain = "Stable Support — Holding steady near its 1-month average price without sharp weakness."
+    else:
+        trend_plain = f"Cooling Trend — Trading {abs(sma20_dist)*100:.1f}% below its 1-month average; wait for stability."
+
+    if rsi_14 >= 70.0:
+        timing_plain = "Heated Entry — Jumped quickly in recent sessions; beginners may want to wait for a small dip."
+    elif rsi_14 <= 34.0:
+        timing_plain = "Discounted Zone — Pulled back noticeably below recent highs; look closely at risk before buying."
+    else:
+        timing_plain = "Fair Entry Zone — Price momentum is balanced and not overhyped right now."
+
+    if ann_vol <= 0.25:
+        risk_plain = f"Calm Price Swings — Smooth daily movement (~{ann_vol*100:.0f}% annualized volatility), well-suited for beginners."
+    elif ann_vol <= 0.37:
+        risk_plain = f"Moderate Price Swings — Normal market ups and downs (~{ann_vol*100:.0f}% annualized volatility)."
+    else:
+        risk_plain = f"Large Daily Swings — Elevated volatility (~{ann_vol*100:.0f}% annualized); expect sharper ups and downs."
+
+    return {
+        "sym": resolved,
+        "meta": meta,
+        "score": score,
+        "label": label,
+        "color": color,
+        "badge_clr": badge_clr,
+        "pill": pill,
+        "probs": {
+            "Healthy": round(float(probs[2]) * 100.0, 1),
+            "Moderate": round(float(probs[1]) * 100.0, 1),
+            "High Risk": round(float(probs[0]) * 100.0, 1),
+        },
+        "suitability": round(float(suitability), 3),
+        "trend_plain": trend_plain,
+        "timing_plain": timing_plain,
+        "risk_plain": risk_plain,
+        "model_used": model_used,
+        "ann_vol_pct": round(ann_vol * 100.0, 1),
+        "drawdown_pct": round(drawdown_60d * 100.0, 1),
+        "ret_20d_pct": round(ret_20d * 100.0, 1),
+        "price": price,
+        "pct": pct,
+    }
+
+
+def build_beginner_smart_basket(
+    budget_inr: float = 20000.0,
+    risk_profile: str = "Balanced Mix",
+    market_pref: str = "Global Mix (India + US)",
+    snapshots: dict | None = None,
+    usdinr_rate: float = DEFAULT_USDINR_RATE,
+    basket_size: int = 4,
+) -> dict:
+    base_snaps = snapshots or {}
+    budget = max(2000.0, float(budget_inr))
+    pref_u = market_pref.upper()
+    wants_nse = "INDIA" in pref_u or "NSE" in pref_u or "GLOBAL" in pref_u
+    wants_us = "US" in pref_u or "NASDAQ" in pref_u or "GLOBAL" in pref_u
+
+    eligible: list[str] = []
+    max_single_share_inr = budget * 0.48
+    for sym, meta in STOCK_CATALOG.items():
+        is_in = meta["exchange"] == "NSE"
+        if is_in and not wants_nse:
+            continue
+        if (not is_in) and not wants_us:
+            continue
+        sn = base_snaps.get(sym, DEFAULT_STOCKS_SNAPSHOTS.get(sym, {"price": 500.0}))
+        px_inr = float(sn.get("price", 500.0)) * get_fx_rate_for_ticker(sym, usdinr_rate)
+        if 5.0 <= px_inr <= max_single_share_inr:
+            eligible.append(sym)
+
+    if len(eligible) < basket_size:
+        eligible = [
+            s for s, m in STOCK_CATALOG.items()
+            if ((m["exchange"] == "NSE" and wants_nse) or (m["exchange"] != "NSE" and wants_us))
+        ][:24]
+
+    # Pick up to 14 diverse-sector affordable leaders (balanced NSE/US when Global Mix selected)
+    seen_sectors: set[str] = set()
+    nse_short, us_short = [], []
+    for sym in eligible:
+        sec = STOCK_CATALOG[sym]["sector"]
+        if sec in seen_sectors and len(nse_short) + len(us_short) < 10:
+            continue
+        seen_sectors.add(sec)
+        if STOCK_CATALOG[sym]["exchange"] == "NSE":
+            if len(nse_short) < 7:
+                nse_short.append(sym)
+        else:
+            if len(us_short) < 7:
+                us_short.append(sym)
+        if len(nse_short) + len(us_short) >= 14:
+            break
+
+    shortlist = (nse_short + us_short) if (wants_nse and wants_us) else (nse_short or us_short)
+    if len(shortlist) < basket_size:
+        for s in eligible:
+            if s not in shortlist:
+                shortlist.append(s)
+            if len(shortlist) >= 12:
+                break
+
+    live_snaps = ensure_symbols_live(shortlist, base_snaps)
+    hist_map = fetch_basket_candidate_histories(tuple(shortlist))
+
+    scored: list[dict] = []
+    for sym in shortlist:
+        sn = live_snaps.get(sym, DEFAULT_STOCKS_SNAPSHOTS.get(sym, {"price": 500.0, "pct": 0.0, "rsi": 50.0, "above_sma": True}))
+        h = compute_traffic_light_health(sym, hist_map.get(sym), sn)
+        fx = get_fx_rate_for_ticker(sym, usdinr_rate)
+        share_inr = float(h["price"]) * fx
+        if share_inr > budget:
+            continue
+
+        p_healthy = h["probs"]["Healthy"] / 100.0
+        p_risk = h["probs"]["High Risk"] / 100.0
+        suit = float(h["suitability"])
+        vol_ratio_pen = max(0.0, h["ann_vol_pct"] - 25.0) / 100.0
+
+        if risk_profile == "Safe & Steady":
+            rank_score = (p_healthy * 2.2) + (suit * 0.9) - (p_risk * 1.6) - (vol_ratio_pen * 1.4)
+        elif risk_profile == "High Growth":
+            rank_score = (suit * 1.8) + (p_healthy * 0.9) + (max(-5.0, h["ret_20d_pct"]) / 25.0) - (p_risk * 0.6)
+        else:
+            rank_score = (suit * 1.4) + (p_healthy * 1.5) - (p_risk * 1.0) - (vol_ratio_pen * 0.5)
+
+        scored.append({**h, "fx": fx, "share_inr": share_inr, "rank_score": rank_score})
+
+    scored.sort(key=lambda x: x["rank_score"], reverse=True)
+
+    chosen: list[dict] = []
+    used_sectors: set[str] = set()
+    if wants_nse and wants_us and basket_size >= 4:
+        for target_in in (True, False):
+            ex_picks = [c for c in scored if (c["meta"]["exchange"] == "NSE") == target_in]
+            for c in ex_picks:
+                if c["meta"]["sector"] not in used_sectors:
+                    chosen.append(c)
+                    used_sectors.add(c["meta"]["sector"])
+                    break
+            if len(chosen) >= basket_size:
+                break
+
+    for c in scored:
+        if c["sym"] not in {x["sym"] for x in chosen} and c["meta"]["sector"] not in used_sectors:
+            chosen.append(c)
+            used_sectors.add(c["meta"]["sector"])
+        if len(chosen) >= basket_size:
+            break
+    for c in scored:
+        if len(chosen) >= basket_size:
+            break
+        if c["sym"] not in {x["sym"] for x in chosen}:
+            chosen.append(c)
+
+    if not chosen:
+        return {"items": [], "total_cost_inr": 0.0, "leftover_inr": budget, "budget_inr": budget}
+
+    chosen_syms = [c["sym"] for c in chosen]
+    # 6-month return covariance & inverse-volatility risk-parity weights
+    close_cols = {}
+    for sym in chosen_syms:
+        df_h = hist_map.get(sym)
+        if df_h is not None and len(df_h) >= 40:
+            close_cols[sym] = df_h["Close"].tail(126)
+
+    corr_df = pd.DataFrame()
+    avg_corr = 0.25
+    if len(close_cols) >= 2:
+        price_mat = pd.DataFrame(close_cols).dropna(how="all").ffill().dropna()
+        ret_mat = price_mat.pct_change().dropna()
+        if len(ret_mat) >= 20:
+            corr_df = ret_mat.corr().round(2)
+            vals = corr_df.values
+            mask = ~np.eye(vals.shape[0], dtype=bool)
+            avg_corr = float(vals[mask].mean()) if mask.any() else 0.25
+
+    sens_pow = 1.35 if risk_profile == "Safe & Steady" else (0.65 if risk_profile == "High Growth" else 1.0)
+    raw_w = np.array([
+        max(0.08, (1.0 / max(12.0, c["ann_vol_pct"])) ** sens_pow) * (1.0 + max(0.0, c["score"] - 40.0) / 150.0)
+        for c in chosen
+    ])
+    target_weights = raw_w / raw_w.sum()
+
+    # Portfolio variance math: w^T * Cov * w
+    vols = np.array([c["ann_vol_pct"] / 100.0 for c in chosen])
+    avg_indiv_vol_pct = float(np.sum(target_weights * vols) * 100.0)
+    if not corr_df.empty and set(chosen_syms).issubset(corr_df.columns):
+        corr_sub = corr_df.loc[chosen_syms, chosen_syms].values
+        cov_mat = np.outer(vols, vols) * corr_sub
+        port_var = float(target_weights @ cov_mat @ target_weights)
+        port_vol_pct = float(np.sqrt(max(1e-6, port_var)) * 100.0)
+    else:
+        port_vol_pct = avg_indiv_vol_pct * float(np.sqrt(max(0.35, 1.0 / len(chosen) + avg_corr * (1.0 - 1.0 / len(chosen)))))
+    div_reduction_pct = max(0.0, ((avg_indiv_vol_pct - port_vol_pct) / max(1e-6, avg_indiv_vol_pct)) * 100.0)
+
+    # Convert continuous risk-parity weights into integer share quantities inside budget
+    qtys = [0] * len(chosen)
+    remaining = budget
+    order_by_weight = sorted(range(len(chosen)), key=lambda i: target_weights[i], reverse=True)
+    for i in order_by_weight:
+        cost1 = chosen[i]["share_inr"]
+        desired_inr = budget * float(target_weights[i])
+        q_init = int(desired_inr // cost1)
+        if q_init == 0 and cost1 <= remaining:
+            q_init = 1
+        while q_init * cost1 > remaining and q_init > 0:
+            q_init -= 1
+        qtys[i] = q_init
+        remaining -= q_init * cost1
+
+    # Top up remaining cash toward under-weighted picks cleanly
+    for _ in range(25):
+        progressed = False
+        total_now = max(1.0, budget - remaining)
+        deficits = sorted(
+            range(len(chosen)),
+            key=lambda i: float(target_weights[i]) - ((qtys[i] * chosen[i]["share_inr"]) / total_now),
+            reverse=True,
+        )
+        for i in deficits:
+            c_px = chosen[i]["share_inr"]
+            if c_px <= remaining:
+                qtys[i] += 1
+                remaining -= c_px
+                progressed = True
+                break
+        if not progressed:
+            break
+
+    items = []
+    tot_cost = sum(qtys[i] * chosen[i]["share_inr"] for i in range(len(chosen)))
+    for i, c in enumerate(chosen):
+        if qtys[i] <= 0:
+            continue
+        cost_i = qtys[i] * c["share_inr"]
+        wt_actual = (cost_i / tot_cost * 100.0) if tot_cost > 0 else (float(target_weights[i]) * 100.0)
+        reason = (
+            f"ML Health {c['score']}/100 ({c['label']}) · Diversifies {c['meta']['sector']} "
+            f"with ~{c['ann_vol_pct']:.0f}% annual volatility."
+        )
+        items.append(
+            {
+                **c,
+                "qty": qtys[i],
+                "cost_inr": round(cost_i, 2),
+                "target_wt_pct": round(float(target_weights[i]) * 100.0, 1),
+                "actual_wt_pct": round(wt_actual, 1),
+                "why_picked": reason,
+            }
+        )
+
+    avg_health = float(np.mean([it["score"] for it in items])) if items else 0.0
+    return {
+        "items": items,
+        "risk_profile": risk_profile,
+        "market_pref": market_pref,
+        "budget_inr": round(budget, 2),
+        "total_cost_inr": round(tot_cost, 2),
+        "leftover_inr": round(max(0.0, budget - tot_cost), 2),
+        "avg_health": round(avg_health, 1),
+        "avg_indiv_vol_pct": round(avg_indiv_vol_pct, 1),
+        "portfolio_vol_pct": round(port_vol_pct, 1),
+        "diversification_reduction_pct": round(div_reduction_pct, 1),
+        "avg_corr": round(avg_corr, 2),
+        "corr_df": corr_df,
+    }
+
+
+def execute_smart_basket(
+    username: str,
+    basket_res: dict,
+    usdinr_rate: float,
+    allow_after_hours: bool = False,
+    db_path: str | None = None,
+) -> tuple[bool, list[str], float]:
+    receipts: list[str] = []
+    filled_cnt = 0
+    spent_inr = 0.0
+    target_db = db_path or DB_PATH
+    for it in basket_res.get("items", []):
+        ok, msg = execute_trade(
+            username,
+            it["sym"],
+            "BUY",
+            int(it["qty"]),
+            float(it["price"]),
+            "CNC (Delivery)",
+            order_type="MARKET",
+            usdinr_rate=usdinr_rate,
+            allow_after_hours=allow_after_hours,
+            db_path=target_db,
+        )
+        receipts.append(f"- **{it['meta']['name']} (`{it['sym']}` × {it['qty']}):** {msg}")
+        if ok:
+            filled_cnt += 1
+            spent_inr += float(it["cost_inr"])
+    return filled_cnt > 0, receipts, round(spent_inr, 2)
+
+
 def _run_ml_forecast_core(df: pd.DataFrame, horizon: int = 7) -> dict | None:
     if df is None or len(df) < 80:
         return None
@@ -1456,8 +1929,8 @@ def _run_ml_forecast_core(df: pd.DataFrame, horizon: int = 7) -> dict | None:
         {"Feature": ML_FEATURE_COLS, "Importance": [round(float(x) * 100, 2) for x in importances]}
     ).sort_values("Importance", ascending=False)
 
-    rolling_closes = list(df["Close"].astype(float).tail(60).values)
-    last_ema50 = float(df["EMA_50"].iloc[-1])
+    rolling_closes = list(df["Close"].dropna().astype(float).tail(60).values)
+    last_ema50 = float(df["EMA_50"].dropna().iloc[-1]) if not df["EMA_50"].dropna().empty else rolling_closes[-1]
     last_macd_norm = float(ml_frame["macd_hist_norm"].iloc[-1])
     last_vol_ratio = float(ml_frame["vol_ratio"].iloc[-1])
     step_sigma = max(residuals_map[best_model_name], float(ml_frame["vol_14d"].iloc[-1]), 0.006)
@@ -1488,12 +1961,12 @@ def _run_ml_forecast_core(df: pd.DataFrame, horizon: int = 7) -> dict | None:
         rsi_cur = float(compute_wilder_rsi(s_close, 14).iloc[-1])
         vol_14_cur = float(s_close.pct_change().tail(14).std())
 
-        x_vec = np.array([[
+        x_vec = np.nan_to_num(np.array([[
             ret_1d, ret_3d, ret_5d, ret_10d,
             (p_now / sma20_cur) - 1.0, (p_now / last_ema50) - 1.0,
             (rsi_cur - 50.0) / 50.0, last_macd_norm * (0.9 ** step_i),
             float(np.clip(bb_pctb_cur, 0.0, 1.0)), vol_14_cur, last_vol_ratio,
-        ]])
+        ]]), nan=0.0, posinf=0.0, neginf=0.0)
 
         pred_r = float(np.clip(best_model.predict(x_vec)[0], -0.04, 0.04))
         next_p = p_now * (1.0 + pred_r)
@@ -3569,6 +4042,7 @@ def build_stock_quant_profile(
     else:
         verdict = "BEARISH / CAUTIOUS"
 
+    health = compute_traffic_light_health(sym, df_live, sn)
     return {
         "sym": sym, "meta": meta, "cur": cur, "fx": fx, "price": price,
         "pct_1d": pct_1d, "pct_1w": pct_1w, "pct_1m": pct_1m, "pct_6m": pct_6m, "pct_1y": pct_1y,
@@ -3577,13 +4051,14 @@ def build_stock_quant_profile(
         "vol_ratio": vol_ratio, "pivot": pivot, "r1": r1, "r2": r2, "s1": s1, "s2": s2,
         "ml_pred_7d": ml_pred_7d, "ml_move_pct": ml_move_pct, "ml_model": ml_model, "ml_dir_acc": ml_dir_acc,
         "affordable_cnc": affordable_cnc, "verdict": verdict, "score": score,
-        "funds": funds, "news": news_items,
+        "funds": funds, "news": news_items, "health": health,
     }
 
 
 def _format_stock_context_for_llm(p: dict) -> str:
     cur = p["cur"]
     funds = p["funds"]
+    h = p.get("health") or compute_traffic_light_health(p["sym"], None, {"price": p["price"], "pct": p["pct_1d"], "rsi": p["rsi"], "above_sma": p["price"] >= p["sma20"]})
     f_line = (
         f"MktCap={format_large_number(funds.get('marketCap'), cur)}, "
         f"P/E={funds.get('trailingPE') or 'N/A'}, EPS={funds.get('trailingEps') or 'N/A'}, "
@@ -3595,6 +4070,7 @@ def _format_stock_context_for_llm(p: dict) -> str:
     return (
         f"[{p['meta']['name']} ({p['sym']}, {p['meta']['exchange']}, {p['meta']['sector']})]\n"
         f"Price={cur}{p['price']:,.2f} (1D {p['pct_1d']:+.2f}%, 1W {p['pct_1w']:+.2f}%, 1M {p['pct_1m']:+.2f}%, 6M {p['pct_6m']:+.2f}%, 1Y {p['pct_1y']:+.2f}%) | FX=₹{p['fx']:.2f}\n"
+        f"Traffic-Light ML Health={h['pill']} (Score={h['score']}/100 | HealthyProb={h['probs']['Healthy']:.1f}% | HighRiskProb={h['probs']['High Risk']:.1f}%)\n"
         f"RSI(14)={p['rsi']:.1f} | 20-SMA={cur}{p['sma20']:,.2f} | 50-EMA={cur}{p['ema50']:,.2f} | MACD={p['macd_val']:+.2f} vs Sig={p['macd_sig']:+.2f} | BB%B={p['bb_pctb']:.2f}\n"
         f"VolRatio={p['vol_ratio']:.2f}x avg | ATR(14)={cur}{p['atr']:,.2f} | AnnVol={p['ann_vol']:.1f}%\n"
         f"52W={cur}{p['low52']:,.2f}-{cur}{p['high52']:,.2f} | Pivots: S2={cur}{p['s2']:,.2f}, S1={cur}{p['s1']:,.2f}, P={cur}{p['pivot']:,.2f}, R1={cur}{p['r1']:,.2f}, R2={cur}{p['r2']:,.2f}\n"
@@ -4464,20 +4940,21 @@ def page_public_about() -> None:
             """
             flowchart LR
                 UI["Streamlit Multi-Page UI<br/>(st.navigation & Fragments)"] --> DATA["Paginated Yahoo Finance Engine<br/>(345+ Equities + 4 Indices + USDINR=X)"]
-                UI --> ML["ML Evaluation Suite<br/>(RF + GBR + Ridge on Stationary Returns)"]
+                UI --> ML["3Y Offline ML Suite + Live Forecaster<br/>(Health Classifier + Basket Alpha + RF/GBR)"]
+                UI --> OPT["Smart Basket Optimizer<br/>(Sector Diversity + Covariance Risk Parity)"]
                 UI --> BT["Quantitative Backtester<br/>(Mark-to-Market + Sharpe + Drawdown)"]
                 UI --> DB[("SQLite WAL Ledger<br/>Users, Holdings, Positions, Limit Orders")]
-                UI --> AI["Agentic AI Advisor<br/>(Groq / Gemini + Quant RAG & News)"]
+                UI --> AI["Agentic AI Advisor<br/>(Groq Tool-Use / Gemini / Quant RAG)"]
             """,
-            alt="System architecture flowchart connecting Streamlit UI, Yahoo Finance data engine, ML suite, backtester, SQLite ledger, and AI advisor",
+            alt="System architecture flowchart connecting Streamlit UI, Yahoo Finance data engine, 3Y trained ML models, Smart Basket optimizer, backtester, SQLite ledger, and AI advisor",
         )
     c1, c2 = st.columns(2)
     with c1.container(border=True, height="stretch"):
         st.subheader("ML Design Highlights", icon=":material/model_training:")
         st.markdown(
+            "- **3-Year Multi-Market Training (`train_models.py`):** Offline-trained `scikit-learn` models across **242,370 historical samples (345 stocks)** power Traffic-Light Stock Health (`72.49%` ROC-AUC) & Smart Basket Alpha (`75.26%` hit rate).\n"
             "- **Stationary Target:** Predicts 1-day percentage returns rather than raw price levels so tree ensembles never flatline near all-time highs.\n"
-            "- **Temporal Validation:** Strict chronological 80/20 split (`shuffle=False`) eliminates look-ahead leakage.\n"
-            "- **Explainability:** Exposes out-of-sample RMSE, MAE, MAPE, R², Directional Accuracy, and feature importances."
+            "- **Temporal Validation:** Strict chronological 80/20 split (`shuffle=False`) eliminates look-ahead leakage and exposes Confusion Matrix, F1, RMSE, and feature importances."
         )
     with c2.container(border=True, height="stretch"):
         st.subheader("Trading & Security Engineering", icon=":material/security:")
@@ -4546,7 +5023,7 @@ def _clear_chat_cb() -> None:
 def _sync_after_hours_cb(src_key: str) -> None:
     val = bool(st.session_state.get(src_key, False))
     st.session_state.allow_after_hours = val
-    for k in ("sb_after_hrs", "term_after_hrs", "ap_after_hrs"):
+    for k in ("sb_after_hrs", "term_after_hrs", "ap_after_hrs", "basket_after_hrs"):
         if k in st.session_state and k != src_key:
             st.session_state[k] = val
 
@@ -4940,6 +5417,12 @@ def page_superchart() -> None:
             h3.metric("14-Day RSI", f"{rsi_val:.1f}", "Overbought" if rsi_val >= 70 else ("Oversold" if rsi_val <= 30 else "Neutral"), delta_color="off")
             h4.metric("Period High", f"{currency}{high_52:,.2f}")
             h5.metric("Period Low", f"{currency}{low_52:,.2f}")
+
+            h_card = compute_traffic_light_health(ticker, df)
+            st.markdown(
+                f"Beginner Health Rating: :{h_card['badge_clr']}-badge[{h_card['pill']} · {h_card['score']}/100] &nbsp; "
+                f":small[{h_card['trend_plain']} · *{h_card['model_used']}*]"
+            )
 
             fund_exp = st.expander("Company Fundamentals & Latest News", on_change="rerun")
             if fund_exp.open:
@@ -5611,6 +6094,295 @@ def page_fee_calculator() -> None:
     render_brokerage_calculator_widget("auth_calc")
 
 
+def _render_traffic_light_hero_html(h: dict) -> str:
+    m = h["meta"]
+    cur = m["currency"]
+    score = int(h["score"])
+    clr = h["color"]
+    probs = h["probs"]
+    return f"""
+    <div style="border:1px solid rgba(128,128,128,0.26);border-radius:16px;padding:20px 22px;
+                background:radial-gradient(circle at 92% 15%, {clr}22, transparent 48%),var(--secondary-background-color);
+                color:var(--text-color);margin-bottom:12px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px;">
+        <div style="display:flex;align-items:center;gap:12px;">
+          {stock_icon_html(h['sym'], size=48, radius=12)}
+          <div>
+            <div style="font-size:1.25rem;font-weight:800;">{html.escape(m['name'])}
+              <span style="font-size:0.86rem;font-family:JetBrains Mono,monospace;opacity:0.75;">({html.escape(h['sym'])})</span>
+            </div>
+            <div style="font-size:0.82rem;opacity:0.75;">{m['exchange']} · {html.escape(m['sector'])} · {cur}{h['price']:,.2f} ({h['pct']:+.2f}%)</div>
+          </div>
+        </div>
+        <div style="text-align:right;">
+          <div style="display:inline-block;padding:5px 14px;border-radius:999px;font-weight:800;font-size:0.90rem;
+                      color:{clr};background:{clr}1F;border:1px solid {clr}55;">
+            {html.escape(h['pill'])}
+          </div>
+          <div style="font-size:1.55rem;font-weight:800;font-family:JetBrains Mono,monospace;margin-top:4px;">
+            {score}<span style="font-size:0.92rem;opacity:0.65;"> / 100 Health Score</span>
+          </div>
+        </div>
+      </div>
+      <div style="width:100%;height:10px;background:rgba(128,128,128,0.22);border-radius:999px;overflow:hidden;margin:14px 0 12px 0;">
+        <div style="width:{score}%;height:100%;background:linear-gradient(90deg,{clr},{clr}cc);border-radius:999px;"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;font-size:0.82rem;">
+        <div style="background:rgba(16,185,129,0.10);border:1px solid rgba(16,185,129,0.26);border-radius:10px;padding:8px 11px;">
+          <div style="opacity:0.78;">Healthy Probability</div>
+          <div style="font-weight:800;font-size:1.05rem;color:#10b981;">{probs['Healthy']:.1f}%</div>
+        </div>
+        <div style="background:rgba(245,158,11,0.10);border:1px solid rgba(245,158,11,0.26);border-radius:10px;padding:8px 11px;">
+          <div style="opacity:0.78;">Moderate Probability</div>
+          <div style="font-weight:800;font-size:1.05rem;color:#f59e0b;">{probs['Moderate']:.1f}%</div>
+        </div>
+        <div style="background:rgba(239,68,68,0.10);border:1px solid rgba(239,68,68,0.26);border-radius:10px;padding:8px 11px;">
+          <div style="opacity:0.78;">High Risk Probability</div>
+          <div style="font-weight:800;font-size:1.05rem;color:#ef4444;">{probs['High Risk']:.1f}%</div>
+        </div>
+      </div>
+    </div>
+    """
+
+
+def page_guided_investing() -> None:
+    snaps, _, usdinr, _, _ = get_market_context()
+    artifacts = load_trained_ml_artifacts()
+    metrics = artifacts.get("metrics") or {}
+
+    st.title("Smart Basket & Traffic-Light Stock Health", icon=":material/health_and_safety:")
+    trained_info = (
+        f":green-badge[Trained ML Active · {metrics.get('tickers_trained', 345)} Stocks · "
+        f"{metrics.get('total_rows', 0):,} Historical Samples (3Y Yahoo Data)]"
+        if artifacts.get("loaded")
+        else ":orange-badge[Baseline Risk Engine Active]"
+    )
+    st.markdown(f"Beginner-friendly investing powered by offline-trained scikit-learn models & covariance risk parity. &nbsp; {trained_info}")
+
+    tab_basket, tab_health, tab_proof = st.tabs([
+        "Smart Basket (4-Stock Auto Builder)",
+        "Traffic-Light Stock Health",
+        "Trained Model Metrics & Proof",
+    ])
+
+    with tab_basket:
+        st.caption("Answer 3 simple questions — our ML models pick 4 diversified stocks from distinct sectors and balance risk automatically.")
+        acct = get_user_account_summary(st.session_state.username, snaps, usdinr)
+
+        with st.container(border=True):
+            b1, b2, b3, b4 = st.columns([1.2, 1.2, 1.3, 1.0], vertical_alignment="bottom")
+            sb_budget = b1.number_input("Investment Budget (₹)", min_value=2000.0, max_value=200000.0, value=20000.0, step=2000.0, key="g_budget")
+            sb_risk = b2.selectbox("Comfort Level", ["Safe & Steady", "Balanced Mix", "High Growth"], index=1, key="g_risk")
+            sb_mkt = b3.selectbox("Market Region", ["Global Mix (India + US)", "India (NSE)", "US (NASDAQ/NYSE)"], key="g_mkt")
+            build_clicked = b4.button("Build Smart Basket", type="primary", icon=":material/auto_awesome:", width="stretch", key="build_basket_btn")
+
+        basket_sig = f"{sb_budget}|{sb_risk}|{sb_mkt}"
+        if build_clicked or st.session_state.get("_smart_basket_sig") != basket_sig or "_smart_basket_res" not in st.session_state:
+            with st.spinner("Running 3Y-trained ML suitability models & 6M return covariance risk-parity..."):
+                st.session_state["_smart_basket_res"] = build_beginner_smart_basket(
+                    budget_inr=float(sb_budget),
+                    risk_profile=sb_risk,
+                    market_pref=sb_mkt,
+                    snapshots=snaps,
+                    usdinr_rate=usdinr,
+                    basket_size=4,
+                )
+                st.session_state["_smart_basket_sig"] = basket_sig
+
+        b_res = st.session_state.get("_smart_basket_res") or {}
+        items = b_res.get("items", [])
+        if not items:
+            st.warning("Unable to construct an affordable basket for that budget. Increase budget slightly and try again.")
+        else:
+            k1, k2, k3, k4 = st.columns(4)
+            k1.metric("Basket Cost (INR)", f"₹{b_res['total_cost_inr']:,.2f}", f"Cash Left: ₹{b_res['leftover_inr']:,.2f}", delta_color="off", border=True, height="stretch")
+            k2.metric("Sector Diversity", f"{len(items)} Distinct Sectors", f"{b_res['market_pref']}", delta_color="off", border=True, height="stretch")
+            k3.metric("Diversification Shield", f"-{b_res['diversification_reduction_pct']:.1f}% Risk", f"Port Vol {b_res['portfolio_vol_pct']:.1f}% vs {b_res['avg_indiv_vol_pct']:.1f}%", delta_color="off", border=True, height="stretch")
+            k4.metric("Avg Health Score", f"{b_res['avg_health']:.0f} / 100", f"Margin: ₹{acct['balance']:,.0f}", delta_color="off", border=True, height="stretch")
+
+            c_donut, c_cards = st.columns([1.05, 1.55], gap="medium")
+            with c_donut.container(border=True, height="stretch"):
+                st.subheader("Smart Weight Split", icon=":material/pie_chart:")
+                fig_d = go.Figure(
+                    data=[
+                        go.Pie(
+                            labels=[f"{it['sym'].replace('.NS', '')} ({it['actual_wt_pct']:.0f}%)" for it in items],
+                            values=[it["cost_inr"] for it in items],
+                            hole=0.55,
+                        )
+                    ]
+                )
+                fig_d.update_layout(height=310, paper_bgcolor="rgba(0,0,0,0)", margin=dict(l=8, r=8, t=12, b=8))
+                st.plotly_chart(fig_d, theme="streamlit", alt="Donut chart of inverse-volatility smart basket weights")
+
+            with c_cards.container(border=True, height="stretch"):
+                st.subheader(f"Your {len(items)}-Stock ML Starter Basket", icon=":material/layers:")
+                for it in items:
+                    st.html(
+                        f'<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;'
+                        f'padding:10px 12px;margin-bottom:8px;border-radius:11px;border:1px solid rgba(128,128,128,0.22);">'
+                        f'<div style="display:flex;align-items:center;gap:10px;min-width:0;">'
+                        f'{stock_icon_html(it["sym"], size=34, radius=9)}'
+                        f'<div style="min-width:0;">'
+                        f'<div style="font-weight:700;font-size:0.93rem;">{html.escape(it["meta"]["name"])} '
+                        f'<span style="font-size:0.78rem;font-family:JetBrains Mono,monospace;opacity:0.72;">({html.escape(it["sym"])})</span></div>'
+                        f'<div style="font-size:0.76rem;opacity:0.78;">{html.escape(it["why_picked"])}</div>'
+                        f'</div></div>'
+                        f'<div style="text-align:right;white-space:nowrap;">'
+                        f'<div style="font-weight:800;font-family:JetBrains Mono,monospace;">{it["qty"]} sh · ₹{it["cost_inr"]:,.0f}</div>'
+                        f'<div style="font-size:0.74rem;font-weight:700;color:{it["color"]};">{html.escape(it["pill"])}</div>'
+                        f'</div></div>'
+                    )
+
+                ex_l, ex_r = st.columns([1.3, 1.0], vertical_alignment="center")
+                ex_r.toggle(
+                    "Allow Demo Orders Outside Hours",
+                    value=st.session_state.allow_after_hours,
+                    key="basket_after_hrs",
+                    on_change=_sync_after_hours_cb,
+                    args=("basket_after_hrs",),
+                )
+                if ex_l.button("Invest Entire Smart Basket (1-Click)", type="primary", icon=":material/rocket_launch:", width="stretch", key="exec_basket_btn"):
+                    ok_any, msgs, spent = execute_smart_basket(
+                        st.session_state.username,
+                        b_res,
+                        usdinr,
+                        allow_after_hours=st.session_state.allow_after_hours,
+                    )
+                    if ok_any:
+                        st.success(f"Deployed **₹{spent:,.2f}** across your {len(items)}-stock Smart Basket!")
+                        st.toast("Smart Basket orders executed cleanly!", icon=":material/check_circle:")
+                    else:
+                        st.warning("Market is currently closed for one or more exchanges. Enable 'Allow Demo Orders Outside Hours' to test live demo execution.")
+                    st.markdown("\n".join(msgs))
+
+            corr_df = b_res.get("corr_df")
+            with st.expander("How the Math Works (6-Month Covariance & Correlation Heatmap for Viva)"):
+                st.markdown(
+                    f"- **Inverse-Volatility Risk Parity ($w_i \\propto 1/\\sigma_i$):** Calmer companies automatically receive higher portfolio weight so no single volatile stock dominates.\n"
+                    f"- **Portfolio Variance Reduction:** Individual stock weighted volatility is **`{b_res['avg_indiv_vol_pct']:.1f}%`**, reduced to **`{b_res['portfolio_vol_pct']:.1f}%`** (`-{b_res['diversification_reduction_pct']:.1f}%` risk shield) thanks to average pairwise correlation **`{b_res['avg_corr']:.2f}`**."
+                )
+                if corr_df is not None and not corr_df.empty:
+                    hm = go.Figure(
+                        data=go.Heatmap(
+                            z=corr_df.values,
+                            x=list(corr_df.columns),
+                            y=list(corr_df.index),
+                            zmin=-1,
+                            zmax=1,
+                            colorscale="RdBu",
+                            reversescale=True,
+                            text=corr_df.values,
+                            texttemplate="%{text:.2f}",
+                        )
+                    )
+                    hm.update_layout(height=320, title="6-Month Daily Return Correlation Matrix", paper_bgcolor="rgba(0,0,0,0)", margin=dict(l=10, r=10, t=40, b=10))
+                    st.plotly_chart(hm, theme="streamlit", alt="6-month daily return correlation heatmap across smart basket equities")
+
+    with tab_health:
+        st.caption("Pick any stock to check its ML-predicted 20-day health light and plain-English breakdown — zero technical jargon needed.")
+        all_syms = list(STOCK_CATALOG.keys())
+        cur_i = all_syms.index(st.session_state.selected_ticker) if st.session_state.selected_ticker in all_syms else 0
+        h_sym = st.selectbox(
+            f"Choose Any Stock ({len(all_syms)} Equities)",
+            all_syms,
+            index=cur_i,
+            format_func=lambda s: f"{s} — {STOCK_CATALOG[s]['name']} ({STOCK_CATALOG[s]['exchange']})",
+            key="health_pick_sym",
+        )
+        snaps_h = ensure_symbols_live([h_sym], snaps)
+        h_df = fetch_stock_history(h_sym, "1y")
+        h_res = compute_traffic_light_health(h_sym, h_df, snaps_h.get(h_sym))
+        st.html(_render_traffic_light_hero_html(h_res))
+
+        p1, p2, p3 = st.columns(3)
+        with p1.container(border=True, height="stretch"):
+            st.markdown("#### :material/trending_up: 1. Trend Direction")
+            st.write(h_res["trend_plain"])
+        with p2.container(border=True, height="stretch"):
+            st.markdown("#### :material/schedule: 2. Price Timing")
+            st.write(h_res["timing_plain"])
+        with p3.container(border=True, height="stretch"):
+            st.markdown("#### :material/shield: 3. Risk & Stability")
+            st.write(h_res["risk_plain"])
+
+        st.caption(f"ML Model Used: `{h_res['model_used']}` · Suitability Score: `{h_res['suitability']:+.3f}` · 60D Drawdown: `{h_res['drawdown_pct']:+.1f}%`")
+        qa1, qa2 = st.columns(2)
+        if qa1.button(f"Buy 1 Share of {h_sym.replace('.NS', '')} (CNC)", type="primary", icon=":material/shopping_bag:", width="stretch", key="health_buy_1"):
+            ok, msg = execute_trade(
+                st.session_state.username, h_sym, "BUY", 1, float(h_res["price"]), "CNC (Delivery)",
+                usdinr_rate=usdinr, allow_after_hours=st.session_state.allow_after_hours,
+            )
+            if ok:
+                st.toast(msg, icon=":material/check_circle:")
+                st.success(msg)
+            else:
+                st.warning(msg)
+        if qa2.button("Inspect Candlestick & Forecast in SuperChart", icon=":material/candlestick_chart:", width="stretch", key="health_go_sc"):
+            _jump_to_page("Terminal", h_sym)
+
+    with tab_proof:
+        if not metrics:
+            st.info("Run `python train_models.py` to generate offline model benchmarks and dataset metrics.")
+        else:
+            mk1, mk2, mk3, mk4 = st.columns(4)
+            mk1.metric("Stocks in Dataset", f"{metrics.get('tickers_trained', 0)}", f"{metrics.get('period', '3y')} Daily Yahoo OHLCV", delta_color="off", border=True, height="stretch")
+            mk2.metric("Total Samples", f"{metrics.get('total_rows', 0):,}", f"Split: {metrics.get('split_date', '')}", delta_color="off", border=True, height="stretch")
+            best_clf = next((r for r in metrics.get("classifier_benchmarks", []) if r["Model"] == metrics.get("best_classifier")), {})
+            mk3.metric("Health Classifier AUC", f"{best_clf.get('ROC-AUC (%)', 0):.2f}%", f"{metrics.get('best_classifier', '')} · Macro F1 {best_clf.get('Macro F1 (%)', 0):.1f}%", delta_color="off", border=True, height="stretch")
+            best_reg = next((r for r in metrics.get("regressor_benchmarks", []) if r["Model"] == metrics.get("best_regressor")), {})
+            mk4.metric("Basket Hit Rate", f"{best_reg.get('Directional Hit Rate (%)', 0):.2f}%", f"{metrics.get('best_regressor', '')} · RMSE {best_reg.get('Test RMSE', 0):.3f}", delta_color="off", border=True, height="stretch")
+
+            st.space("small")
+            b_l, b_r = st.columns(2, gap="medium")
+            with b_l.container(border=True, height="stretch"):
+                st.subheader("3-Class Traffic-Light Benchmarks (Unseen 20% Test)", icon=":material/fact_check:")
+                st.dataframe(pd.DataFrame(metrics.get("classifier_benchmarks", [])), hide_index=True, alt="Out-of-sample classification benchmarks across Logistic Regression, Random Forest, and HistGradientBoosting")
+                st.caption("Labels: `Healthy` (20D Vol <=27%, Drawdown >-5.5%, Return >=-1%), `Moderate`, `High Risk` (Vol >=37% or Drawdown <=-9.5%).")
+            with b_r.container(border=True, height="stretch"):
+                st.subheader("Smart Basket Alpha Benchmarks (Unseen 20% Test)", icon=":material/analytics:")
+                st.dataframe(pd.DataFrame(metrics.get("regressor_benchmarks", [])), hide_index=True, alt="Out-of-sample risk-adjusted return regressor benchmarks")
+                st.caption(f"Train Window: `{metrics.get('date_start')}` to `{metrics.get('split_date')}` ({metrics.get('train_rows', 0):,} rows) · Test Window up to `{metrics.get('date_end')}` ({metrics.get('test_rows', 0):,} rows).")
+
+            c_cm, c_imp = st.columns(2, gap="medium")
+            with c_cm.container(border=True, height="stretch"):
+                st.subheader("Test Set Confusion Matrix", icon=":material/grid_on:")
+                cm_vals = metrics.get("confusion_matrix", [])
+                cm_lbls = metrics.get("confusion_matrix_labels", ["High Risk", "Moderate", "Healthy"])
+                if cm_vals:
+                    cm_fig = go.Figure(
+                        data=go.Heatmap(
+                            z=cm_vals,
+                            x=[f"Pred: {l}" for l in cm_lbls],
+                            y=[f"True: {l}" for l in cm_lbls],
+                            colorscale="Blues",
+                            text=cm_vals,
+                            texttemplate="%{text:,}",
+                        )
+                    )
+                    cm_fig.update_layout(height=310, paper_bgcolor="rgba(0,0,0,0)", margin=dict(l=10, r=10, t=20, b=10))
+                    st.plotly_chart(cm_fig, theme="streamlit", alt="3x3 out-of-sample confusion matrix heatmap")
+
+            with c_imp.container(border=True, height="stretch"):
+                st.subheader("Top Predictive Features (%)", icon=":material/bar_chart:")
+                imp_dict = metrics.get("feature_importance_pct", {})
+                if imp_dict:
+                    imp_df = pd.DataFrame([{"Feature": k, "Importance (%)": v} for k, v in list(imp_dict.items())[:10]])
+                    imp_c = (
+                        alt.Chart(imp_df)
+                        .mark_bar(cornerRadiusEnd=4, color="#10b981")
+                        .encode(x="Importance (%):Q", y=alt.Y("Feature:N", sort="-x"))
+                        .properties(height=280)
+                    )
+                    st.altair_chart(imp_c, alt="Top 10 technical and volatility features learned from 3-year historical data")
+
+            preview_path = MODELS_DIR / "dataset_preview.csv"
+            if preview_path.exists():
+                with st.container(border=True):
+                    st.subheader("Engineered 3-Year Historical Dataset Sample (`models/dataset_preview.csv`)", icon=":material/table_view:")
+                    st.dataframe(pd.read_csv(preview_path).head(25), hide_index=True, alt="Sample rows from the 3-year engineered Yahoo Finance training dataset")
+
+
 def render_sidebar() -> None:
     snaps, _, usdinr, is_live, _ = get_market_context()
     user_bal = get_user_balance(st.session_state.username)
@@ -5764,6 +6536,7 @@ def run_app() -> None:
         nav.run()
     else:
         p_dash = st.Page(page_dashboard, title="Dashboard", icon=":material/dashboard:", url_path="dashboard", default=True)
+        p_guided = st.Page(page_guided_investing, title="Smart Basket & Health", icon=":material/health_and_safety:", url_path="guided")
         p_term = st.Page(page_superchart, title="SuperChart", icon=":material/candlestick_chart:", url_path="superchart")
         p_adv = st.Page(page_ai_advisor, title="AI Advisor", icon=":material/smart_toy:", url_path="advisor")
         p_ord = st.Page(page_orders, title="Orders", icon=":material/receipt:", url_path="orders")
@@ -5775,6 +6548,7 @@ def run_app() -> None:
 
         st.session_state["_page_map"] = {
             "Dashboard": p_dash,
+            "Guided": p_guided,
             "Terminal": p_term,
             "Advisor": p_adv,
             "Orders": p_ord,
@@ -5788,7 +6562,7 @@ def run_app() -> None:
         render_sidebar()
         nav = st.navigation(
             {
-                "": [p_dash, p_term, p_adv],
+                "": [p_dash, p_guided, p_term, p_adv],
                 "Trading": [p_ord, p_hold, p_pos, p_fund],
                 "Analytics": [p_apps, p_calc],
             },
