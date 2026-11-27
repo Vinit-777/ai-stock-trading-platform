@@ -34,15 +34,14 @@ _pandas4_warn = getattr(pd.errors, "Pandas4Warning", None)
 if _pandas4_warn is not None:
     warnings.filterwarnings("ignore", category=_pandas4_warn)
 
-FINANCESIGHT_LOGO_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="196" height="36" viewBox="0 0 212 40" fill="none">
-  <rect width="38" height="38" x="1" y="1" rx="10" fill="url(#fs_grad)"/>
-  <path d="M9 26L16 19L21.5 23L30 12" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M23.5 12H30V18.5" stroke="#38BDF8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="16" cy="19" r="2.4" fill="#34D399"/>
-  <text x="48" y="26" font-family="Plus Jakarta Sans, Inter, sans-serif" font-size="18" font-weight="800" fill="#38BDF8">FINANCE</text>
-  <text x="131" y="26" font-family="Plus Jakarta Sans, Inter, sans-serif" font-size="18" font-weight="800" fill="#64748B">SIGHT</text>
+FINANCESIGHT_LOGO_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="212" height="36" viewBox="0 0 228 40" fill="none">
+  <rect width="36" height="36" x="2" y="2" rx="10" fill="url(#fs_grad)"/>
+  <path d="M10 26L17 19L22.5 23L30 12" stroke="#FFFFFF" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M24 12H30V18" stroke="#38BDF8" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="17" cy="19" r="2.3" fill="#34D399"/>
+  <text x="47" y="26" font-family="Arial, Helvetica, sans-serif" font-size="18.5" font-weight="800" letter-spacing="0.4"><tspan fill="#2563EB">FINANCE</tspan><tspan fill="#0EA5E9">SIGHT</tspan></text>
   <defs>
-    <linearGradient id="fs_grad" x1="0" y1="0" x2="40" y2="40" gradientUnits="userSpaceOnUse">
+    <linearGradient id="fs_grad" x1="2" y1="2" x2="38" y2="38" gradientUnits="userSpaceOnUse">
       <stop stop-color="#2563EB"/>
       <stop offset="0.55" stop-color="#1E3A8A"/>
       <stop offset="1" stop-color="#0F172A"/>
@@ -91,10 +90,10 @@ STOCK_CATALOG = {
     "ICICIBANK.NS": {"name": "ICICI Bank", "sector": "Private Banking", "domain": "icicibank.com", "exchange": "NSE", "currency": "₹"},
     "SBIN.NS": {"name": "State Bank of India", "sector": "PSU Banking", "domain": "onlinesbi.sbi", "exchange": "NSE", "currency": "₹"},
     "BHARTIARTL.NS": {"name": "Bharti Airtel", "sector": "Telecom", "domain": "airtel.in", "exchange": "NSE", "currency": "₹"},
-    "ETERNAL.NS": {"name": "Eternal Ltd. (Zomato)", "sector": "FoodTech & Commerce", "domain": "zomato.com", "exchange": "NSE", "currency": "₹"},
+    "ETERNAL.NS": {"name": "Eternal Ltd · Zomato", "sector": "FoodTech & Commerce", "domain": "zomato.com", "exchange": "NSE", "currency": "₹"},
     "JIOFIN.NS": {"name": "Jio Financial Services", "sector": "FinTech & NBFC", "domain": "jio.com", "exchange": "NSE", "currency": "₹"},
-    "TMPV.NS": {"name": "Tata Motors (PV)", "sector": "Automotive & EV", "domain": "tatamotors.com", "exchange": "NSE", "currency": "₹"},
-    "TMCV.NS": {"name": "Tata Motors (CV)", "sector": "Commercial Vehicles", "domain": "tatamotors.com", "exchange": "NSE", "currency": "₹"},
+    "TMPV.NS": {"name": "Tata Motors PV", "sector": "Automotive & EV", "domain": "tatamotors.com", "exchange": "NSE", "currency": "₹"},
+    "TMCV.NS": {"name": "Tata Motors CV", "sector": "Commercial Vehicles", "domain": "tatamotors.com", "exchange": "NSE", "currency": "₹"},
     "HAL.NS": {"name": "Hindustan Aeronautics", "sector": "Aerospace & Defence", "domain": "hal-india.co.in", "exchange": "NSE", "currency": "₹"},
     "ITC.NS": {"name": "ITC Limited", "sector": "FMCG & Conglomerate", "domain": "itcportal.com", "exchange": "NSE", "currency": "₹"},
     "LT.NS": {"name": "Larsen & Toubro", "sector": "Engineering & Infra", "domain": "larsentoubro.com", "exchange": "NSE", "currency": "₹"},
@@ -131,7 +130,7 @@ STOCK_CATALOG = {
     "WMT": {"name": "Walmart Inc.", "sector": "Global Retail", "domain": "walmart.com", "exchange": "NYSE", "currency": "$"},
     "DIS": {"name": "Walt Disney Co.", "sector": "Entertainment", "domain": "thewaltdisneycompany.com", "exchange": "NYSE", "currency": "$"},
     "NKE": {"name": "Nike Inc.", "sector": "Athletic Apparel", "domain": "nike.com", "exchange": "NYSE", "currency": "$"},
-    "KO": {"name": "Coca-Cola Co.", "sector": "Beverages", "domain": "coca-colacompany.com", "exchange": "NYSE", "currency": "$"},
+    "KO": {"name": "Coca-Cola Co.", "sector": "Beverages", "domain": "coca-cola.com", "exchange": "NYSE", "currency": "$"},
     "HINDUNILVR.NS": {"name": "Hindustan Unilever", "sector": "FMCG", "domain": "hul.co.in", "exchange": "NSE", "currency": "₹"},
     "HCLTECH.NS": {"name": "HCL Technologies", "sector": "IT Services", "domain": "hcltech.com", "exchange": "NSE", "currency": "₹"},
     "ULTRACEMCO.NS": {"name": "UltraTech Cement", "sector": "Cement & Materials", "domain": "ultratechcement.com", "exchange": "NSE", "currency": "₹"},
@@ -207,12 +206,12 @@ STOCK_CATALOG = {
     "CDSL.NS": {"name": "CDSL", "sector": "Market Infrastructure", "domain": "cdslindia.com", "exchange": "NSE", "currency": "₹"},
     "MCX.NS": {"name": "MCX India", "sector": "Commodity Exchange", "domain": "mcxindia.com", "exchange": "NSE", "currency": "₹"},
     "ANGELONE.NS": {"name": "Angel One", "sector": "FinTech & Broking", "domain": "angelone.in", "exchange": "NSE", "currency": "₹"},
-    "PAYTM.NS": {"name": "One97 Comm. (Paytm)", "sector": "FinTech & Payments", "domain": "paytm.com", "exchange": "NSE", "currency": "₹"},
-    "POLICYBZR.NS": {"name": "PB Fintech (Policybazaar)", "sector": "InsurTech", "domain": "policybazaar.com", "exchange": "NSE", "currency": "₹"},
-    "NYKAA.NS": {"name": "FSN E-Commerce (Nykaa)", "sector": "Beauty & E-Commerce", "domain": "nykaa.com", "exchange": "NSE", "currency": "₹"},
+    "PAYTM.NS": {"name": "One97 Comm · Paytm", "sector": "FinTech & Payments", "domain": "paytm.com", "exchange": "NSE", "currency": "₹"},
+    "POLICYBZR.NS": {"name": "PB Fintech · Policybazaar", "sector": "InsurTech", "domain": "policybazaar.com", "exchange": "NSE", "currency": "₹"},
+    "NYKAA.NS": {"name": "FSN E-Commerce · Nykaa", "sector": "Beauty & E-Commerce", "domain": "nykaa.com", "exchange": "NSE", "currency": "₹"},
     "DELHIVERY.NS": {"name": "Delhivery Limited", "sector": "Logistics", "domain": "delhivery.com", "exchange": "NSE", "currency": "₹"},
     "SWIGGY.NS": {"name": "Swiggy Limited", "sector": "FoodTech & Delivery", "domain": "swiggy.com", "exchange": "NSE", "currency": "₹"},
-    "DMART.NS": {"name": "Avenue Supermarts (DMart)", "sector": "Retail", "domain": "dmartindia.com", "exchange": "NSE", "currency": "₹"},
+    "DMART.NS": {"name": "Avenue Supermarts · DMart", "sector": "Retail", "domain": "dmartindia.com", "exchange": "NSE", "currency": "₹"},
     "DABUR.NS": {"name": "Dabur India", "sector": "FMCG", "domain": "dabur.com", "exchange": "NSE", "currency": "₹"},
     "MARICO.NS": {"name": "Marico Limited", "sector": "FMCG", "domain": "marico.com", "exchange": "NSE", "currency": "₹"},
     "GODREJCP.NS": {"name": "Godrej Consumer", "sector": "FMCG", "domain": "godrejcp.com", "exchange": "NSE", "currency": "₹"},
@@ -231,7 +230,7 @@ STOCK_CATALOG = {
     "LTTS.NS": {"name": "L&T Technology Services", "sector": "ER&D Services", "domain": "ltts.com", "exchange": "NSE", "currency": "₹"},
     "TATAELXSI.NS": {"name": "Tata Elxsi", "sector": "Design & Tech", "domain": "tataelxsi.com", "exchange": "NSE", "currency": "₹"},
     "KPITTECH.NS": {"name": "KPIT Technologies", "sector": "Auto Software", "domain": "kpit.com", "exchange": "NSE", "currency": "₹"},
-    "NAUKRI.NS": {"name": "Info Edge (Naukri)", "sector": "Internet & Tech", "domain": "naukri.com", "exchange": "NSE", "currency": "₹"},
+    "NAUKRI.NS": {"name": "Info Edge · Naukri", "sector": "Internet & Tech", "domain": "naukri.com", "exchange": "NSE", "currency": "₹"},
     "OFSS.NS": {"name": "Oracle Financial Services", "sector": "FinTech Software", "domain": "oracle.com", "exchange": "NSE", "currency": "₹"},
     "LUPIN.NS": {"name": "Lupin Limited", "sector": "Pharmaceuticals", "domain": "lupin.com", "exchange": "NSE", "currency": "₹"},
     "AUROPHARMA.NS": {"name": "Aurobindo Pharma", "sector": "Pharmaceuticals", "domain": "aurobindo.com", "exchange": "NSE", "currency": "₹"},
@@ -256,19 +255,19 @@ STOCK_CATALOG = {
     "JINDALSTEL.NS": {"name": "Jindal Steel & Power", "sector": "Metals & Mining", "domain": "jindalsteelpower.com", "exchange": "NSE", "currency": "₹"},
     "SHREECEM.NS": {"name": "Shree Cement", "sector": "Cement & Materials", "domain": "shreecement.com", "exchange": "NSE", "currency": "₹"},
     "ACC.NS": {"name": "ACC Limited", "sector": "Cement & Materials", "domain": "acclimited.com", "exchange": "NSE", "currency": "₹"},
-    "LODHA.NS": {"name": "Macrotech Developers (Lodha)", "sector": "Real Estate", "domain": "lodhagroup.com", "exchange": "NSE", "currency": "₹"},
+    "LODHA.NS": {"name": "Macrotech Developers · Lodha", "sector": "Real Estate", "domain": "lodhagroup.com", "exchange": "NSE", "currency": "₹"},
     "GODREJPROP.NS": {"name": "Godrej Properties", "sector": "Real Estate", "domain": "godrejproperties.com", "exchange": "NSE", "currency": "₹"},
     "OBEROIRLTY.NS": {"name": "Oberoi Realty", "sector": "Real Estate", "domain": "oberoirealty.com", "exchange": "NSE", "currency": "₹"},
     "PRESTIGE.NS": {"name": "Prestige Estates", "sector": "Real Estate", "domain": "prestigeconstructions.com", "exchange": "NSE", "currency": "₹"},
     "PHOENIXLTD.NS": {"name": "Phoenix Mills", "sector": "Retail Real Estate", "domain": "thephoenixmills.com", "exchange": "NSE", "currency": "₹"},
-    "INDHOTEL.NS": {"name": "Indian Hotels (Taj)", "sector": "Hospitality", "domain": "ihcltata.com", "exchange": "NSE", "currency": "₹"},
+    "INDHOTEL.NS": {"name": "Indian Hotels · Taj", "sector": "Hospitality", "domain": "ihcltata.com", "exchange": "NSE", "currency": "₹"},
     "CONCOR.NS": {"name": "Container Corp", "sector": "Logistics", "domain": "concorindia.co.in", "exchange": "NSE", "currency": "₹"},
     "PIIND.NS": {"name": "PI Industries", "sector": "Agrochemicals", "domain": "piindustries.com", "exchange": "NSE", "currency": "₹"},
     "SRF.NS": {"name": "SRF Limited", "sector": "Specialty Chemicals", "domain": "srf.com", "exchange": "NSE", "currency": "₹"},
     "UPL.NS": {"name": "UPL Limited", "sector": "Agrochemicals", "domain": "upl-ltd.com", "exchange": "NSE", "currency": "₹"},
     "ASTRAL.NS": {"name": "Astral Limited", "sector": "Building Materials", "domain": "astralpipes.com", "exchange": "NSE", "currency": "₹"},
     "SUPREMEIND.NS": {"name": "Supreme Industries", "sector": "Plastics & Pipes", "domain": "supreme.co.in", "exchange": "NSE", "currency": "₹"},
-    "PAGEIND.NS": {"name": "Page Industries (Jockey)", "sector": "Apparel", "domain": "pageindustries.com", "exchange": "NSE", "currency": "₹"},
+    "PAGEIND.NS": {"name": "Page Industries · Jockey", "sector": "Apparel", "domain": "pageindustries.com", "exchange": "NSE", "currency": "₹"},
     "JUBLFOOD.NS": {"name": "Jubilant FoodWorks", "sector": "QSR & Food", "domain": "dominos.co.in", "exchange": "NSE", "currency": "₹"},
     "TATACOMM.NS": {"name": "Tata Communications", "sector": "Telecom & Cloud", "domain": "tatacommunications.com", "exchange": "NSE", "currency": "₹"},
     "IDEA.NS": {"name": "Vodafone Idea", "sector": "Telecom", "domain": "myvi.in", "exchange": "NSE", "currency": "₹"},
@@ -389,7 +388,7 @@ STOCK_CATALOG = {
     "BSX": {"name": "Boston Scientific", "sector": "Medical Devices", "domain": "bostonscientific.com", "exchange": "NYSE", "currency": "$"},
     "ZTS": {"name": "Zoetis Inc.", "sector": "Animal Health", "domain": "zoetis.com", "exchange": "NYSE", "currency": "$"},
     "COP": {"name": "ConocoPhillips", "sector": "Oil & Gas", "domain": "conocophillips.com", "exchange": "NYSE", "currency": "$"},
-    "SLB": {"name": "SLB (Schlumberger)", "sector": "Oilfield Services", "domain": "slb.com", "exchange": "NYSE", "currency": "$"},
+    "SLB": {"name": "SLB · Schlumberger", "sector": "Oilfield Services", "domain": "slb.com", "exchange": "NYSE", "currency": "$"},
     "EOG": {"name": "EOG Resources", "sector": "Oil & Gas", "domain": "eogresources.com", "exchange": "NYSE", "currency": "$"},
     "NEE": {"name": "NextEra Energy", "sector": "Clean Utilities", "domain": "nexteraenergy.com", "exchange": "NYSE", "currency": "$"},
     "DUK": {"name": "Duke Energy", "sector": "Utilities", "domain": "duke-energy.com", "exchange": "NYSE", "currency": "$"},
@@ -407,7 +406,7 @@ STOCK_CATALOG = {
     "ZM": {"name": "Zoom Video Comm.", "sector": "Enterprise Video", "domain": "zoom.us", "exchange": "NASDAQ", "currency": "$"},
     "DOCU": {"name": "DocuSign Inc.", "sector": "eSignature SaaS", "domain": "docusign.com", "exchange": "NASDAQ", "currency": "$"},
     "DKNG": {"name": "DraftKings Inc.", "sector": "Sports Tech", "domain": "draftkings.com", "exchange": "NASDAQ", "currency": "$"},
-    "MSTR": {"name": "Strategy (MicroStrategy)", "sector": "Enterprise & BTC", "domain": "strategy.com", "exchange": "NASDAQ", "currency": "$"},
+    "MSTR": {"name": "Strategy · MicroStrategy", "sector": "Enterprise & BTC", "domain": "strategy.com", "exchange": "NASDAQ", "currency": "$"},
     "SMCI": {"name": "Super Micro Computer", "sector": "AI Servers", "domain": "supermicro.com", "exchange": "NASDAQ", "currency": "$"},
     "DELL": {"name": "Dell Technologies", "sector": "IT Infrastructure", "domain": "dell.com", "exchange": "NYSE", "currency": "$"},
     "HPQ": {"name": "HP Inc.", "sector": "PC & Printing", "domain": "hp.com", "exchange": "NYSE", "currency": "$"},
@@ -929,24 +928,24 @@ def check_market_trading_hours(ticker: str) -> tuple[bool, str]:
     if is_indian:
         time_str = now_ist.strftime("%I:%M %p IST")
         if now_ist.weekday() >= 5:
-            return False, f"Weekend ({now_ist.strftime('%A')}, {time_str}) — NSE closed."
+            return False, f"Weekend · {now_ist.strftime('%A')}, {time_str} — NSE closed."
         m_open = now_ist.replace(hour=9, minute=15, second=0, microsecond=0)
         m_close = now_ist.replace(hour=15, minute=30, second=0, microsecond=0)
         if m_open <= now_ist <= m_close:
-            return True, f"NSE Market Open ({time_str})"
-        return False, f"NSE Hours: Mon–Fri 9:15 AM – 3:30 PM IST (Now: {time_str})"
+            return True, f"NSE Market Open · {time_str}"
+        return False, f"NSE Hours: Mon–Fri 9:15 AM – 3:30 PM IST · Now {time_str}"
 
     now_et = get_us_et_now()
     tz_abbr = now_et.tzname() or "ET"
     et_str = now_et.strftime(f"%I:%M %p {tz_abbr}")
     ist_str = now_ist.strftime("%I:%M %p IST")
     if now_et.weekday() >= 5:
-        return False, f"Weekend ({now_et.strftime('%A')}, {et_str}) — US market closed."
+        return False, f"Weekend · {now_et.strftime('%A')}, {et_str} — US market closed."
     us_open = now_et.replace(hour=9, minute=30, second=0, microsecond=0)
     us_close = now_et.replace(hour=16, minute=0, second=0, microsecond=0)
     if us_open <= now_et <= us_close:
-        return True, f"US Market Open ({et_str} / {ist_str})"
-    return False, f"US Hours: Mon–Fri 9:30 AM – 4:00 PM {tz_abbr} (Now: {et_str} / {ist_str})"
+        return True, f"US Market Open · {et_str} / {ist_str}"
+    return False, f"US Hours: Mon–Fri 9:30 AM – 4:00 PM {tz_abbr} · Now {et_str} / {ist_str}"
 
 
 def is_indian_equity(ticker: str) -> bool:
@@ -1524,7 +1523,7 @@ def compute_traffic_light_health(
                     x_vec = np.nan_to_num(np.array([[float(last_row[c]) for c in cols]]), nan=0.0, posinf=0.0, neginf=0.0)
                     probs = np.asarray(h_bundle["model"].predict_proba(x_vec)[0], dtype=float)
                     suitability = float(b_bundle["model"].predict(x_vec)[0])
-                    model_used = f"{h_bundle['model_name']} + {b_bundle['model_name']} (3Y Trained ML)"
+                    model_used = f"{h_bundle['model_name']} + {b_bundle['model_name']} · 3Y Trained ML"
                 except Exception:
                     pass
             else:
@@ -1562,11 +1561,11 @@ def compute_traffic_light_health(
         timing_plain = "Fair Entry Zone — Price momentum is balanced and not overhyped right now."
 
     if ann_vol <= 0.25:
-        risk_plain = f"Calm Price Swings — Smooth daily movement (~{ann_vol*100:.0f}% annualized volatility), well-suited for beginners."
+        risk_plain = f"Calm Price Swings — Smooth daily movement at ~{ann_vol*100:.0f}% annualized volatility, well-suited for beginners."
     elif ann_vol <= 0.37:
-        risk_plain = f"Moderate Price Swings — Normal market ups and downs (~{ann_vol*100:.0f}% annualized volatility)."
+        risk_plain = f"Moderate Price Swings — Normal market ups and downs at ~{ann_vol*100:.0f}% annualized volatility."
     else:
-        risk_plain = f"Large Daily Swings — Elevated volatility (~{ann_vol*100:.0f}% annualized); expect sharper ups and downs."
+        risk_plain = f"Large Daily Swings — Elevated ~{ann_vol*100:.0f}% annualized volatility; expect sharper ups and downs."
 
     return {
         "sym": resolved,
@@ -1632,11 +1631,11 @@ def score_quick_health_baseline(sym: str, snaps: dict) -> dict:
 def build_beginner_smart_basket(
     budget_inr: float = 25000.0,
     risk_profile: str = "Balanced Mix",
-    market_pref: str = "Global Mix (India + US)",
+    market_pref: str = "Global Mix · India + US",
     snapshots: dict | None = None,
     usdinr_rate: float = DEFAULT_USDINR_RATE,
     basket_size: int = 5,
-    weight_mode: str = "Risk-Parity (Inverse Volatility)",
+    weight_mode: str = "Risk-Parity · Inverse Volatility",
     preferred_sectors: list[str] | None = None,
 ) -> dict:
     base_snaps = snapshots or {}
@@ -1836,8 +1835,8 @@ def build_beginner_smart_basket(
         cost_i = qtys[i] * c["share_inr"]
         wt_actual = (cost_i / tot_cost * 100.0) if tot_cost > 0 else (float(target_weights[i]) * 100.0)
         reason = (
-            f"ML Health {c['score']}/100 ({c['label']}) · Diversifies {c['meta']['sector']} "
-            f"with ~{c['ann_vol_pct']:.0f}% annual volatility."
+            f"ML Health {c['score']}/100 · {c['label']} · Diversifies {c['meta']['sector']} "
+            f"at ~{c['ann_vol_pct']:.0f}% annual volatility."
         )
         items.append(
             {
@@ -2060,10 +2059,10 @@ def run_ml_forecast_suite(symbol: str, last_bar_iso: str, bar_count: int, _df: p
 
 
 BACKTEST_STRATEGIES = [
-    "SMA 20/50 Golden Crossover (Trend Follow)",
-    "RSI < 35 Oversold Reversal (Mean Reversion)",
-    "Bollinger Band Mean Reversion (Lower Band)",
-    "MACD Bullish Crossover (Momentum)",
+    "SMA 20/50 Golden Crossover · Trend Follow",
+    "RSI < 35 Oversold Reversal · Mean Reversion",
+    "Bollinger Band Mean Reversion · Lower Band",
+    "MACD Bullish Crossover · Momentum",
 ]
 
 
@@ -4423,22 +4422,22 @@ def ask_universal_ai_advisor(
         return llm_reply, llm_badge, card_title, card_logo, steps_log
 
     glossary = {
-        "rsi": "**RSI (Relative Strength Index)** measures momentum on a 0–100 scale using Wilder's 14-day smoothing. Above 70 suggests overbought conditions; below 30 suggests oversold conditions.",
-        "sma": "**SMA (Simple Moving Average)** is the arithmetic mean of closing prices over N periods (e.g. 20-day SMA).",
-        "ema": "**EMA (Exponential Moving Average)** applies exponentially higher weight to recent prices for faster trend sensitivity.",
-        "macd": "**MACD (Moving Average Convergence Divergence)** compares 12-day and 26-day EMAs against a 9-day signal line to spot trend shifts.",
+        "rsi": "**RSI · Relative Strength Index** measures momentum on a 0–100 scale using Wilder's 14-day smoothing. Above 70 suggests overbought conditions; below 30 suggests oversold conditions.",
+        "sma": "**SMA · Simple Moving Average** is the arithmetic mean of closing prices over N periods, such as a 20-day SMA.",
+        "ema": "**EMA · Exponential Moving Average** applies exponentially higher weight to recent prices for faster trend sensitivity.",
+        "macd": "**MACD · Moving Average Convergence Divergence** compares 12-day and 26-day EMAs against a 9-day signal line to spot trend shifts.",
         "bollinger": "**Bollinger Bands** plot a 20-day SMA with ±2 standard deviation bands to gauge volatility expansion and mean reversion.",
-        "sharpe": "**Sharpe Ratio** measures risk-adjusted return (annualized excess return divided by return volatility).",
-        "intraday": "**MIS (Margin Intraday Square-off)** provides 5× leverage for same-day trades settled before market close.",
-        "delivery": "**CNC (Cash & Carry)** is 1× margin equity delivery held across days in your Demat portfolio.",
+        "sharpe": "**Sharpe Ratio** measures risk-adjusted return as annualized excess return divided by return volatility.",
+        "intraday": "**MIS · Margin Intraday Square-off** provides 5× leverage for same-day trades settled before market close.",
+        "delivery": "**CNC · Cash & Carry** is 1× margin equity delivery held across days in your Demat portfolio.",
     }
     for kw, desc in glossary.items():
         if re.search(rf"\b{re.escape(kw)}\b", q_clean):
-            steps_log.append(f"Matched quantitative glossary ({kw.upper()})")
+            steps_log.append(f"Matched quantitative glossary · {kw.upper()}")
             return f"### FinanceSight Knowledge Base\n{desc}", "FinanceSight Quant KB", card_title, card_logo, steps_log
 
     key_hint = (
-        "\n\n*Tip: Add your `GROQ_API_KEY` or `GEMINI_API_KEY` in the sidebar API Settings (or Streamlit Cloud Secrets) for full conversational LLM answers on open-ended questions.*"
+        "\n\n*Tip: Add your `GROQ_API_KEY` or `GEMINI_API_KEY` in the sidebar API Settings or Streamlit Cloud Secrets for full conversational LLM answers on open-ended questions.*"
         if err_code in {"missing_key", "invalid_key"}
         else ""
     )
@@ -4530,12 +4529,12 @@ def render_brokerage_calculator_widget(key_prefix: str = "calc") -> None:
         c1, c2, c3, c4 = st.columns(4)
         seg = c1.selectbox(
             "Segment",
-            ["Equity Delivery (CNC)", "Equity Intraday (MIS)", "F&O Futures"],
+            ["Equity Delivery · CNC", "Equity Intraday · MIS", "F&O Futures"],
             key=f"{key_prefix}_seg",
         )
-        buy_p = c2.number_input("Buy Price (₹)", min_value=1.0, value=1500.0, step=10.0, key=f"{key_prefix}_bp")
-        sell_p = c3.number_input("Sell Price (₹)", min_value=1.0, value=1545.0, step=10.0, key=f"{key_prefix}_sp")
-        qty = c4.number_input("Quantity (Shares)", min_value=1, max_value=100000, value=100, step=10, key=f"{key_prefix}_qty")
+        buy_p = c2.number_input("Buy Price ₹", min_value=1.0, value=1500.0, step=10.0, key=f"{key_prefix}_bp")
+        sell_p = c3.number_input("Sell Price ₹", min_value=1.0, value=1545.0, step=10.0, key=f"{key_prefix}_sp")
+        qty = c4.number_input("Quantity Shares", min_value=1, max_value=100000, value=100, step=10, key=f"{key_prefix}_qty")
 
     res = compute_brokerage_breakdown(seg, buy_p, sell_p, int(qty))
     m1, m2, m3, m4 = st.columns(4)
@@ -4547,11 +4546,11 @@ def render_brokerage_calculator_widget(key_prefix: str = "calc") -> None:
     st.table(
         {
             "Brokerage": f"₹{res['brokerage']:,.2f}",
-            "STT (Securities Transaction Tax)": f"₹{res['stt']:,.2f}",
+            "Securities Transaction Tax": f"₹{res['stt']:,.2f}",
             "Exchange Transaction Charge": f"₹{res['exch_txn']:,.2f}",
             "SEBI Turnover Fee": f"₹{res['sebi_fee']:,.2f}",
             "Stamp Duty": f"₹{res['stamp_duty']:,.2f}",
-            "GST (18% on Brokerage + Txn + SEBI)": f"₹{res['gst']:,.2f}",
+            "GST · 18% on Brokerage, Txn & SEBI": f"₹{res['gst']:,.2f}",
             "**Total Charges**": f"**₹{res['total_charges']:,.2f}**",
         },
         border="horizontal",
@@ -4630,13 +4629,13 @@ def render_public_footer() -> None:
             if "home" in pub_pages:
                 st.page_link(pub_pages["home"], label="Open an account")
             for lbl, fkey in [
-                ("Fund transfer (Virtual Wallet)", "ftr_funds"),
+                ("Fund transfer · Virtual Wallet", "ftr_funds"),
                 ("Portfolio holdings", "ftr_hold"),
                 ("Intraday & delivery positions", "ftr_pos"),
                 ("FinanceSight Algo Backtester", "ftr_algo"),
             ]:
                 if st.button(lbl, type="tertiary", key=fkey):
-                    st.toast(f"Sign in on Home (or use Demo Login) to access {lbl}.", icon=":material/lock_open:")
+                    st.toast(f"Sign in on Home or use Demo Login to access {lbl}.", icon=":material/lock_open:")
 
         st.divider()
         st.caption(
@@ -4789,7 +4788,7 @@ def page_public_home() -> None:
     with left_col:
         with st.container(border=True):
             mh_l, mh_r = st.columns([1.4, 1.3], vertical_alignment="center")
-            mh_l.subheader(f"Live Market Movers ({len(STOCK_CATALOG)} Stocks)", icon=":material/trending_up:")
+            mh_l.subheader(f"Live Market Movers · {len(STOCK_CATALOG)} Stocks", icon=":material/trending_up:")
             home_mkt = mh_r.segmented_control(
                 "Market View",
                 ["Flagship Movers", "NSE Leaders", "US Leaders"],
@@ -4817,18 +4816,18 @@ def page_public_home() -> None:
                         "Company": meta["name"],
                         "Exchange": meta["exchange"],
                         "Price": f"{meta['currency']}{sn['price']:,.2f}",
-                        "Change (%)": round(sn["pct"], 2),
-                        "RSI (14)": round(sn["rsi"], 1),
+                        "Change %": round(sn["pct"], 2),
+                        "RSI 14": round(sn["rsi"], 1),
                         "20D Trend": sn.get("sparkline", []),
                     }
                 )
-            mov_df = pd.DataFrame(movers).sort_values("Change (%)", ascending=False)
+            mov_df = pd.DataFrame(movers).sort_values("Change %", ascending=False)
             top_movers = pd.concat([mov_df.head(5), mov_df.tail(5)]).drop_duplicates(subset=["Ticker"])
             st.dataframe(
                 top_movers,
                 column_config={
                     "Logo": st.column_config.ImageColumn("", width="small"),
-                    "Change (%)": st.column_config.NumberColumn("Day %", format="%.2f%%"),
+                    "Change %": st.column_config.NumberColumn("Day %", format="%.2f%%"),
                     "20D Trend": st.column_config.LineChartColumn("20D Trend"),
                 },
                 hide_index=True,
@@ -4844,7 +4843,7 @@ def page_public_home() -> None:
                 alt.Chart(sec_df)
                 .mark_bar(cornerRadiusEnd=4)
                 .encode(
-                    x=alt.X("Change:Q", title="Avg Day Move (%)"),
+                    x=alt.X("Change:Q", title="Avg Day Move %"),
                     y=alt.Y("Sector:N", sort="-x", title=None),
                     color=alt.condition(alt.datum.Change >= 0, alt.value("#10b981"), alt.value("#ef4444")),
                     tooltip=["Sector", alt.Tooltip("Change:Q", format=".2f")],
@@ -4859,7 +4858,7 @@ def page_public_home() -> None:
             st.caption(f"Start with a **₹1,00,000** paper wallet across **{len(STOCK_CATALOG)} NSE & US equities**.")
             st.markdown(":green-badge[₹0 Delivery Fees] :blue-badge[5x Intraday MIS] :violet-badge[AI + ML Terminal]")
             st.space("small")
-            if st.button("1-Click Demo Login (Trader_XYZ)", type="primary", icon=":material/bolt:", width="stretch"):
+            if st.button("1-Click Demo Login · Trader_XYZ", type="primary", icon=":material/bolt:", width="stretch"):
                 st.session_state.logged_in = True
                 st.session_state.username = "Trader_XYZ"
                 st.session_state.full_name = "Trader_XYZ"
@@ -4885,7 +4884,7 @@ def page_public_home() -> None:
                     su_name = st.text_input("Full Name", placeholder="e.g., Vishal Babu")
                     su_user = st.text_input("Choose User ID", placeholder="e.g., Vishal_01")
                     su_email = st.text_input("Email Address", placeholder="user@financesight.in")
-                    su_pass = st.text_input("Create Password (min 6 chars)", type="password")
+                    su_pass = st.text_input("Create Password", type="password", placeholder="Minimum 6 characters")
                     if st.form_submit_button("Open Account & Claim ₹1,00,000", type="primary", width="stretch"):
                         ok_reg, res_msg = register_new_user(su_name, su_user, su_email, su_pass)
                         if ok_reg:
@@ -4959,11 +4958,11 @@ def page_public_products() -> None:
     st.title("Platform Modules & Capabilities", icon=":material/layers:")
     st.caption("Integrated quantitative charting, machine learning forecasting, strategy backtesting, and paper trading.")
     modules = [
-        (":material/candlestick_chart:", "SuperChart Terminal & Fundamentals", "Multi-panel Plotly candlestick charts (`1mo`–`5y`), SMA-20, EMA-50, Bollinger Bands, Wilder RSI, MACD, company fundamentals, and normalized Peer Comparison."),
+        (":material/candlestick_chart:", "SuperChart Terminal & Fundamentals", "Multi-panel Plotly candlestick charts from `1mo` to `5y` with SMA-20, EMA-50, Bollinger Bands, Wilder RSI, MACD, company fundamentals, and normalized Peer Comparison."),
         (":material/psychology:", "3-Model ML Forecasting Suite", "Stationary next-day return prediction using Random Forest, Gradient Boosting & Ridge Regression evaluated on an 80/20 chronological split with RMSE, MAE, MAPE, R², Directional Accuracy, and Feature Importance."),
         (":material/science:", "No-Code Strategy Backtester", "Simulate SMA Crossover, RSI Reversal, Bollinger Mean Reversion & MACD strategies with mark-to-market equity curves, Buy & Hold benchmark, Alpha, Sharpe Ratio, and Max Drawdown."),
-        (":material/account_balance_wallet:", "Multi-Currency Paper Trading", "Place CNC (1x) and MIS (5x) Market & real Pending Limit orders across NSE (`₹`) and US (`$`) stocks with live `USD/INR` FX conversion and market-hours validation."),
-        (":material/smart_toy:", "Agentic AI Advisor (Groq + Quant RAG)", "Multi-turn AI analyst with multi-stock comparison, live pivot points, news catalysts, portfolio inspection, and strict command-driven trade execution."),
+        (":material/account_balance_wallet:", "Multi-Currency Paper Trading", "Place CNC 1x Delivery and MIS 5x Intraday Market & real Pending Limit orders across NSE `₹` and US `$` stocks with live `USD/INR` FX conversion and market-hours validation."),
+        (":material/smart_toy:", "Agentic AI Advisor · Groq + Quant RAG", "Multi-turn AI analyst with multi-stock comparison, live pivot points, news catalysts, portfolio inspection, and strict command-driven trade execution."),
         (":material/calculate:", "Statutory Fee & Tax Simulator", "Exact Indian brokerage, STT, SEBI turnover fee, stamp duty, GST, and breakeven calculation."),
     ]
     for i in range(0, len(modules), 2):
@@ -5010,9 +5009,9 @@ def page_public_about() -> None:
     with c1.container(border=True, height="stretch"):
         st.subheader("ML Design Highlights", icon=":material/model_training:")
         st.markdown(
-            "- **3-Year Multi-Market Training (`train_models.py`):** Offline-trained `scikit-learn` models across **242,370 historical samples (345 stocks)** power Traffic-Light Stock Health (`72.49%` ROC-AUC) & Smart Basket Alpha (`75.26%` hit rate).\n"
+            "- **3-Year Multi-Market Training:** Offline-trained `scikit-learn` models across **242,370 historical samples and 345 stocks** power Traffic-Light Stock Health (`72.49%` ROC-AUC) & Smart Basket Alpha (`75.26%` hit rate).\n"
             "- **Stationary Target:** Predicts 1-day percentage returns rather than raw price levels so tree ensembles never flatline near all-time highs.\n"
-            "- **Temporal Validation:** Strict chronological 80/20 split (`shuffle=False`) eliminates look-ahead leakage and exposes Confusion Matrix, F1, RMSE, and feature importances."
+            "- **Temporal Validation:** Strict chronological 80/20 split without shuffling eliminates look-ahead leakage and exposes Confusion Matrix, F1, RMSE, and feature importances."
         )
     with c2.container(border=True, height="stretch"):
         st.subheader("Trading & Security Engineering", icon=":material/security:")
@@ -5146,8 +5145,8 @@ def _dashboard_marketwatch_fragment() -> None:
 
     nav_l, nav_c, nav_r = st.columns([2.2, 0.9, 0.9], vertical_alignment="center")
     nav_l.caption(
-        f"Showing **{start_i + 1}–{min(start_i + page_size, total_items)}** of **{total_items}** stocks "
-        f"(Catalog: {len(STOCK_CATALOG)} · {'Live Yahoo Data' if is_live else 'Cached Baseline'} · FX: ₹{usdinr:.2f}/$)"
+        f"Showing **{start_i + 1}–{min(start_i + page_size, total_items)}** of **{total_items}** stocks · "
+        f"{len(STOCK_CATALOG)} Catalog · {'Live Yahoo Data' if is_live else 'Cached Baseline'} · FX ₹{usdinr:.2f}/$"
     )
     if total_pages > 1:
         nav_c.button(
@@ -5160,7 +5159,7 @@ def _dashboard_marketwatch_fragment() -> None:
             args=("dash_page", -1),
         )
         nav_r.button(
-            f"Next ({cur_page + 1}/{total_pages})",
+            f"Next · {cur_page + 1}/{total_pages}",
             icon=":material/chevron_right:",
             disabled=cur_page >= total_pages - 1,
             width="stretch",
@@ -5211,7 +5210,7 @@ def _dashboard_marketwatch_fragment() -> None:
                     chart_type="line",
                     label_visibility="collapsed",
                 )
-                st.markdown(f"RSI(14): `{sn['rsi']:.1f}` &nbsp; {sig_badge}")
+                st.markdown(f"RSI 14: `{sn['rsi']:.1f}` &nbsp; {sig_badge}")
                 b1, b2 = st.columns(2)
                 if b1.button("SuperChart", icon=":material/candlestick_chart:", key=f"go_chart_{sym}", width="stretch"):
                     _jump_to_page("Terminal", sym)
@@ -5272,7 +5271,7 @@ def _superchart_workspace_fragment(ticker: str, period: str, df: pd.DataFrame) -
                 default=["20 SMA", "50 EMA"],
                 key="sc_overlays",
             )
-            oscillator = ctrl3.segmented_control("Oscillator", ["RSI (14)", "MACD"], default="RSI (14)", key="sc_osc") or "RSI (14)"
+            oscillator = ctrl3.segmented_control("Oscillator", ["RSI 14", "MACD"], default="RSI 14", key="sc_osc") or "RSI 14"
 
             fig = make_subplots(
                 rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.04, row_heights=[0.60, 0.16, 0.24]
@@ -5302,8 +5301,8 @@ def _superchart_workspace_fragment(ticker: str, period: str, df: pd.DataFrame) -
             v_colors = ["#10b981" if c >= o else "#ef4444" for c, o in zip(df["Close"], df["Open"])]
             fig.add_trace(go.Bar(x=df.index, y=df["Volume"], name="Volume", marker_color=v_colors), row=2, col=1)
 
-            if oscillator == "RSI (14)":
-                fig.add_trace(go.Scatter(x=df.index, y=df["RSI"], name="RSI (14)", line=dict(color="#8b5cf6", width=1.8)), row=3, col=1)
+            if oscillator == "RSI 14":
+                fig.add_trace(go.Scatter(x=df.index, y=df["RSI"], name="RSI 14", line=dict(color="#8b5cf6", width=1.8)), row=3, col=1)
                 fig.add_hline(y=70, line_dash="dash", line_color="#ef4444", row=3, col=1)
                 fig.add_hline(y=30, line_dash="dash", line_color="#10b981", row=3, col=1)
             else:
@@ -5351,7 +5350,7 @@ def _superchart_workspace_fragment(ticker: str, period: str, df: pd.DataFrame) -
                     p_fig.add_trace(
                         go.Scatter(
                             x=ml_res["test_dates"], y=ml_res["test_pred"],
-                            name="Test Set Predicted (Unseen 20%)", line=dict(color="#f59e0b", width=1.8, dash="dot"),
+                            name="Test Set Predicted · Unseen 20%", line=dict(color="#f59e0b", width=1.8, dash="dot"),
                         )
                     )
                     f_x = [hist_tail.index[-1]] + ml_res["forecast_dates"]
@@ -5365,10 +5364,18 @@ def _superchart_workspace_fragment(ticker: str, period: str, df: pd.DataFrame) -
 
                     c_ev, c_fi = st.columns([1.3, 1.0])
                     with c_ev:
-                        st.markdown("**Out-of-Sample Model Comparison (20% Chronological Test Set)**")
-                        st.dataframe(ml_res["eval_df"], hide_index=True, alt="Model accuracy comparison across RMSE, MAE, MAPE, R2, and directional accuracy")
+                        st.markdown("**Out-of-Sample Model Comparison · 20% Chronological Test Set**")
+                        st.dataframe(
+                            ml_res["eval_df"],
+                            column_config={
+                                "MAPE (%)": st.column_config.NumberColumn("MAPE %", format="%.2f%%"),
+                                "Directional Accuracy (%)": st.column_config.NumberColumn("Dir. Accuracy %", format="%.1f%%"),
+                            },
+                            hide_index=True,
+                            alt="Model accuracy comparison across RMSE, MAE, MAPE, R2, and directional accuracy",
+                        )
                     with c_fi:
-                        st.markdown("**Top Predictive Features (%)**")
+                        st.markdown("**Top Predictive Feature Importance**")
                         fi_chart = (
                             alt.Chart(ml_res["feature_importance"].head(8))
                             .mark_bar(cornerRadiusEnd=4, color="#3b82f6")
@@ -5380,7 +5387,7 @@ def _superchart_workspace_fragment(ticker: str, period: str, df: pd.DataFrame) -
                     with st.expander("Methodology & Leak-Free Design Notes"):
                         st.markdown(
                             "- Predicts **stationary 1-day percentage returns** instead of raw price levels so tree ensembles never flatline near all-time highs.\n"
-                            "- Evaluates **Random Forest**, **Gradient Boosting**, and **Ridge Regression** on a chronological **80/20 split** (`shuffle=False`) to eliminate look-ahead leakage.\n"
+                            "- Evaluates **Random Forest**, **Gradient Boosting**, and **Ridge Regression** on a chronological **80/20 split** without shuffling to eliminate look-ahead leakage.\n"
                             "- Iteratively recomputes rolling lag returns, 20-SMA ratio, 50-EMA ratio, Wilder RSI, Bollinger %B, and volatility at each forecast step."
                         )
 
@@ -5403,13 +5410,13 @@ def _superchart_workspace_fragment(ticker: str, period: str, df: pd.DataFrame) -
                     st.warning("Unable to load peer comparison data right now.")
                 else:
                     norm_df = (p_df.div(p_df.bfill().iloc[0]) - 1.0) * 100.0
-                    melted = norm_df.reset_index().melt(id_vars=[norm_df.index.name or "Date"], var_name="Ticker", value_name="Return (%)")
+                    melted = norm_df.reset_index().melt(id_vars=[norm_df.index.name or "Date"], var_name="Ticker", value_name="Return %")
                     date_col = melted.columns[0]
                     peer_chart = (
                         alt.Chart(melted)
                         .mark_line()
-                        .encode(x=alt.X(f"{date_col}:T", title="Date"), y=alt.Y("Return (%):Q", title="Cumulative Return (%)"), color="Ticker:N")
-                        .properties(height=380, title=f"Normalized Cumulative Return Comparison ({period})")
+                        .encode(x=alt.X(f"{date_col}:T", title="Date"), y=alt.Y("Return %:Q", title="Cumulative Return %"), color="Ticker:N")
+                        .properties(height=380, title=f"Normalized Cumulative Return Comparison · {period}")
                     )
                     st.altair_chart(peer_chart, alt="Normalized cumulative percentage return across selected peer equities")
 
@@ -5428,7 +5435,7 @@ def page_superchart() -> None:
         "Active Equity",
         all_syms,
         index=cur_idx,
-        format_func=lambda s: f"{s} — {STOCK_CATALOG[s]['name']} ({STOCK_CATALOG[s]['exchange']})",
+        format_func=lambda s: f"{s} — {STOCK_CATALOG[s]['name']} · {STOCK_CATALOG[s]['exchange']}",
         key="terminal_ticker_pick",
     )
     if picked != ticker:
@@ -5467,11 +5474,11 @@ def page_superchart() -> None:
                 f'{stock_icon_html(ticker, size=44, radius=11)}'
                 f'<div>'
                 f'<div style="font-size:1.18rem;font-weight:800;line-height:1.2;">{html.escape(meta["name"])} '
-                f'<span style="font-size:0.86rem;font-family:JetBrains Mono,monospace;opacity:0.75;">({html.escape(ticker)})</span></div>'
+                f'<span style="font-size:0.86rem;font-family:JetBrains Mono,monospace;opacity:0.75;">· {html.escape(ticker)}</span></div>'
                 f'<div style="font-size:0.80rem;opacity:0.75;">{meta["exchange"]} · {html.escape(meta["sector"])} · FX ₹{fx:.2f}</div>'
                 f'</div></div>'
             )
-            h2.metric("Spot Price", f"{currency}{latest_c:,.2f}", f"{chg:+.2f} ({pct:+.2f}%)")
+            h2.metric("Spot Price", f"{currency}{latest_c:,.2f}", f"{chg:+.2f} · {pct:+.2f}%")
             h3.metric("14-Day RSI", f"{rsi_val:.1f}", "Overbought" if rsi_val >= 70 else ("Oversold" if rsi_val <= 30 else "Neutral"), delta_color="off")
             h4.metric("Period High", f"{currency}{high_52:,.2f}")
             h5.metric("Period Low", f"{currency}{low_52:,.2f}")
@@ -5490,7 +5497,7 @@ def page_superchart() -> None:
                         f_items = {
                             "Market Cap": format_large_number(funds.get("marketCap"), currency),
                             "Trailing P/E": f"{funds['trailingPE']:.2f}" if funds.get("trailingPE") else "N/A",
-                            "EPS (TTM)": f"{currency}{funds['trailingEps']:.2f}" if funds.get("trailingEps") else "N/A",
+                            "EPS TTM": f"{currency}{funds['trailingEps']:.2f}" if funds.get("trailingEps") else "N/A",
                             "Beta": f"{funds['beta']:.2f}" if funds.get("beta") else "N/A",
                             "Analyst View": str(funds.get("recommendationKey") or "N/A").upper(),
                         }
@@ -5517,6 +5524,7 @@ def page_superchart() -> None:
                     "Product Type",
                     ["CNC (Delivery)", "MIS (Intraday 5x)"],
                     default="CNC (Delivery)",
+                    format_func=lambda x: "CNC · Delivery" if "CNC" in x else "MIS · 5x Intraday",
                     key="term_prod",
                 ) or "CNC (Delivery)"
                 ord_type = st.segmented_control(
@@ -5527,7 +5535,7 @@ def page_superchart() -> None:
                 ) or "MARKET"
                 qty = st.number_input("Quantity", min_value=1, max_value=100000, value=10, step=1, key="term_qty")
                 lim_p = (
-                    st.number_input(f"Limit Price ({currency})", min_value=0.01, value=round(latest_c, 2), step=0.5, key="term_lim")
+                    st.number_input(f"Limit Price {currency}", min_value=0.01, value=round(latest_c, 2), step=0.5, key="term_lim")
                     if ord_type == "LIMIT"
                     else latest_c
                 )
@@ -5538,7 +5546,7 @@ def page_superchart() -> None:
                 st.table(
                     {
                         "Spot Price": f"{currency}{latest_c:,.2f}",
-                        "FX Conversion": f"₹{fx:.2f} / $" if currency == "$" else "1.00 (INR)",
+                        "FX Conversion": f"₹{fx:.2f} / $" if currency == "$" else "1.00 INR",
                         "Required Margin": f"₹{req_margin_inr:,.2f}",
                         "Available Cash": f"₹{user_bal:,.2f}",
                     },
@@ -5635,7 +5643,7 @@ def page_orders() -> None:
                 column_config={
                     "Logo": st.column_config.ImageColumn("", width="small"),
                     "price": st.column_config.NumberColumn("Fill Price", format="%.2f"),
-                    "inr_total": st.column_config.NumberColumn("INR Value (₹)", format="₹%.2f"),
+                    "inr_total": st.column_config.NumberColumn("INR Value ₹", format="₹%.2f"),
                 },
                 hide_index=True,
                 alt="Executed trades ledger with company icons",
@@ -5667,15 +5675,15 @@ def page_holdings() -> None:
         acct = get_user_account_summary(st.session_state.username, snaps, usdinr)
 
     if acct["port_df"].empty:
-        st.info("Your CNC Holdings are currently empty. Place a CNC (Delivery) BUY order to build your portfolio.")
+        st.info("Your CNC Holdings are currently empty. Place a CNC Delivery BUY order to build your portfolio.")
         return
 
     port_df = acct["port_df"]
     roi_pct = (acct["tot_pnl"] / acct["tot_inv"] * 100.0) if acct["tot_inv"] > 0 else 0.0
     k1, k2, k3, k4 = st.columns(4)
     k1.metric("Account Net Worth", f"₹{acct['balance'] + acct['tot_cur']:,.2f}", "Cash + Live Holdings", delta_color="off", border=True, height="stretch")
-    k2.metric("Initial Cost (INR)", f"₹{acct['tot_inv']:,.2f}", f"{len(port_df)} Stocks", delta_color="off", border=True, height="stretch")
-    k3.metric("Live Value (INR)", f"₹{acct['tot_cur']:,.2f}", f"FX: ₹{usdinr:.2f}/$", delta_color="off", border=True, height="stretch")
+    k2.metric("Initial Cost", f"₹{acct['tot_inv']:,.2f}", f"{len(port_df)} Stocks", delta_color="off", border=True, height="stretch")
+    k3.metric("Live Value", f"₹{acct['tot_cur']:,.2f}", f"FX: ₹{usdinr:.2f}/$", delta_color="off", border=True, height="stretch")
     k4.metric("Unrealized P&L", f"₹{acct['tot_pnl']:+,.2f}", f"{roi_pct:+.2f}% ROI", border=True, height="stretch")
 
     c1, c2 = st.columns([1.65, 1.15])
@@ -5689,16 +5697,16 @@ def page_holdings() -> None:
                 "Logo": st.column_config.ImageColumn("", width="small"),
                 "avg_price": st.column_config.NumberColumn("Avg Price", format="%.2f"),
                 "LTP": st.column_config.NumberColumn("Live LTP", format="%.2f"),
-                "Cost (₹)": st.column_config.NumberColumn("Cost (₹)", format="₹%.2f"),
-                "Live Value (₹)": st.column_config.NumberColumn("Live Value (₹)", format="₹%.2f"),
-                "Live P&L (₹)": st.column_config.NumberColumn("P&L (₹)", format="₹%.2f"),
+                "Cost (₹)": st.column_config.NumberColumn("Cost ₹", format="₹%.2f"),
+                "Live Value (₹)": st.column_config.NumberColumn("Live Value ₹", format="₹%.2f"),
+                "Live P&L (₹)": st.column_config.NumberColumn("P&L ₹", format="₹%.2f"),
                 "Return (%)": st.column_config.NumberColumn("Return %", format="%.2f%%"),
             },
             hide_index=True,
             alt="Holdings table with company icons, live valuation and unrealized profit or loss",
         )
         st.download_button(
-            "Download Holdings Statement (CSV)",
+            "Download Holdings Statement CSV",
             data=display_df.drop(columns=["Logo"]).to_csv(index=False).encode("utf-8"),
             file_name="financesight_holdings.csv",
             mime="text/csv",
@@ -5714,26 +5722,31 @@ def page_holdings() -> None:
 
 def page_positions() -> None:
     snaps, _, usdinr, _, _ = get_market_context()
-    st.title("Open Positions (CNC & MIS 5x)", icon=":material/monitoring:")
+    st.title("Open Positions · CNC & MIS 5x", icon=":material/monitoring:")
     acct = get_user_account_summary(st.session_state.username, snaps, usdinr)
     if not acct["pos_df"].empty:
         snaps = ensure_symbols_live(acct["pos_df"]["ticker"].tolist(), snaps)
         acct = get_user_account_summary(st.session_state.username, snaps, usdinr)
 
     if acct["pos_df"].empty:
-        st.info("No open positions right now. Place a CNC or MIS (5x Intraday) order to track live mark-to-market P&L.")
+        st.info("No open positions right now. Place a CNC or MIS 5x Intraday order to track live mark-to-market P&L.")
         return
 
     pos_df = acct["pos_df"]
     p1, p2 = st.columns(2)
-    p1.metric("Live Open Exposure (INR)", f"₹{acct['tot_pos_val']:,.2f}", f"{len(pos_df)} Active Positions", delta_color="off", border=True, height="stretch")
-    p2.metric("Total M2M P&L (INR)", f"₹{acct['tot_m2m']:+,.2f}", "Real-Time Mark-to-Market", border=True, height="stretch")
+    p1.metric("Live Open Exposure", f"₹{acct['tot_pos_val']:,.2f}", f"{len(pos_df)} Active Positions", delta_color="off", border=True, height="stretch")
+    p2.metric("Total M2M P&L", f"₹{acct['tot_m2m']:+,.2f}", "Real-Time Mark-to-Market", border=True, height="stretch")
 
     pos_disp = pos_df[["ticker", "product_type", "shares", "currency", "avg_price", "LTP", "Live Value (₹)", "M2M P&L (₹)", "Return (%)"]].copy()
     pos_disp.insert(0, "Logo", pos_disp["ticker"].map(get_logo_url))
     st.dataframe(
         pos_disp,
-        column_config={"Logo": st.column_config.ImageColumn("", width="small")},
+        column_config={
+            "Logo": st.column_config.ImageColumn("", width="small"),
+            "Live Value (₹)": st.column_config.NumberColumn("Live Value ₹", format="₹%.2f"),
+            "M2M P&L (₹)": st.column_config.NumberColumn("M2M P&L ₹", format="₹%.2f"),
+            "Return (%)": st.column_config.NumberColumn("Return %", format="%.2f%%"),
+        },
         hide_index=True,
         alt="Open delivery and intraday positions with company logos and mark-to-market profit or loss",
     )
@@ -5743,7 +5756,7 @@ def page_positions() -> None:
     for i, (_, r) in enumerate(pos_df.iterrows()):
         sym = LEGACY_TICKER_REMAP.get(r["ticker"], r["ticker"])
         if sq_cols[i % len(sq_cols)].button(
-            f"Square Off {sym} ({r['product_type']})",
+            f"Square Off {sym} · {r['product_type']}",
             key=f"sq_{sym}_{r['product_type']}",
             type="primary",
             width="stretch",
@@ -5771,8 +5784,8 @@ def page_funds() -> None:
         with c1.container(border=True):
             preset = st.segmented_control("Quick Amount", ["₹10,000", "₹25,000", "₹50,000", "₹1,00,000"], default="₹25,000", key="dep_preset") or "₹25,000"
             p_map = {"₹10,000": 10000.0, "₹25,000": 25000.0, "₹50,000": 50000.0, "₹1,00,000": 100000.0}
-            dep_amt = st.number_input("Deposit Amount (₹)", min_value=500.0, max_value=10000000.0, value=p_map[preset], step=1000.0)
-            pay_mode = st.selectbox("Payment Mode", ["Instant UPI (GPay / PhonePe)", "NetBanking (SBI / HDFC / ICICI)", "RuPay / Visa Debit Card"])
+            dep_amt = st.number_input("Deposit Amount ₹", min_value=500.0, max_value=10000000.0, value=p_map[preset], step=1000.0)
+            pay_mode = st.selectbox("Payment Mode", ["Instant UPI · GPay / PhonePe", "NetBanking · SBI / HDFC / ICICI", "RuPay / Visa Debit Card"])
             pay_ref = st.text_input("Reference / UPI ID", value=f"{st.session_state.username}@okaxis")
             if st.button("Add Virtual Funds", type="primary", width="stretch"):
                 ok, msg = update_funds(st.session_state.username, dep_amt, "DEPOSIT", pay_mode, pay_ref)
@@ -5796,16 +5809,16 @@ def page_funds() -> None:
             if user_bal < 100.0:
                 st.warning("Available cash margin is below ₹100.00 minimum withdrawal.")
             else:
-                b_name = st.selectbox("Linked Bank", ["State Bank of India (SBI)", "HDFC Bank", "ICICI Bank", "Axis Bank"])
+                b_name = st.selectbox("Linked Bank", ["State Bank of India", "HDFC Bank", "ICICI Bank", "Axis Bank"])
                 acc_num = st.text_input("Account Number", value="XXXX-XXXX-8821")
                 ifsc = st.text_input("IFSC Code", value="SBIN0004821")
                 w_amt = st.number_input(
-                    "Withdrawal Amount (₹)",
+                    "Withdrawal Amount ₹",
                     min_value=100.0, max_value=float(user_bal),
                     value=min(5000.0, float(user_bal)), step=500.0,
                 )
                 if st.button("Withdraw Virtual Cash", type="primary"):
-                    ok, msg = update_funds(st.session_state.username, w_amt, "WITHDRAW", b_name, f"A/C {acc_num[-4:]} ({ifsc})")
+                    ok, msg = update_funds(st.session_state.username, w_amt, "WITHDRAW", b_name, f"A/C {acc_num[-4:]} · {ifsc}")
                     if ok:
                         st.toast(msg)
                         st.rerun()
@@ -5840,8 +5853,13 @@ def _ai_advisor_chat_fragment() -> None:
         ap1, ap2, ap3, ap4 = st.columns([1.0, 1.1, 1.2, 1.0])
         ap_mkt = ap1.selectbox("Market Focus", ["ALL", "NSE", "US"], key="ap_mkt")
         ap_sec = ap2.selectbox("Sector Focus", ["Any Sector", "IT & AI", "Banking & Finance", "Defence", "Auto & EV", "Pharma", "Energy"], key="ap_sec")
-        ap_budget = ap3.number_input("Trade Budget (₹)", min_value=1000.0, max_value=500000.0, value=15000.0, step=1000.0, key="ap_budget")
-        ap_prod = ap4.selectbox("Product", ["CNC (Delivery)", "MIS (Intraday 5x)"], key="ap_prod")
+        ap_budget = ap3.number_input("Trade Budget ₹", min_value=1000.0, max_value=500000.0, value=15000.0, step=1000.0, key="ap_budget")
+        ap_prod = ap4.selectbox(
+            "Product",
+            ["CNC (Delivery)", "MIS (Intraday 5x)"],
+            format_func=lambda x: "CNC · Delivery" if "CNC" in x else "MIS · 5x Intraday",
+            key="ap_prod",
+        )
 
         ap_b1, ap_b2, ap_b3 = st.columns([1.4, 1.3, 1.3], vertical_alignment="center")
         ap_b3.toggle(
@@ -5988,15 +6006,15 @@ def _algo_scanner_fragment() -> None:
         all_syms = list(STOCK_CATALOG.keys())
         cur_i = all_syms.index(st.session_state.selected_ticker) if st.session_state.selected_ticker in all_syms else 0
         bt_sym = c1.selectbox(
-            "Equity (345+ Stocks)",
+            f"Equity · {len(all_syms)} Stocks",
             all_syms,
             index=cur_i,
-            format_func=lambda s: f"{s} — {STOCK_CATALOG[s]['name']} ({STOCK_CATALOG[s]['exchange']})",
+            format_func=lambda s: f"{s} — {STOCK_CATALOG[s]['name']} · {STOCK_CATALOG[s]['exchange']}",
             key="bt_sym",
         )
         bt_strat = c2.selectbox("Strategy Rule", BACKTEST_STRATEGIES, key="bt_strat")
-        sl_pct = c3.slider("Stop-Loss (%)", 1.0, 10.0, 3.0, 0.5, key="bt_sl")
-        tp_pct = c4.slider("Take-Profit (%)", 2.0, 25.0, 6.0, 0.5, key="bt_tp")
+        sl_pct = c3.slider("Stop-Loss %", 1.0, 10.0, 3.0, 0.5, key="bt_sl")
+        tp_pct = c4.slider("Take-Profit %", 2.0, 25.0, 6.0, 0.5, key="bt_tp")
 
         bt_tf = st.segmented_control("Backtest Horizon", ["6mo", "1y", "2y"], default="1y", key="bt_tf") or "1y"
         meta = get_ticker_meta(bt_sym)
@@ -6006,7 +6024,7 @@ def _algo_scanner_fragment() -> None:
             f'<div style="display:flex;align-items:center;gap:10px;margin:4px 0 8px 0;">'
             f'{stock_icon_html(bt_sym, size=34, radius=9)}'
             f'<div><div style="font-weight:800;font-size:1.0rem;">{html.escape(meta["name"])} '
-            f'<span style="opacity:0.7;font-family:JetBrains Mono,monospace;">({html.escape(bt_sym)})</span></div>'
+            f'<span style="opacity:0.7;font-family:JetBrains Mono,monospace;">· {html.escape(bt_sym)}</span></div>'
             f'<div style="font-size:0.78rem;opacity:0.72;">{meta["exchange"]} · {html.escape(meta["sector"])} · {bt_strat}</div></div></div>'
         )
 
@@ -6028,7 +6046,7 @@ def _algo_scanner_fragment() -> None:
                 eq_fig = go.Figure()
                 eq_fig.add_trace(go.Scatter(x=res["eq_series"].index, y=res["eq_series"].values, name="Strategy Equity", fill="tozeroy", line=dict(color="#3b82f6", width=2.4), fillcolor="rgba(59,130,246,0.12)"))
                 eq_fig.add_trace(go.Scatter(x=res["bh_series"].index, y=res["bh_series"].values, name="Buy & Hold Benchmark", line=dict(color="#94a3b8", width=1.8, dash="dot")))
-                eq_fig.update_layout(title=f"Mark-to-Market Equity Curve vs. Buy & Hold ({cur}100,000 Base)", height=360, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", margin=dict(l=10, r=10, t=36, b=10))
+                eq_fig.update_layout(title=f"Mark-to-Market Equity Curve vs. Buy & Hold · {cur}100,000 Base", height=360, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", margin=dict(l=10, r=10, t=36, b=10))
                 st.plotly_chart(eq_fig, theme="streamlit", alt=f"Strategy equity curve versus buy and hold benchmark for {bt_sym}")
 
                 sig_fig = go.Figure()
@@ -6037,17 +6055,17 @@ def _algo_scanner_fragment() -> None:
                 buys = [p for p in res["signal_points"] if p["type"] == "BUY"]
                 sells = [p for p in res["signal_points"] if p["type"] == "SELL"]
                 if buys:
-                    sig_fig.add_trace(go.Scatter(x=[p["date"] for p in buys], y=[p["price"] for p in buys], mode="markers", name="Entry (BUY)", marker=dict(symbol="triangle-up", size=11, color="#10b981")))
+                    sig_fig.add_trace(go.Scatter(x=[p["date"] for p in buys], y=[p["price"] for p in buys], mode="markers", name="Entry BUY", marker=dict(symbol="triangle-up", size=11, color="#10b981")))
                 if sells:
-                    sig_fig.add_trace(go.Scatter(x=[p["date"] for p in sells], y=[p["price"] for p in sells], mode="markers", name="Exit (SELL)", marker=dict(symbol="triangle-down", size=11, color="#ef4444")))
-                sig_fig.update_layout(title=f"Trade Signals on Price Chart ({bt_sym})", height=320, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", margin=dict(l=10, r=10, t=36, b=10))
+                    sig_fig.add_trace(go.Scatter(x=[p["date"] for p in sells], y=[p["price"] for p in sells], mode="markers", name="Exit SELL", marker=dict(symbol="triangle-down", size=11, color="#ef4444")))
+                sig_fig.update_layout(title=f"Trade Signals on Price Chart · {bt_sym}", height=320, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", margin=dict(l=10, r=10, t=36, b=10))
                 st.plotly_chart(sig_fig, theme="streamlit", alt=f"Buy entry and sell exit markers plotted over price history for {bt_sym}")
 
                 if res["trades_log"]:
                     t_df = pd.DataFrame(res["trades_log"])
                     st.dataframe(t_df, hide_index=True, alt="Backtest simulated trades ledger")
                     st.download_button(
-                        "Download Backtest Trades (CSV)",
+                        "Download Backtest Trades CSV",
                         data=t_df.to_csv(index=False).encode("utf-8"),
                         file_name=f"{bt_sym}_backtest.csv",
                         mime="text/csv",
@@ -6087,7 +6105,7 @@ def _algo_scanner_fragment() -> None:
         vis_syms = filtered_syms[s_start : s_start + scan_page_size]
 
         sn_l, sn_c, sn_r = st.columns([2.2, 0.9, 0.9], vertical_alignment="center")
-        sn_l.caption(f"Showing **{s_start + 1 if total_scan else 0}–{min(s_start + scan_page_size, total_scan)}** of **{total_scan}** matching stocks (Live page fetch)")
+        sn_l.caption(f"Showing **{s_start + 1 if total_scan else 0}–{min(s_start + scan_page_size, total_scan)}** of **{total_scan}** matching stocks · Live page fetch")
         if max_scan_pages > 1:
             sn_c.button(
                 "Previous",
@@ -6099,7 +6117,7 @@ def _algo_scanner_fragment() -> None:
                 args=("scan_page", -1),
             )
             sn_r.button(
-                f"Next ({s_page + 1}/{max_scan_pages})",
+                f"Next · {s_page + 1}/{max_scan_pages}",
                 icon=":material/chevron_right:",
                 disabled=s_page >= max_scan_pages - 1,
                 width="stretch",
@@ -6123,7 +6141,7 @@ def _algo_scanner_fragment() -> None:
                     "Sector": meta["sector"],
                     "Price": f"{meta['currency']}{sn['price']:,.2f}",
                     "Day %": round(sn["pct"], 2),
-                    "RSI (14)": round(sn["rsi"], 1),
+                    "RSI 14": round(sn["rsi"], 1),
                     "20D Trend": sn.get("sparkline", []),
                     "Signal": [sig],
                 }
@@ -6133,7 +6151,7 @@ def _algo_scanner_fragment() -> None:
             column_config={
                 "Logo": st.column_config.ImageColumn("", width="small"),
                 "Day %": st.column_config.NumberColumn("Day %", format="%.2f%%"),
-                "RSI (14)": st.column_config.ProgressColumn("RSI (14)", min_value=0, max_value=100, format="%.1f"),
+                "RSI 14": st.column_config.ProgressColumn("RSI 14", min_value=0, max_value=100, format="%.1f"),
                 "20D Trend": st.column_config.LineChartColumn("20D Sparkline"),
                 "Signal": st.column_config.MultiselectColumn("Signal", options=["Bullish Breakout", "Oversold Bounce", "Bearish / Neutral"], color=["green", "blue", "red"]),
             },
@@ -6167,9 +6185,9 @@ def _render_traffic_light_hero_html(h: dict) -> str:
           {stock_icon_html(h['sym'], size=48, radius=12)}
           <div>
             <div style="font-size:1.25rem;font-weight:800;">{html.escape(m['name'])}
-              <span style="font-size:0.86rem;font-family:JetBrains Mono,monospace;opacity:0.75;">({html.escape(h['sym'])})</span>
+              <span style="font-size:0.86rem;font-family:JetBrains Mono,monospace;opacity:0.75;">· {html.escape(h['sym'])}</span>
             </div>
-            <div style="font-size:0.82rem;opacity:0.75;">{m['exchange']} · {html.escape(m['sector'])} · {cur}{h['price']:,.2f} ({h['pct']:+.2f}%)</div>
+            <div style="font-size:0.82rem;opacity:0.75;">{m['exchange']} · {html.escape(m['sector'])} · {cur}{h['price']:,.2f} · {h['pct']:+.2f}%</div>
           </div>
         </div>
         <div style="text-align:right;">
@@ -6221,20 +6239,21 @@ def page_smart_basket() -> None:
 
     with st.container(border=True):
         b1, b2, b3, b4 = st.columns([1.15, 1.15, 1.25, 0.85], vertical_alignment="bottom")
-        sb_budget = b1.number_input("Investment Budget (₹)", min_value=2000.0, max_value=500000.0, value=25000.0, step=2500.0, key="g_budget")
+        sb_budget = b1.number_input("Investment Budget ₹", min_value=2000.0, max_value=500000.0, value=25000.0, step=2500.0, key="g_budget")
         sb_risk = b2.selectbox("Comfort Level", ["Safe & Steady", "Balanced Mix", "High Growth"], index=1, key="g_risk")
-        sb_mkt = b3.selectbox("Market Region", ["Global Mix (India + US)", "India (NSE)", "US (NASDAQ/NYSE)"], key="g_mkt")
+        sb_mkt = b3.selectbox("Market Region", ["Global Mix · India + US", "India · NSE", "US · NASDAQ & NYSE"], key="g_mkt")
         sb_count = b4.selectbox("Stocks in Basket", [4, 5, 6, 7], index=1, key="g_count")
 
         o1, o2, o3 = st.columns([1.3, 1.8, 0.9], vertical_alignment="bottom")
         sb_weight_mode = o1.selectbox(
             "Allocation Strategy",
-            ["Risk-Parity (Inverse Volatility)", "ML Score Weighted", "Equal Weight"],
+            ["Risk-Parity · Inverse Volatility", "ML Score Weighted", "Equal Weight"],
             key="g_weight_mode",
         )
         sb_sectors = o2.multiselect(
-            "Focus Sectors (Optional — leave empty for auto sector spread)",
+            "Focus Sectors",
             options=all_sectors,
+            placeholder="Optional — leave blank for automatic sector diversification",
             key="g_sectors",
         )
         build_clicked = o3.button("Build Basket", type="primary", icon=":material/auto_awesome:", width="stretch", key="build_basket_btn")
@@ -6261,7 +6280,7 @@ def page_smart_basket() -> None:
         return
 
     k1, k2, k3, k4 = st.columns(4)
-    k1.metric("Basket Cost (INR)", f"₹{b_res['total_cost_inr']:,.2f}", f"Cash Left: ₹{b_res['leftover_inr']:,.2f}", delta_color="off", border=True, height="stretch")
+    k1.metric("Basket Cost", f"₹{b_res['total_cost_inr']:,.2f}", f"Cash Left: ₹{b_res['leftover_inr']:,.2f}", delta_color="off", border=True, height="stretch")
     k2.metric("Diversified Picks", f"{len(items)} Stocks", f"{len({it['meta']['sector'] for it in items})} Sectors · {b_res['market_pref'].split(' ')[0]}", delta_color="off", border=True, height="stretch")
     k3.metric("Risk Reduction", f"-{b_res['diversification_reduction_pct']:.1f}% Vol", f"Port {b_res['portfolio_vol_pct']:.1f}% vs {b_res['avg_indiv_vol_pct']:.1f}%", delta_color="off", border=True, height="stretch")
     k4.metric("Avg Health Score", f"{b_res['avg_health']:.0f} / 100", f"Margin: ₹{acct['balance']:,.0f}", delta_color="off", border=True, height="stretch")
@@ -6272,24 +6291,20 @@ def page_smart_basket() -> None:
         fig_d = go.Figure(
             data=[
                 go.Pie(
-                    labels=[f"{it['sym'].replace('.NS', '')} ({it['actual_wt_pct']:.0f}%)" for it in items],
+                    labels=[it["sym"].replace(".NS", "") for it in items],
                     values=[it["cost_inr"] for it in items],
                     hole=0.55,
+                    textinfo="percent",
                 )
             ]
         )
-        fig_d.update_layout(height=280, paper_bgcolor="rgba(0,0,0,0)", margin=dict(l=8, r=8, t=12, b=8))
+        fig_d.update_layout(height=320, paper_bgcolor="rgba(0,0,0,0)", margin=dict(l=8, r=8, t=12, b=8))
         st.plotly_chart(fig_d, theme="streamlit", alt="Donut chart of allocated smart basket portfolio weights")
 
-        st.markdown("**Estimated 1-Year Outcome Range**")
-        p1, p2, p3 = st.columns(3)
-        p1.metric("Safe Floor", f"₹{b_res['proj_1y_floor']:,.0f}", border=True)
-        p2.metric("Projected", f"₹{b_res['proj_1y_expected']:,.0f}", border=True)
-        p3.metric("Upside", f"₹{b_res['proj_1y_upside']:,.0f}", border=True)
-
     with c_cards.container(border=True, height="stretch"):
-        st.subheader(f"Your {len(items)}-Stock Smart Basket ({sb_weight_mode.split(' ')[0]})", icon=":material/layers:")
+        st.subheader(f"Your {len(items)}-Stock Smart Basket · {sb_weight_mode.split('·')[0].strip()}", icon=":material/layers:")
         for it in items:
+            qty_txt = "1 Share" if it["qty"] == 1 else f"{it['qty']} Shares"
             st.html(
                 f'<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;'
                 f'padding:9px 12px;margin-bottom:7px;border-radius:11px;border:1px solid rgba(128,128,128,0.22);">'
@@ -6297,17 +6312,17 @@ def page_smart_basket() -> None:
                 f'{stock_icon_html(it["sym"], size=34, radius=9)}'
                 f'<div style="min-width:0;">'
                 f'<div style="font-weight:700;font-size:0.93rem;">{html.escape(it["meta"]["name"])} '
-                f'<span style="font-size:0.78rem;font-family:JetBrains Mono,monospace;opacity:0.72;">({html.escape(it["sym"])}) · {it["actual_wt_pct"]:.1f}%</span></div>'
+                f'<span style="font-size:0.78rem;font-family:JetBrains Mono,monospace;opacity:0.72;">· {html.escape(it["sym"])} · {it["actual_wt_pct"]:.1f}% · {qty_txt}</span></div>'
                 f'<div style="font-size:0.75rem;opacity:0.78;">{html.escape(it["why_picked"])}</div>'
                 f'</div></div>'
                 f'<div style="text-align:right;white-space:nowrap;">'
-                f'<div style="font-weight:800;font-family:JetBrains Mono,monospace;">{it["qty"]} sh · ₹{it["cost_inr"]:,.0f}</div>'
+                f'<div style="font-weight:800;font-size:1.0rem;font-family:JetBrains Mono,monospace;">₹{it["cost_inr"]:,.0f}</div>'
                 f'<div style="font-size:0.74rem;font-weight:700;color:{it["color"]};">{html.escape(it["pill"])}</div>'
                 f'</div></div>'
             )
 
         ex_l, ex_wl, ex_csv = st.columns([1.3, 1.0, 0.9])
-        if ex_l.button(f"Invest All {len(items)} Stocks (1-Click)", type="primary", icon=":material/rocket_launch:", width="stretch", key="exec_basket_btn"):
+        if ex_l.button(f"Invest All {len(items)} Stocks", type="primary", icon=":material/rocket_launch:", width="stretch", key="exec_basket_btn"):
             ok_any, msgs, spent = execute_smart_basket(
                 st.session_state.username,
                 b_res,
@@ -6328,7 +6343,8 @@ def page_smart_basket() -> None:
                 if it["sym"] not in cur_wl:
                     toggle_watchlist(st.session_state.username, it["sym"])
                     added_cnt += 1
-            st.toast(f"Added {added_cnt} new stock(s) to Watchlist!")
+            noun = "stock" if added_cnt == 1 else "stocks"
+            st.toast(f"Added {added_cnt} new {noun} to Watchlist!")
 
         basket_csv_df = pd.DataFrame([
             {
@@ -6361,11 +6377,22 @@ def page_smart_basket() -> None:
             args=("basket_after_hrs",),
         )
 
+    with st.container(border=True):
+        st.subheader("Estimated 1-Year Outcome Range", icon=":material/trending_up:")
+        tot_c = max(1.0, float(b_res["total_cost_inr"]))
+        fl_pct = (b_res["proj_1y_floor"] - tot_c) / tot_c * 100.0
+        ex_pct = (b_res["proj_1y_expected"] - tot_c) / tot_c * 100.0
+        up_pct = (b_res["proj_1y_upside"] - tot_c) / tot_c * 100.0
+        p1, p2, p3 = st.columns(3, gap="medium")
+        p1.metric("Safe Floor", f"₹{b_res['proj_1y_floor']:,.0f}", f"{fl_pct:+.1f}% Downside Band", delta_color="off", border=True, height="stretch")
+        p2.metric("Projected Value", f"₹{b_res['proj_1y_expected']:,.0f}", f"{ex_pct:+.1f}% Expected Return", border=True, height="stretch")
+        p3.metric("Upside Target", f"₹{b_res['proj_1y_upside']:,.0f}", f"{up_pct:+.1f}% Growth Band", border=True, height="stretch")
+
     corr_df = b_res.get("corr_df")
     with st.expander("Portfolio Covariance & 6-Month Correlation Analysis"):
         st.markdown(
-            f"- **Weighting Method ({sb_weight_mode}):** Balances position sizing across distinct sectors and risk profiles.\n"
-            f"- **Portfolio Variance Reduction:** Weighted standalone volatility is **`{b_res['avg_indiv_vol_pct']:.1f}%`**, reduced to **`{b_res['portfolio_vol_pct']:.1f}%`** (`-{b_res['diversification_reduction_pct']:.1f}%` risk reduction) with average pairwise correlation **`{b_res['avg_corr']:.2f}`**."
+            f"- **Weighting Method — {sb_weight_mode}:** Balances position sizing across distinct sectors and risk profiles.\n"
+            f"- **Portfolio Variance Reduction:** Weighted standalone volatility is **`{b_res['avg_indiv_vol_pct']:.1f}%`**, reduced to **`{b_res['portfolio_vol_pct']:.1f}%`** with **`-{b_res['diversification_reduction_pct']:.1f}%`** risk reduction and average pairwise correlation **`{b_res['avg_corr']:.2f}`**."
         )
         if corr_df is not None and not corr_df.empty:
             hm = go.Figure(
@@ -6401,7 +6428,7 @@ def page_stock_health() -> None:
     st.markdown(f"Plain-English 20-day stock health scores powered by 3-year trained classification models. &nbsp; {trained_info}")
 
     tab_screener, tab_inspect, tab_model = st.tabs([
-        "Stock Health Explorer (10 Per Page)",
+        "Stock Health Explorer",
         "Single-Stock Deep Dive",
         "Model Benchmarks & Dataset",
     ])
@@ -6415,11 +6442,11 @@ def page_stock_health() -> None:
         h_sort = f5.selectbox(
             "Sort By",
             [
-                "Health Score (High to Low)",
-                "Health Score (Low to High)",
-                "Day Move (% High to Low)",
+                "Health Score: High to Low",
+                "Health Score: Low to High",
+                "Day Move: High to Low",
                 "Lowest Volatility",
-                "Name (A–Z)",
+                "Name: A–Z",
             ],
             key="hl_sort",
         )
@@ -6440,11 +6467,11 @@ def page_stock_health() -> None:
                 continue
             quick_rows.append(q_item)
 
-        if h_sort == "Health Score (High to Low)":
+        if h_sort == "Health Score: High to Low":
             quick_rows.sort(key=lambda r: (r["score"], r["pct"]), reverse=True)
-        elif h_sort == "Health Score (Low to High)":
+        elif h_sort == "Health Score: Low to High":
             quick_rows.sort(key=lambda r: (r["score"], r["pct"]), reverse=False)
-        elif h_sort == "Day Move (% High to Low)":
+        elif h_sort == "Day Move: High to Low":
             quick_rows.sort(key=lambda r: r["pct"], reverse=True)
         elif h_sort == "Lowest Volatility":
             quick_rows.sort(key=lambda r: r["vol_est"], reverse=False)
@@ -6467,10 +6494,10 @@ def page_stock_health() -> None:
             page_syms = [r["sym"] for r in page_items]
 
             p_top_l, p_top_p, p_top_n = st.columns([2.2, 0.9, 0.9], vertical_alignment="center")
-            p_top_l.caption(f"Showing **{start_i + 1}–{min(start_i + page_size, total_rows)}** of **{total_rows}** equities (`10` per page · Live 3Y ML Evaluation)")
+            p_top_l.caption(f"Showing **{start_i + 1}–{min(start_i + page_size, total_rows)}** of **{total_rows}** equities · 10 per page · Live 3Y ML Evaluation")
             if max_pages > 1:
                 p_top_p.button("Previous 10", icon=":material/chevron_left:", disabled=cur_p == 0, width="stretch", key="hl_prev_top", on_click=_shift_page_cb, args=("hl_page", -1))
-                p_top_n.button(f"Next 10 ({cur_p + 1}/{max_pages})", icon=":material/chevron_right:", disabled=cur_p >= max_pages - 1, width="stretch", key="hl_next_top", on_click=_shift_page_cb, args=("hl_page", 1))
+                p_top_n.button(f"Next 10 · {cur_p + 1}/{max_pages}", icon=":material/chevron_right:", disabled=cur_p >= max_pages - 1, width="stretch", key="hl_next_top", on_click=_shift_page_cb, args=("hl_page", 1))
 
             live_page_snaps = ensure_symbols_live(page_syms, snaps)
             hist_page_map = fetch_basket_candidate_histories(tuple(page_syms))
@@ -6479,11 +6506,11 @@ def page_stock_health() -> None:
                 compute_traffic_light_health(sym, hist_page_map.get(sym), live_page_snaps.get(sym))
                 for sym in page_syms
             ]
-            if h_sort == "Health Score (High to Low)":
+            if h_sort == "Health Score: High to Low":
                 eval_cards.sort(key=lambda r: r["score"], reverse=True)
-            elif h_sort == "Health Score (Low to High)":
+            elif h_sort == "Health Score: Low to High":
                 eval_cards.sort(key=lambda r: r["score"])
-            elif h_sort == "Day Move (% High to Low)":
+            elif h_sort == "Day Move: High to Low":
                 eval_cards.sort(key=lambda r: r["pct"], reverse=True)
             elif h_sort == "Lowest Volatility":
                 eval_cards.sort(key=lambda r: r["ann_vol_pct"])
@@ -6506,7 +6533,7 @@ def page_stock_health() -> None:
                             f'{stock_icon_html(hc["sym"], size=36, radius=9)}'
                             f'<div style="min-width:0;">'
                             f'<div style="font-weight:800;font-size:0.98rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{html.escape(m["name"])}</div>'
-                            f'<div style="font-size:0.76rem;opacity:0.75;font-family:JetBrains Mono,monospace;">{html.escape(hc["sym"])} · {m["exchange"]} · {m["currency"]}{hc["price"]:,.2f} ({hc["pct"]:+.2f}%)</div>'
+                            f'<div style="font-size:0.76rem;opacity:0.75;font-family:JetBrains Mono,monospace;">{html.escape(hc["sym"])} · {m["exchange"]} · {m["currency"]}{hc["price"]:,.2f} · {hc["pct"]:+.2f}%</div>'
                             f'</div></div>'
                             f'<div style="text-align:right;white-space:nowrap;">'
                             f'<span style="padding:3px 9px;border-radius:999px;font-weight:700;font-size:0.76rem;color:{clr};background:{clr}1F;border:1px solid {clr}55;">{html.escape(hc["pill"])}</span>'
@@ -6538,17 +6565,17 @@ def page_stock_health() -> None:
                 p_b_l, p_b_p, p_b_n = st.columns([2.2, 0.9, 0.9], vertical_alignment="center")
                 p_b_l.caption(f"Page **{cur_p + 1}** of **{max_pages}**")
                 p_b_p.button("Previous 10", icon=":material/chevron_left:", disabled=cur_p == 0, width="stretch", key="hl_prev_btm", on_click=_shift_page_cb, args=("hl_page", -1))
-                p_b_n.button("Next 10", icon=":material/chevron_right:", disabled=cur_p >= max_pages - 1, width="stretch", key="hl_next_btm", on_click=_shift_page_cb, args=("hl_page", 1))
+                p_b_n.button(f"Next 10 · {cur_p + 1}/{max_pages}", icon=":material/chevron_right:", disabled=cur_p >= max_pages - 1, width="stretch", key="hl_next_btm", on_click=_shift_page_cb, args=("hl_page", 1))
 
     with tab_inspect:
         st.caption("Select any stock for a full single-asset health scorecard and probability breakdown.")
         all_syms = list(STOCK_CATALOG.keys())
         cur_i = all_syms.index(st.session_state.selected_ticker) if st.session_state.selected_ticker in all_syms else 0
         h_sym = st.selectbox(
-            f"Choose Any Stock ({len(all_syms)} Equities)",
+            "Choose Any Stock",
             all_syms,
             index=cur_i,
-            format_func=lambda s: f"{s} — {STOCK_CATALOG[s]['name']} ({STOCK_CATALOG[s]['exchange']})",
+            format_func=lambda s: f"{s} — {STOCK_CATALOG[s]['name']} · {STOCK_CATALOG[s]['exchange']}",
             key="health_pick_sym",
         )
         snaps_h = ensure_symbols_live([h_sym], snaps)
@@ -6569,7 +6596,7 @@ def page_stock_health() -> None:
 
         st.caption(f"ML Model Used: `{h_res['model_used']}` · Suitability Score: `{h_res['suitability']:+.3f}` · 60D Drawdown: `{h_res['drawdown_pct']:+.1f}%`")
         qa1, qa2 = st.columns(2)
-        if qa1.button(f"Buy 1 Share of {h_sym.replace('.NS', '')} (CNC)", type="primary", icon=":material/shopping_bag:", width="stretch", key="health_buy_1"):
+        if qa1.button(f"Buy 1 Share of {h_sym.replace('.NS', '')}", type="primary", icon=":material/shopping_bag:", width="stretch", key="health_buy_1"):
             ok, msg = execute_trade(
                 st.session_state.username, h_sym, "BUY", 1, float(h_res["price"]), "CNC (Delivery)",
                 usdinr_rate=usdinr, allow_after_hours=st.session_state.allow_after_hours,
@@ -6597,13 +6624,30 @@ def page_stock_health() -> None:
             st.space("small")
             b_l, b_r = st.columns(2, gap="medium")
             with b_l.container(border=True, height="stretch"):
-                st.subheader("3-Class Health Benchmarks (Unseen 20% Test)", icon=":material/fact_check:")
-                st.dataframe(pd.DataFrame(metrics.get("classifier_benchmarks", [])), hide_index=True, alt="Out-of-sample classification benchmarks across Logistic Regression, Random Forest, and HistGradientBoosting")
-                st.caption("Labels: `Healthy` (20D Vol <=27%, Drawdown >-5.5%, Return >=-1%), `Moderate`, `High Risk` (Vol >=37% or Drawdown <=-9.5%).")
+                st.subheader("3-Class Health Benchmarks · 20% Test Split", icon=":material/fact_check:")
+                st.dataframe(
+                    pd.DataFrame(metrics.get("classifier_benchmarks", [])),
+                    column_config={
+                        "Test Accuracy (%)": st.column_config.NumberColumn("Accuracy %", format="%.2f%%"),
+                        "Macro F1 (%)": st.column_config.NumberColumn("Macro F1 %", format="%.2f%%"),
+                        "Weighted F1 (%)": st.column_config.NumberColumn("Weighted F1 %", format="%.2f%%"),
+                        "ROC-AUC (%)": st.column_config.NumberColumn("ROC-AUC %", format="%.2f%%"),
+                    },
+                    hide_index=True,
+                    alt="Out-of-sample classification benchmarks across Logistic Regression, Random Forest, and HistGradientBoosting",
+                )
+                st.caption("Healthy threshold: 20D Vol <=27%, Drawdown >-5.5%, Return >=-1%. High Risk threshold: Vol >=37% or Drawdown <=-9.5%.")
             with b_r.container(border=True, height="stretch"):
-                st.subheader("Smart Basket Alpha Benchmarks (Unseen 20% Test)", icon=":material/analytics:")
-                st.dataframe(pd.DataFrame(metrics.get("regressor_benchmarks", [])), hide_index=True, alt="Out-of-sample risk-adjusted return regressor benchmarks")
-                st.caption(f"Train Window: `{metrics.get('date_start')}` to `{metrics.get('split_date')}` ({metrics.get('train_rows', 0):,} rows) · Test Window up to `{metrics.get('date_end')}` ({metrics.get('test_rows', 0):,} rows).")
+                st.subheader("Smart Basket Alpha Benchmarks · 20% Test Split", icon=":material/analytics:")
+                st.dataframe(
+                    pd.DataFrame(metrics.get("regressor_benchmarks", [])),
+                    column_config={
+                        "Directional Hit Rate (%)": st.column_config.NumberColumn("Hit Rate %", format="%.2f%%"),
+                    },
+                    hide_index=True,
+                    alt="Out-of-sample risk-adjusted return regressor benchmarks",
+                )
+                st.caption(f"Train Window: `{metrics.get('date_start')}` to `{metrics.get('split_date')}` · {metrics.get('train_rows', 0):,} rows | Test Window up to `{metrics.get('date_end')}` · {metrics.get('test_rows', 0):,} rows.")
 
             c_cm, c_imp = st.columns(2, gap="medium")
             with c_cm.container(border=True, height="stretch"):
@@ -6625,14 +6669,14 @@ def page_stock_health() -> None:
                     st.plotly_chart(cm_fig, theme="streamlit", alt="3x3 out-of-sample confusion matrix heatmap")
 
             with c_imp.container(border=True, height="stretch"):
-                st.subheader("Top Predictive Features (%)", icon=":material/bar_chart:")
+                st.subheader("Top Predictive Feature Importance", icon=":material/bar_chart:")
                 imp_dict = metrics.get("feature_importance_pct", {})
                 if imp_dict:
-                    imp_df = pd.DataFrame([{"Feature": k, "Importance (%)": v} for k, v in list(imp_dict.items())[:10]])
+                    imp_df = pd.DataFrame([{"Feature": k, "Importance %": v} for k, v in list(imp_dict.items())[:10]])
                     imp_c = (
                         alt.Chart(imp_df)
                         .mark_bar(cornerRadiusEnd=4, color="#10b981")
-                        .encode(x="Importance (%):Q", y=alt.Y("Feature:N", sort="-x"))
+                        .encode(x="Importance %:Q", y=alt.Y("Feature:N", sort="-x"))
                         .properties(height=280)
                     )
                     st.altair_chart(imp_c, alt="Top 10 technical and volatility features learned from 3-year historical data")
@@ -6640,7 +6684,7 @@ def page_stock_health() -> None:
             preview_path = MODELS_DIR / "dataset_preview.csv"
             if preview_path.exists():
                 with st.container(border=True):
-                    st.subheader("Engineered 3-Year Historical Dataset Sample (`models/dataset_preview.csv`)", icon=":material/table_view:")
+                    st.subheader("Engineered 3-Year Historical Dataset Sample", icon=":material/table_view:")
                     st.dataframe(pd.read_csv(preview_path).head(25), hide_index=True, alt="Sample rows from the 3-year engineered Yahoo Finance training dataset")
 
 
@@ -6673,7 +6717,7 @@ def render_sidebar() -> None:
         all_syms = list(STOCK_CATALOG.keys())
         cur_idx = all_syms.index(st.session_state.selected_ticker) if st.session_state.selected_ticker in all_syms else 0
         sb_sym = st.selectbox(
-            f"Select Ticker ({len(all_syms)} Stocks)",
+            f"Select Ticker · {len(all_syms)} Stocks",
             all_syms,
             index=cur_idx,
             format_func=lambda s: f"{s.replace('.NS', '')} — {STOCK_CATALOG[s]['name']}",
@@ -6700,7 +6744,13 @@ def render_sidebar() -> None:
         )
         st.caption(f"{'🟢' if is_open else '🔴'} {mkt_txt}")
 
-        sb_prod = st.segmented_control("Product", ["CNC (Delivery)", "MIS (Intraday 5x)"], default="CNC (Delivery)", key="sb_prod") or "CNC (Delivery)"
+        sb_prod = st.segmented_control(
+            "Product",
+            ["CNC (Delivery)", "MIS (Intraday 5x)"],
+            default="CNC (Delivery)",
+            format_func=lambda x: "CNC · Delivery" if "CNC" in x else "MIS · 5x Intraday",
+            key="sb_prod",
+        ) or "CNC (Delivery)"
         sb_qty = st.number_input("Qty", min_value=1, max_value=100000, value=5, step=1, key="sb_qty")
         st.toggle(
             "Allow Demo Orders Outside Hours",
@@ -6742,10 +6792,10 @@ def render_sidebar() -> None:
                 key="sb_groq_key_input",
             )
             entered_gemini = st.text_input(
-                "Gemini API Key (Optional)",
+                "Gemini API Key",
                 value=st.session_state.get("user_gemini_api_key", ""),
                 type="password",
-                placeholder="AIza...",
+                placeholder="Optional · AIza...",
                 key="sb_gemini_key_input",
             )
             st.session_state.user_groq_api_key = entered_groq.strip()
@@ -6760,6 +6810,14 @@ def run_app() -> None:
         initial_sidebar_state="expanded",
     )
     st.logo(FINANCESIGHT_LOGO_SVG, icon_image=FINANCESIGHT_ICON_SVG, size="large")
+    st.markdown(
+        "<style>"
+        "[data-testid='stMetricValue']{font-size:clamp(1.15rem,1.65vw,1.72rem)!important;}"
+        "[data-testid='stMetricValue']>div{white-space:normal!important;overflow:visible!important;text-overflow:clip!important;}"
+        "[data-testid='stMetricDelta']>div{white-space:normal!important;overflow:visible!important;}"
+        "</style>",
+        unsafe_allow_html=True,
+    )
 
     ensure_db_initialized()
 
