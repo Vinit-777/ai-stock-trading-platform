@@ -1478,6 +1478,42 @@ def fetch_basket_candidate_histories(tickers_tuple: tuple[str, ...]) -> dict[str
     return out
 
 
+@st.cache_data(ttl="20m", max_entries=2, show_spinner=False)
+def evaluate_all_stock_health_cached() -> list[dict]:
+    all_syms = list(STOCK_CATALOG.keys())
+    snaps, _, _, _, _ = _build_default_snapshots()
+    hist_map: dict[str, pd.DataFrame] = {}
+    try:
+        raw = yf.download(all_syms, period="6mo", group_by="ticker", threads=True, progress=False)
+        if raw is not None and not raw.empty:
+            top_cols = set(raw.columns.get_level_values(0)) if isinstance(raw.columns, pd.MultiIndex) else set()
+            for sym in all_syms:
+                if sym in top_cols:
+                    sub = raw[sym].dropna(subset=["Close", "High", "Low"]).copy()
+                    if len(sub) >= 65:
+                        hist_map[sym] = enrich_technical_indicators(sub)
+    except Exception:
+        pass
+
+    results: list[dict] = []
+    for sym in all_syms:
+        df_h = hist_map.get(sym)
+        sn = snaps.get(sym)
+        if df_h is not None and not df_h.empty:
+            close_s = df_h["Close"].dropna().astype(float)
+            if len(close_s) >= 2:
+                last_c = float(close_s.iloc[-1])
+                prev_c = float(close_s.iloc[-2])
+                sn = {
+                    "price": last_c,
+                    "pct": ((last_c - prev_c) / prev_c * 100.0) if prev_c else 0.0,
+                    "rsi": float(compute_wilder_rsi(close_s, 14).iloc[-1]),
+                    "above_sma": bool(last_c >= float(close_s.tail(20).mean())),
+                }
+        results.append(compute_traffic_light_health(sym, df_h, sn))
+    return results
+
+
 def compute_traffic_light_health(
     sym: str,
     df_hist: pd.DataFrame | None = None,
@@ -1495,6 +1531,7 @@ def compute_traffic_light_health(
     ret_20d = 0.02 if sn.get("above_sma", True) else -0.02
     sma20_dist = 0.015 if sn.get("above_sma", True) else -0.015
     ann_vol = 0.26
+    ann_vol_60 = 0.26
     drawdown_60d = -0.04
     suitability = 0.25 if sn.get("above_sma", True) else -0.15
     probs = np.array([0.22, 0.34, 0.44])
@@ -1513,6 +1550,7 @@ def compute_traffic_light_health(
             sma20_dist = float(np.nan_to_num(last_row["sma20_dist"], nan=sma20_dist))
             rsi_14 = float(np.nan_to_num(last_row["rsi_14"], nan=rsi_14))
             ann_vol = float(np.clip(np.nan_to_num(last_row["ann_vol_20"], nan=ann_vol), 0.08, 1.2))
+            ann_vol_60 = float(np.clip(np.nan_to_num(last_row["ann_vol_60"], nan=ann_vol), 0.08, 1.2))
             drawdown_60d = float(np.nan_to_num(last_row["drawdown_60d"], nan=drawdown_60d))
 
             if artifacts.get("loaded") and artifacts["health"] and artifacts["basket"]:
@@ -1535,16 +1573,25 @@ def compute_traffic_light_health(
         probs = np.array([max(0.12, 0.65 - base_p), 0.35, base_p])
         probs = probs / probs.sum()
 
-    score = int(round(np.clip(probs[2] * 100.0 + probs[1] * 55.0 + probs[0] * 12.0, 5.0, 99.0)))
-    if score >= 66:
+    probs = np.clip(probs, 0.0, 1.0)
+    if probs.sum() <= 0:
+        probs = np.array([0.25, 0.40, 0.35])
+    probs = probs / probs.sum()
+
+    blended_vol = 0.55 * ann_vol + 0.45 * ann_vol_60
+    top_cls = int(np.argmax(probs))
+    if top_cls == 2:
         label, color, badge_clr = "Healthy", "#10b981", "green"
         pill = "🟢 Healthy · Beginner Friendly"
-    elif score >= 45:
+        score = int(round(np.clip(66.0 + (probs[2] - 0.34) * 44.0 + (0.30 - probs[0]) * 18.0, 66.0, 99.0)))
+    elif top_cls == 1:
         label, color, badge_clr = "Moderate", "#f59e0b", "orange"
         pill = "🟡 Moderate · Watch & Hold"
+        score = int(round(np.clip(54.5 + (probs[2] - probs[0]) * 30.0, 44.0, 65.0)))
     else:
         label, color, badge_clr = "High Risk", "#ef4444", "red"
         pill = "🔴 High Risk · Volatile / Caution"
+        score = int(round(np.clip(43.0 - (probs[0] - 0.34) * 52.0 - max(0.0, 0.25 - probs[2]) * 18.0, 8.0, 43.0)))
 
     if sma20_dist >= 0.0 and ret_20d >= 0.015:
         trend_plain = f"Steady Uptrend — Price has climbed {ret_20d*100:+.1f}% over the last month and sits above its trend line."
@@ -1560,12 +1607,12 @@ def compute_traffic_light_health(
     else:
         timing_plain = "Fair Entry Zone — Price momentum is balanced and not overhyped right now."
 
-    if ann_vol <= 0.25:
-        risk_plain = f"Calm Price Swings — Smooth daily movement at ~{ann_vol*100:.0f}% annualized volatility, well-suited for beginners."
-    elif ann_vol <= 0.37:
-        risk_plain = f"Moderate Price Swings — Normal market ups and downs at ~{ann_vol*100:.0f}% annualized volatility."
+    if blended_vol <= 0.26:
+        risk_plain = f"Calm Price Swings — Smooth daily movement at ~{blended_vol*100:.0f}% annualized volatility, well-suited for beginners."
+    elif blended_vol <= 0.38:
+        risk_plain = f"Moderate Price Swings — Normal market ups and downs at ~{blended_vol*100:.0f}% annualized volatility."
     else:
-        risk_plain = f"Large Daily Swings — Elevated ~{ann_vol*100:.0f}% annualized volatility; expect sharper ups and downs."
+        risk_plain = f"Large Daily Swings — Elevated ~{blended_vol*100:.0f}% annualized volatility; expect sharper ups and downs."
 
     return {
         "sym": resolved,
@@ -1585,7 +1632,7 @@ def compute_traffic_light_health(
         "timing_plain": timing_plain,
         "risk_plain": risk_plain,
         "model_used": model_used,
-        "ann_vol_pct": round(ann_vol * 100.0, 1),
+        "ann_vol_pct": round(blended_vol * 100.0, 1),
         "drawdown_pct": round(drawdown_60d * 100.0, 1),
         "ret_20d_pct": round(ret_20d * 100.0, 1),
         "price": price,
@@ -6451,9 +6498,14 @@ def page_stock_health() -> None:
             key="hl_sort",
         )
 
-        quick_rows = []
+        with st.spinner("Evaluating all equities with 3Y-trained ML health models..."):
+            all_evals = evaluate_all_stock_health_cached()
+
+        filtered_evals = []
         ql = h_q.strip().lower()
-        for sym, meta in STOCK_CATALOG.items():
+        for item in all_evals:
+            sym = item["sym"]
+            meta = item["meta"]
             if h_ex == "NSE" and meta["exchange"] != "NSE":
                 continue
             if h_ex == "US" and meta["exchange"] == "NSE":
@@ -6462,27 +6514,26 @@ def page_stock_health() -> None:
                 continue
             if ql and (ql not in sym.lower() and ql not in meta["name"].lower() and ql not in meta["sector"].lower()):
                 continue
-            q_item = score_quick_health_baseline(sym, snaps)
-            if h_light != "All Lights" and q_item["label"] != h_light:
+            if h_light != "All Lights" and item["label"] != h_light:
                 continue
-            quick_rows.append(q_item)
+            filtered_evals.append(item)
 
         if h_sort == "Health Score: High to Low":
-            quick_rows.sort(key=lambda r: (r["score"], r["pct"]), reverse=True)
+            filtered_evals.sort(key=lambda r: (r["score"], r["probs"]["Healthy"], -r["probs"]["High Risk"]), reverse=True)
         elif h_sort == "Health Score: Low to High":
-            quick_rows.sort(key=lambda r: (r["score"], r["pct"]), reverse=False)
+            filtered_evals.sort(key=lambda r: (r["score"], -r["probs"]["High Risk"], r["probs"]["Healthy"]), reverse=False)
         elif h_sort == "Day Move: High to Low":
-            quick_rows.sort(key=lambda r: r["pct"], reverse=True)
+            filtered_evals.sort(key=lambda r: (r["pct"], r["score"]), reverse=True)
         elif h_sort == "Lowest Volatility":
-            quick_rows.sort(key=lambda r: r["vol_est"], reverse=False)
+            filtered_evals.sort(key=lambda r: (r["ann_vol_pct"], -r["score"]), reverse=False)
         else:
-            quick_rows.sort(key=lambda r: r["meta"]["name"])
+            filtered_evals.sort(key=lambda r: r["meta"]["name"])
 
-        if not quick_rows:
+        if not filtered_evals:
             st.info("No stocks matched those search and health filters.")
         else:
             page_size = 10
-            total_rows = len(quick_rows)
+            total_rows = len(filtered_evals)
             max_pages = max(1, (total_rows + page_size - 1) // page_size)
             hl_sig = f"{h_q.strip().lower()}|{h_ex}|{h_sec}|{h_light}|{h_sort}"
             if st.session_state.get("_hl_sig") != hl_sig:
@@ -6490,32 +6541,13 @@ def page_stock_health() -> None:
                 st.session_state["hl_page"] = 0
             cur_p = min(max(0, int(st.session_state.get("hl_page", 0))), max_pages - 1)
             start_i = cur_p * page_size
-            page_items = quick_rows[start_i : start_i + page_size]
-            page_syms = [r["sym"] for r in page_items]
+            eval_cards = filtered_evals[start_i : start_i + page_size]
 
             p_top_l, p_top_p, p_top_n = st.columns([2.2, 0.9, 0.9], vertical_alignment="center")
             p_top_l.caption(f"Showing **{start_i + 1}–{min(start_i + page_size, total_rows)}** of **{total_rows}** equities · 10 per page · Live 3Y ML Evaluation")
             if max_pages > 1:
                 p_top_p.button("Previous 10", icon=":material/chevron_left:", disabled=cur_p == 0, width="stretch", key="hl_prev_top", on_click=_shift_page_cb, args=("hl_page", -1))
                 p_top_n.button(f"Next 10 · {cur_p + 1}/{max_pages}", icon=":material/chevron_right:", disabled=cur_p >= max_pages - 1, width="stretch", key="hl_next_top", on_click=_shift_page_cb, args=("hl_page", 1))
-
-            live_page_snaps = ensure_symbols_live(page_syms, snaps)
-            hist_page_map = fetch_basket_candidate_histories(tuple(page_syms))
-
-            eval_cards = [
-                compute_traffic_light_health(sym, hist_page_map.get(sym), live_page_snaps.get(sym))
-                for sym in page_syms
-            ]
-            if h_sort == "Health Score: High to Low":
-                eval_cards.sort(key=lambda r: r["score"], reverse=True)
-            elif h_sort == "Health Score: Low to High":
-                eval_cards.sort(key=lambda r: r["score"])
-            elif h_sort == "Day Move: High to Low":
-                eval_cards.sort(key=lambda r: r["pct"], reverse=True)
-            elif h_sort == "Lowest Volatility":
-                eval_cards.sort(key=lambda r: r["ann_vol_pct"])
-            else:
-                eval_cards.sort(key=lambda r: r["meta"]["name"])
 
             for row_i in range(0, len(eval_cards), 2):
                 cols = st.columns(2, gap="medium")
@@ -6703,6 +6735,7 @@ def render_sidebar() -> None:
             fetch_ticker_batch.clear()
             fetch_extended_market_snapshots.clear()
             fetch_stock_history.clear()
+            evaluate_all_stock_health_cached.clear()
             st.toast("Market cache cleared — fetching live prices.")
             st.rerun()
         if c_out.button("Logout", icon=":material/logout:", width="stretch"):

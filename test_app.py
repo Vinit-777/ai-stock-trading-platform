@@ -13,7 +13,7 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-import app as fs  # noqa: E402
+import app as fs
 
 
 def _make_synthetic_ohlcv(n: int = 160, start_price: float = 1000.0) -> pd.DataFrame:
@@ -214,6 +214,68 @@ class FinanceSightCoreTests(unittest.TestCase):
                 )
                 self.assertIn("Diversification Score:", audit_md)
                 self.assertIn("AI Risk Action", audit_md)
+
+    def test_trained_ml_health_and_smart_basket(self):
+        artifacts = fs.load_trained_ml_artifacts()
+        self.assertTrue(artifacts["loaded"], "Expected pre-trained joblib artifacts in models/")
+        self.assertEqual(artifacts["metrics"].get("tickers_trained"), 345)
+
+        synth_map = {
+            sym: _make_synthetic_ohlcv(160, start_price=1200.0 + idx * 45.0)
+            for idx, sym in enumerate(["RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "SUNPHARMA.NS", "AAPL", "MSFT", "JPM", "KO"])
+        }
+        for sym in ["RELIANCE.NS", "TCS.NS", "AAPL", "KO"]:
+            health = fs.compute_traffic_light_health(sym, df_hist=synth_map[sym])
+            self.assertGreaterEqual(health["score"], 8)
+            self.assertLessEqual(health["score"], 99)
+            self.assertIn(health["label"], {"Healthy", "Moderate", "High Risk"})
+            top_cls_label = max(health["probs"], key=health["probs"].get)
+            self.assertEqual(health["label"], top_cls_label)
+            if health["label"] == "Healthy":
+                self.assertGreaterEqual(health["score"], 66)
+            elif health["label"] == "Moderate":
+                self.assertTrue(44 <= health["score"] <= 65)
+            else:
+                self.assertLessEqual(health["score"], 43)
+            self.assertAlmostEqual(
+                health["probs"]["Healthy"] + health["probs"]["Moderate"] + health["probs"]["High Risk"],
+                100.0,
+                delta=0.4,
+            )
+            self.assertIn("Trained ML", health["model_used"])
+
+        q_h = fs.score_quick_health_baseline("RELIANCE.NS", fs.DEFAULT_STOCKS_SNAPSHOTS)
+        self.assertIn(q_h["label"], {"Healthy", "Moderate", "High Risk"})
+
+        with tempfile.TemporaryDirectory() as tmp:
+            db_file = str(Path(tmp) / "test_basket.db")
+            fs.init_db(db_file)
+            with (
+                patch.object(fs, "fetch_ticker_batch", return_value={}),
+                patch.object(fs, "fetch_basket_candidate_histories", return_value=synth_map),
+                patch.object(fs, "fetch_stock_history", side_effect=lambda s, p="1y": synth_map.get(s, synth_map["RELIANCE.NS"])),
+            ):
+                basket = fs.build_beginner_smart_basket(
+                    budget_inr=25000.0,
+                    risk_profile="Balanced Mix",
+                    market_pref="Global Mix (India + US)",
+                    snapshots=fs.DEFAULT_STOCKS_SNAPSHOTS,
+                    usdinr_rate=90.0,
+                    basket_size=5,
+                    weight_mode="Risk-Parity (Inverse Volatility)",
+                )
+                items = basket["items"]
+                self.assertEqual(len(items), 5)
+                sectors = {it["meta"]["sector"] for it in items}
+                self.assertEqual(len(sectors), 5)
+                self.assertLessEqual(basket["total_cost_inr"], 25000.0)
+                self.assertGreaterEqual(basket["diversification_reduction_pct"], 0.0)
+
+                ok, msgs, spent = fs.execute_smart_basket(
+                    "Trader_XYZ", basket, usdinr_rate=90.0, allow_after_hours=True, db_path=db_file
+                )
+                self.assertTrue(ok, msgs)
+                self.assertGreater(spent, 0.0)
 
 
 if __name__ == "__main__":
