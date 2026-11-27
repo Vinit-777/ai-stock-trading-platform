@@ -13,7 +13,7 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-import app as fs  # noqa: E402
+import app as fs
 
 
 def _make_synthetic_ohlcv(n: int = 160, start_price: float = 1000.0) -> pd.DataFrame:
@@ -235,6 +235,9 @@ class FinanceSightCoreTests(unittest.TestCase):
         )
         self.assertIn("Trained ML", health["model_used"])
 
+        q_h = fs.score_quick_health_baseline("RELIANCE.NS", fs.DEFAULT_STOCKS_SNAPSHOTS)
+        self.assertIn(q_h["label"], {"Healthy", "Moderate", "High Risk"})
+
         with tempfile.TemporaryDirectory() as tmp:
             db_file = str(Path(tmp) / "test_basket.db")
             fs.init_db(db_file)
@@ -249,12 +252,13 @@ class FinanceSightCoreTests(unittest.TestCase):
                     market_pref="Global Mix (India + US)",
                     snapshots=fs.DEFAULT_STOCKS_SNAPSHOTS,
                     usdinr_rate=90.0,
-                    basket_size=4,
+                    basket_size=5,
+                    weight_mode="Risk-Parity (Inverse Volatility)",
                 )
                 items = basket["items"]
-                self.assertEqual(len(items), 4)
+                self.assertEqual(len(items), 5)
                 sectors = {it["meta"]["sector"] for it in items}
-                self.assertEqual(len(sectors), 4)
+                self.assertEqual(len(sectors), 5)
                 self.assertLessEqual(basket["total_cost_inr"], 25000.0)
                 self.assertGreaterEqual(basket["diversification_reduction_pct"], 0.0)
 

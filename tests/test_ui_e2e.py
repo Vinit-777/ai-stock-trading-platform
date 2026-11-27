@@ -1,5 +1,3 @@
-"""End-to-end headless UI & live market data tests across all 14 public and authenticated pages."""
-
 import time
 from pathlib import Path
 from streamlit.testing.v1 import AppTest
@@ -54,7 +52,6 @@ def main() -> None:
     assert at.session_state["username"] == "Trader_XYZ"
     print(f"   Logged in! Dashboard metrics={len(at.metric)}", flush=True)
 
-    # Verify Dashboard NSE 172-stock filter + pagination Next button works smoothly
     at.segmented_control(key="dash_ex_filter").set_value("NSE").run(timeout=45)
     assert_clean(at, "Dashboard NSE Filter (172 stocks)")
     next_btns = [b for b in at.button if b.key == "dash_next"]
@@ -64,7 +61,6 @@ def main() -> None:
     at.segmented_control(key="dash_ex_filter").set_value("Featured").run(timeout=45)
     assert_clean(at, "Dashboard Featured Filter reset")
 
-    # Test clicking SuperChart button on Dashboard stock card (RELIANCE.NS)
     print("4. Clicking SuperChart on Dashboard RELIANCE.NS card...", flush=True)
     sc_btns = [b for b in at.button if b.key == "go_chart_RELIANCE.NS"]
     assert sc_btns, "RELIANCE.NS SuperChart button missing"
@@ -72,11 +68,9 @@ def main() -> None:
     assert_clean(at, "SuperChart via Dashboard jump")
     assert len(at.get("plotly_chart")) >= 1
 
-    # Sync AppTest page hash to 'superchart' before switching segmented_control views
     at = goto_page(at, "superchart")
     assert_clean(at, "SuperChart direct")
 
-    # Switch to ML Forecast & Peer Comparison views inside SuperChart
     print("5. Testing ML Forecast & Evaluation view inside SuperChart...", flush=True)
     at.segmented_control(key="terminal_view").set_value("ML Forecast & Evaluation").run(timeout=45)
     assert_clean(at, "SuperChart -> ML Forecast view")
@@ -87,16 +81,30 @@ def main() -> None:
     at.segmented_control(key="terminal_view").set_value("Peer Comparison").run(timeout=45)
     assert_clean(at, "SuperChart -> Peer Comparison view")
 
-    # Test all remaining authenticated pages including new Smart Basket & Health page ('guided')
-    for auth_url in ["guided", "advisor", "orders", "holdings", "positions", "funds", "scanner", "calculator", "dashboard"]:
+    for auth_url in ["basket", "health", "advisor", "orders", "holdings", "positions", "funds", "scanner", "calculator", "dashboard"]:
         print(f"7. Checking authenticated page '{auth_url}'...", flush=True)
         at = goto_page(at, auth_url)
         assert_clean(at, f"Auth {auth_url}")
 
-        if auth_url == "guided":
-            assert len(at.metric) >= 8, "Expected Smart Basket & Model Proof KPI metrics on Guided Investing page"
-            assert len(at.get("plotly_chart")) >= 2, "Expected Smart Basket Donut & Confusion Matrix / Correlation Heatmap charts"
-            print("   Smart Basket (4 stocks) & Traffic-Light Stock Health + Model Proof loaded cleanly!", flush=True)
+        if auth_url == "basket":
+            assert len(at.metric) >= 7, "Expected 4 top KPIs + 3 expected outcome KPIs on Smart Basket"
+            assert len(at.get("plotly_chart")) >= 2, "Expected Allocation Donut and Correlation Heatmap"
+            basket_res = at.session_state["_smart_basket_res"]
+            assert len(basket_res.get("items", [])) == 5, f"Expected default 5 stocks in basket, got {len(basket_res.get('items', []))}"
+            print("   Smart Basket (5 stocks + covariance analysis) passed cleanly!", flush=True)
+
+        if auth_url == "health":
+            buy_btns = [b for b in at.button if (b.key or "").startswith("hl_buy_")]
+            assert len(buy_btns) == 10, f"Expected 10 stock health cards on page 1, found {len(buy_btns)}"
+            hl_next = [b for b in at.button if b.key == "hl_next_top"]
+            assert hl_next, "Expected Next 10 pagination button on Traffic-Light Health"
+            hl_next[0].click().run(timeout=45)
+            assert_clean(at, "Traffic-Light Health Next 10 Page")
+            buy_btns_p2 = [b for b in at.button if (b.key or "").startswith("hl_buy_")]
+            assert len(buy_btns_p2) == 10, f"Expected 10 stock health cards on page 2, found {len(buy_btns_p2)}"
+            at.text_input(key="hl_search").set_value("Reliance").run(timeout=45)
+            assert_clean(at, "Traffic-Light Health Search")
+            print("   Traffic-Light Health (10-per-page, Next 10, Search & Sort) passed cleanly!", flush=True)
 
         if auth_url == "advisor":
             audit_btn = [b for b in at.button if b.key == "ap_audit_btn"]
@@ -122,7 +130,7 @@ def main() -> None:
     assert_clean(at, "After Logout")
     assert at.session_state["logged_in"] is False
 
-    print(f"\nALL 15 PAGES & LIVE E2E FLOWS PASSED CLEANLY in {time.time() - t0:.2f}s!", flush=True)
+    print(f"\nALL 16 PAGES & LIVE E2E FLOWS PASSED CLEANLY in {time.time() - t0:.2f}s!", flush=True)
 
 
 if __name__ == "__main__":
